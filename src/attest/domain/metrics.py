@@ -40,6 +40,9 @@ class MetricSpec(BaseModel):
     derived_denominator: str | None = Field(
         default=None, description="for a 'ratio' derived metric, the denominator metric"
     )
+    derived_components: tuple[str, ...] = Field(
+        default=(), description="for a 'sum' derived metric, the components that must sum to it"
+    )
     reconciliation_adjustments: tuple[str, ...] = Field(
         default=(),
         description="for non-GAAP metrics, the adjustment metrics that bridge the GAAP "

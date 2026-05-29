@@ -88,6 +88,10 @@ def check_derived_consistency(
             findings.extend(_check_ratio(document, claim, spec, store))
             continue
 
+        if spec.derived_kind == "sum":
+            findings.extend(_check_sum(document, claim, spec, store))
+            continue
+
         if spec.derived_kind not in _SUPPORTED or spec.derived_base is None:
             continue
 
@@ -134,6 +138,41 @@ def check_derived_consistency(
             )
 
     return findings
+
+
+def _check_sum(document, claim, spec, store) -> list[RuleFinding]:
+    """Verify a sum identity: claimed total == sum of its components."""
+    if not spec.derived_components:
+        return []
+    parts = [
+        store.latest(document.tenant_id, claim.entity, cid, claim.period)
+        for cid in spec.derived_components
+    ]
+    if any(p is None for p in parts):
+        return []  # a component is missing — never guess
+
+    try:
+        claimed = parse_quantity(claim.displayed_text)
+    except QuantityParseError:
+        return []
+
+    total = sum((p.value for p in parts), Decimal(0))
+    expected = Quantity(value=total, unit=claimed.unit, quantum=claimed.quantum)
+    if claimed.matches(expected, DEFAULT_POLICY):
+        return []
+    rounded = DEFAULT_POLICY.round_to(total, claimed.quantum or Decimal(1))
+    bridge = " + ".join(f"{p.value}" for p in parts)
+    return [
+        RuleFinding(
+            rule="derived.sum_mismatch",
+            severity=RuleSeverity.BLOCK,
+            document_id=document.id,
+            metric=claim.metric,
+            message=f"'{spec.label}' is stated as {claim.displayed_text} but its "
+            f"components sum to {rounded}.",
+            detail=f"{bridge} = {total}.",
+        )
+    ]
 
 
 def _check_ratio(document, claim, spec, store) -> list[RuleFinding]:
