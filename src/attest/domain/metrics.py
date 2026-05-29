@@ -28,6 +28,12 @@ class MetricSpec(BaseModel):
     xbrl_tags: tuple[str, ...] = Field(
         default=(), description="us-gaap tags that map onto this metric during ingestion"
     )
+    derived_kind: str | None = Field(
+        default=None, description="formula type for derived metrics, e.g. 'yoy_growth'"
+    )
+    derived_base: str | None = Field(
+        default=None, description="the base metric a derived metric is computed from"
+    )
 
 
 class MetricRegistry:
@@ -77,6 +83,8 @@ DEFAULT_REGISTRY = MetricRegistry(
             id="cloud_growth_yoy",
             label="Cloud growth, YoY",
             unit=Unit.PERCENT,
+            derived_kind="yoy_growth",
+            derived_base="cloud_revenue",
         ),
         MetricSpec(
             id="gaap_diluted_eps",

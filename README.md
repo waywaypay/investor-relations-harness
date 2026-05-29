@@ -62,7 +62,8 @@ src/attest/
   verification/
     candidates.py    greedy figure detection (over-detect, never under-detect)
     engine.py        detect -> normalize -> bind -> verdict, with audit logging
-    rules/           deterministic Reg G, forward-looking, cross-document consistency
+    rules/           deterministic Reg G (incl. prominence ordering), forward-looking,
+                     cross-document consistency, derived-figure recomputation
   audit/           append-only, event-sourced, sha256 hash-chained log
   ingestion/       connectors (EDGAR/XBRL adapter + a sample filing fixture)
   eval/            the golden-set harness + CI gate (figure FN rate must be 0)

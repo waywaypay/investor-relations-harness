@@ -79,6 +79,32 @@
       "as_of": "2026-04-28"
     },
     {
+      "tag": "mrdn:CloudSegmentRevenue",
+      "entity": "MRDN:Cloud",
+      "period": "FY2025-Q1",
+      "value": "467000000",
+      "unit": "USD",
+      "decimals": -5,
+      "source_type": "filing_line",
+      "source_ref": "0001047469-25-000900#exhibit-99.1",
+      "label": "Q1 FY2025 earnings release (original prior-year cloud revenue)",
+      "excerpt": "Cloud segment revenue of $467.0 million (as originally reported).",
+      "as_of": "2025-04-28"
+    },
+    {
+      "tag": "mrdn:CloudSegmentRevenue",
+      "entity": "MRDN:Cloud",
+      "period": "FY2025-Q1",
+      "value": "474300000",
+      "unit": "USD",
+      "decimals": -5,
+      "source_type": "edgar_xbrl",
+      "source_ref": "0001047469-25-004500#note-2-restatement",
+      "label": "FY2025 Form 10-K · Note 2 (restated prior-year cloud revenue)",
+      "excerpt": "Restated cloud segment revenue of $474.3 million.",
+      "as_of": "2025-09-15"
+    },
+    {
       "metric": "cloud_growth_yoy",
       "entity": "MRDN:Cloud",
       "period": "FY2026-Q1",
