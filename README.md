@@ -117,10 +117,21 @@ two kinds of cases stay strictly separated:
   without it grading its own homework — but they only measure **robustness
   coverage**, not reliability.
 
-These are scored in **different buckets** (`run_eval` vs `run_synthetic_eval`) and
-the synthetic report carries a `caveat` string so its accuracy can't be quietly
-pasted next to the real gate. Summing them would inflate the headline metric with
-easy synthetic cases — the exact failure mode this split exists to prevent.
+- **Production-feedback candidates** (`eval/feedback.py`) are derived from human
+  *overrides* in the audit log. Only an override tagged `engine_wrong` becomes a
+  candidate (an "accepting risk" or "dismissing noise" override would poison
+  precision if fed back as truth). Candidates are anonymizable (MNPI scrub keeps
+  metric/period/verdict, drops the figure text + justification), tagged
+  `production_feedback`, and are **candidates** — a human promotes them into the
+  labeled set; nothing auto-enters the gate. This bucket is blind to false
+  *negatives* by construction, so it complements restatement harvesting, never
+  replaces it.
+
+These are scored in **different buckets** (`run_eval` vs `run_synthetic_eval`; the
+feedback bucket stays out of the gate entirely until promoted). The synthetic
+report carries a `caveat` string so its accuracy can't be quietly pasted next to
+the real gate. Summing buckets would inflate the headline metric — the exact
+failure mode this separation exists to prevent.
 
 The generator is restatement-aware (perturbs only the latest version of a fact);
 it found and forced the fix of a mislabel bug on first run — see the commit

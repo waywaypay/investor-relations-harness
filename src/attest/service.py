@@ -62,14 +62,39 @@ class AttestService:
     # -- human-in-the-loop accountability ------------------------------------
 
     def override(
-        self, *, tenant_id: str, actor: str, claim_id: str, justification: str
+        self,
+        *,
+        tenant_id: str,
+        actor: str,
+        claim_id: str,
+        justification: str,
+        reason: str | None = None,
+        metric: str | None = None,
+        period: str | None = None,
+        displayed_text: str | None = None,
     ) -> None:
-        """Record that a human accepted a non-traced figure, with justification."""
+        """Record that a human accepted a non-traced figure, with justification.
+
+        ``reason`` is the structured disambiguation (see
+        :class:`attest.eval.feedback.OverrideReason`): only an ``engine_wrong``
+        override is a false-positive signal worth feeding back. ``metric`` /
+        ``period`` / ``displayed_text`` are captured so the feedback exporter can
+        build a candidate label without re-joining to the document.
+        """
+        payload: dict = {"claim_id": claim_id, "justification": justification}
+        if reason is not None:
+            payload["reason"] = str(reason)
+        if metric is not None:
+            payload["metric"] = metric
+        if period is not None:
+            payload["period"] = period
+        if displayed_text is not None:
+            payload["displayed_text"] = displayed_text
         self.audit_log.append(
             actor=actor,
             type=EventType.OVERRIDE,
             tenant_id=tenant_id,
-            payload={"claim_id": claim_id, "justification": justification},
+            payload=payload,
         )
 
     def sign_off(

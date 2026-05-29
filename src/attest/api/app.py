@@ -106,7 +106,8 @@ def create_app(service: AttestService | None = None) -> FastAPI:
     ) -> dict:
         svc.override(
             tenant_id=tenant_id, actor=req.actor, claim_id=req.claim_id,
-            justification=req.justification,
+            justification=req.justification, reason=req.reason, metric=req.metric,
+            period=req.period, displayed_text=req.displayed_text,
         )
         return {"status": "recorded"}
 
