@@ -15,9 +15,9 @@ def _doc(doc_id, text, claims, tenant="meridian"):
                     text=text, claims=tuple(claims))
 
 
-def _claim(metric, text, entity="MRDN", period="FY2026-Q1", doc="d"):
+def _claim(metric, text, entity="MRDN", period="FY2026-Q1", doc="d", span=None):
     return FigureClaim(claim_id=metric, document_id=doc, entity=entity, metric=metric,
-                       period=period, displayed_text=text)
+                       period=period, displayed_text=text, span=span)
 
 
 def test_reg_g_passes_with_gaap_and_recon():
@@ -74,6 +74,40 @@ def test_consistency_flags_divergent_values():
 def test_consistency_clean_on_matching_values():
     docs = build_documents()
     assert check_cross_document_consistency(docs) == []
+
+
+def test_reg_g_flags_non_gaap_presented_before_gaap():
+    # Reg G requires the GAAP measure with equal-or-greater prominence. Using claim
+    # spans as a position proxy: the non-GAAP figure must not appear before its GAAP
+    # counterpart. Here non-GAAP ($1.12) sits at offset 0, GAAP ($0.87) far later.
+    service = seeded_service()
+    doc = _doc("order", "Non-GAAP diluted EPS of $1.12 ... GAAP diluted EPS of $0.87", [
+        _claim("non_gaap_diluted_eps", "$1.12", span=(24, 29)),
+        _claim("gaap_diluted_eps", "$0.87", span=(55, 60)),
+    ])
+    findings = check_reg_g(doc, DEFAULT_REGISTRY, service.store)
+    assert any(f.rule == "reg_g.equal_prominence_ordering" for f in findings)
+
+
+def test_reg_g_ok_when_gaap_precedes_non_gaap():
+    service = seeded_service()
+    doc = _doc("order", "GAAP diluted EPS of $0.87 ... non-GAAP diluted EPS of $1.12", [
+        _claim("gaap_diluted_eps", "$0.87", span=(20, 25)),
+        _claim("non_gaap_diluted_eps", "$1.12", span=(53, 58)),
+    ])
+    findings = check_reg_g(doc, DEFAULT_REGISTRY, service.store)
+    assert not any(f.rule == "reg_g.equal_prominence_ordering" for f in findings)
+
+
+def test_reg_g_ordering_skipped_without_spans():
+    # When the edge didn't supply spans we cannot judge prominence — never guess.
+    service = seeded_service()
+    doc = _doc("nospan", "non-GAAP $1.12 and GAAP $0.87", [
+        _claim("non_gaap_diluted_eps", "$1.12"),
+        _claim("gaap_diluted_eps", "$0.87"),
+    ])
+    findings = check_reg_g(doc, DEFAULT_REGISTRY, service.store)
+    assert not any(f.rule == "reg_g.equal_prominence_ordering" for f in findings)
 
 
 def test_demo_script_flags_reg_g_and_release_flags_fls():
