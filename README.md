@@ -75,6 +75,9 @@ src/attest/
   audit/           append-only, event-sourced, sha256 hash-chained log
   ingestion/       connectors (EDGAR/XBRL adapter + a sample filing fixture)
   eval/            the golden-set harness + CI gate (figure FN rate must be 0)
+    perturbation.py  synthetic case generator — known mutations of real filed values
+    synthetic_eval.py scores the engine on synthetic cases in a SEPARATE bucket
+    sheets_bridge.py  loads the corpus workbook's 02_Facts CSV export into facts
   api/             stateless FastAPI surface over the service
   service.py       composition root shared by the API and CLI
   cli.py           `attest demo` / `attest serve`
@@ -96,6 +99,34 @@ src/attest/
 - **Eval is non-negotiable infrastructure.** `attest/eval` scores the engine
   against a labeled golden set with the right asymmetry (a missed wrong number is
   catastrophic); `tests/test_eval.py` is the CI gate.
+
+## The golden corpus: synthetic vs. labeled (read before trusting a number)
+
+Reliability is *measured*, not asserted — and the measurement is only honest if
+two kinds of cases stay strictly separated:
+
+- **Human-/EDGAR-labeled cases** (`eval/golden/figure_tieouts.json`) carry labels
+  that reflect disclosure *judgment* or real adjudicated errors. These feed the
+  **reliability gate** (`tests/test_eval.py`): figure false-negative rate must be 0.
+- **Synthetic perturbation cases** (`eval/perturbation.py`) are minted by applying
+  *known mutations* (scale error, digit transpose, ~15% typo) to real filed
+  values. Their labels are correct *by construction*, so they can test the engine
+  without it grading its own homework — but they only measure **robustness
+  coverage**, not reliability.
+
+These are scored in **different buckets** (`run_eval` vs `run_synthetic_eval`) and
+the synthetic report carries a `caveat` string so its accuracy can't be quietly
+pasted next to the real gate. Summing them would inflate the headline metric with
+easy synthetic cases — the exact failure mode this split exists to prevent.
+
+The generator is restatement-aware (perturbs only the latest version of a fact);
+it found and forced the fix of a mislabel bug on first run — see the commit
+history. To generate from the Sheets corpus workbook:
+
+```bash
+attest synth --csv 02_Facts.csv --out synthetic.json   # from a sheet export
+attest synth                                            # from the bundled fixture, with bucketed report
+```
 
 ## API surface
 
