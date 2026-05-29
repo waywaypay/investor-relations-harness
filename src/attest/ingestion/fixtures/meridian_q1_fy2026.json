@@ -1,0 +1,119 @@
+{
+  "accession": "0001047469-26-001234",
+  "entity": "MRDN",
+  "filer": "Meridian Systems, Inc.",
+  "form": "10-Q",
+  "period_of_report": "2026-03-31",
+  "facts": [
+    {
+      "tag": "us-gaap:Revenues",
+      "period": "FY2026-Q1",
+      "value": "1241300000",
+      "unit": "USD",
+      "decimals": -5,
+      "source_type": "edgar_xbrl",
+      "source_ref": "0001047469-26-001234#us-gaap:Revenues",
+      "label": "Form 10-Q · Statements of Operations · p.4",
+      "excerpt": "Total revenue was $1,241.3 million for the three months ended March 31, 2026.",
+      "as_of": "2026-04-28"
+    },
+    {
+      "tag": "mrdn:CloudSegmentRevenue",
+      "entity": "MRDN:Cloud",
+      "period": "FY2026-Q1",
+      "value": "611800000",
+      "unit": "USD",
+      "decimals": -5,
+      "source_type": "edgar_xbrl",
+      "source_ref": "0001047469-26-001234#mrdn:CloudSegmentRevenue",
+      "label": "Form 10-Q · Note 14, Segment Information · p.27",
+      "excerpt": "Cloud segment revenue was $611.8 million for the quarter.",
+      "as_of": "2026-04-28"
+    },
+    {
+      "tag": "us-gaap:EarningsPerShareDiluted",
+      "period": "FY2026-Q1",
+      "value": "0.87",
+      "unit": "USD/shares",
+      "decimals": 2,
+      "source_type": "edgar_xbrl",
+      "source_ref": "0001047469-26-001234#us-gaap:EarningsPerShareDiluted",
+      "label": "Form 10-Q · Statements of Operations · p.5",
+      "excerpt": "Diluted net income per share was $0.87 on 232.1M diluted shares.",
+      "as_of": "2026-04-28"
+    },
+    {
+      "metric": "non_gaap_diluted_eps",
+      "period": "FY2026-Q1",
+      "value": "1.12",
+      "unit": "USD/shares",
+      "decimals": 2,
+      "source_type": "filing_line",
+      "source_ref": "0001047469-26-001200#exhibit-99.1#non-gaap-recon",
+      "label": "Form 8-K · Exhibit 99.1 · Non-GAAP reconciliation",
+      "excerpt": "Non-GAAP diluted EPS of $1.12, excluding stock-based comp and amortization.",
+      "as_of": "2026-04-28"
+    },
+    {
+      "tag": "us-gaap:NetCashProvidedByUsedInOperatingActivities",
+      "period": "FY2026-Q1",
+      "value": "338200000",
+      "unit": "USD",
+      "decimals": -5,
+      "source_type": "edgar_xbrl",
+      "source_ref": "0001047469-26-001234#us-gaap:NetCashProvidedByUsedInOperatingActivities",
+      "label": "Form 10-Q · Statements of Cash Flows · p.7",
+      "excerpt": "Net cash provided by operating activities was $338.2 million.",
+      "as_of": "2026-04-28"
+    },
+    {
+      "tag": "us-gaap:PaymentsForRepurchaseOfCommonStock",
+      "period": "FY2026-Q1",
+      "value": "250000000",
+      "unit": "USD",
+      "decimals": -5,
+      "source_type": "edgar_xbrl",
+      "source_ref": "0001047469-26-001234#us-gaap:PaymentsForRepurchaseOfCommonStock",
+      "label": "Form 10-Q · Note 11, Stockholders' Equity · p.24",
+      "excerpt": "Repurchases of common stock of $250.0 million during the quarter.",
+      "as_of": "2026-04-28"
+    },
+    {
+      "metric": "cloud_growth_yoy",
+      "entity": "MRDN:Cloud",
+      "period": "FY2026-Q1",
+      "value": "31",
+      "unit": "percent",
+      "decimals": 0,
+      "source_type": "filing_line",
+      "source_ref": "0001047469-25-000900#exhibit-99.1",
+      "label": "Q1 FY2025 earnings release (original prior-year base)",
+      "excerpt": "Computed from original prior-year cloud revenue of $467.0M.",
+      "as_of": "2025-04-28"
+    },
+    {
+      "metric": "cloud_growth_yoy",
+      "entity": "MRDN:Cloud",
+      "period": "FY2026-Q1",
+      "value": "29",
+      "unit": "percent",
+      "decimals": 0,
+      "source_type": "edgar_xbrl",
+      "source_ref": "0001047469-25-004500#note-2-restatement",
+      "label": "FY2025 Form 10-K · Note 2 (restated prior-year base $474.3M)",
+      "excerpt": "Restated prior-year cloud revenue of $474.3M yields 29% YoY growth.",
+      "as_of": "2025-09-15"
+    },
+    {
+      "metric": "q2_revenue_guidance",
+      "period": "FY2026-Q2",
+      "value": "1325000000",
+      "unit": "USD",
+      "source_type": "management_input",
+      "source_ref": "none",
+      "label": "Internal — Q2 planning memo v3 (not a public document)",
+      "excerpt": "Planning range: $1.31B – $1.34B (midpoint ~16% YoY).",
+      "as_of": "2026-04-21"
+    }
+  ]
+}
