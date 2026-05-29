@@ -64,3 +64,32 @@ def test_qoq_growth_ok_when_correct():
     store.add(_fact("total_revenue", "1190000000", "FY2025-Q4"))
     doc = _doc([_claim("revenue_qoq_growth", "4%")])
     assert not _rule("derived.recomputation_mismatch", check_derived_consistency(doc, reg, store))
+
+
+# -- Increment 2: EPS ratio identity (net income / diluted shares) ---------
+
+def _eps_reg():
+    return MetricRegistry([
+        MetricSpec(id="net_income", label="Net income", unit=Unit.CURRENCY),
+        MetricSpec(id="diluted_shares", label="Diluted shares", unit=Unit.SHARES),
+        MetricSpec(id="gaap_diluted_eps", label="GAAP diluted EPS", unit=Unit.CURRENCY,
+                   derived_kind="ratio", derived_numerator="net_income",
+                   derived_denominator="diluted_shares"),
+    ])
+
+
+def test_eps_ratio_flags_inconsistent():
+    store = InMemoryFactStore()
+    store.add(_fact("net_income", "202000000", "FY2026-Q1"))
+    store.add(_fact("diluted_shares", "232100000", "FY2026-Q1", unit=Unit.SHARES))
+    # 202.0M / 232.1M = $0.87, so a claimed EPS of $1.05 is inconsistent
+    doc = _doc([_claim("gaap_diluted_eps", "$1.05")])
+    assert _rule("derived.ratio_mismatch", check_derived_consistency(doc, _eps_reg(), store))
+
+
+def test_eps_ratio_ok_when_consistent():
+    store = InMemoryFactStore()
+    store.add(_fact("net_income", "202000000", "FY2026-Q1"))
+    store.add(_fact("diluted_shares", "232100000", "FY2026-Q1", unit=Unit.SHARES))
+    doc = _doc([_claim("gaap_diluted_eps", "$0.87")])
+    assert not _rule("derived.ratio_mismatch", check_derived_consistency(doc, _eps_reg(), store))
