@@ -92,6 +92,10 @@ def check_derived_consistency(
             findings.extend(_check_sum(document, claim, spec, store))
             continue
 
+        if spec.derived_kind == "ttm_sum":
+            findings.extend(_check_ttm(document, claim, spec, store))
+            continue
+
         if spec.derived_kind not in _SUPPORTED or spec.derived_base is None:
             continue
 
@@ -138,6 +142,48 @@ def check_derived_consistency(
             )
 
     return findings
+
+
+def _check_ttm(document, claim, spec, store) -> list[RuleFinding]:
+    """Verify a trailing-twelve-month sum: base over the current + prior 3 quarters."""
+    if spec.derived_base is None:
+        return []
+    periods = [claim.period]
+    p = claim.period
+    for _ in range(3):
+        p = _prior_quarter_period(p)
+        if p is None:
+            return []  # not a quarterly period — cannot build a TTM window
+        periods.append(p)
+
+    facts = [
+        store.latest(document.tenant_id, claim.entity, spec.derived_base, per)
+        for per in periods
+    ]
+    if any(f is None for f in facts):
+        return []  # an interior quarter is missing — never guess
+
+    try:
+        claimed = parse_quantity(claim.displayed_text)
+    except QuantityParseError:
+        return []
+
+    total = sum((f.value for f in facts), Decimal(0))
+    expected = Quantity(value=total, unit=claimed.unit, quantum=claimed.quantum)
+    if claimed.matches(expected, DEFAULT_POLICY):
+        return []
+    rounded = DEFAULT_POLICY.round_to(total, claimed.quantum or Decimal(1))
+    return [
+        RuleFinding(
+            rule="derived.recomputation_mismatch",
+            severity=RuleSeverity.BLOCK,
+            document_id=document.id,
+            metric=claim.metric,
+            message=f"'{spec.label}' is stated as {claim.displayed_text} but the last "
+            f"four quarters of {spec.derived_base} sum to {rounded}.",
+            detail=f"TTM window: {', '.join(periods)}.",
+        )
+    ]
 
 
 def _check_sum(document, claim, spec, store) -> list[RuleFinding]:
