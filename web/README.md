@@ -18,7 +18,13 @@ Other scripts:
 npm run build      # type-check + production build to dist/
 npm run preview    # serve the built bundle
 npm run typecheck  # tsc --noEmit
+npm run test       # vitest run (unit + component/integration tests)
 ```
+
+Tests use Vitest + React Testing Library (jsdom). `src/lib/verify.test.ts` covers
+the verification echo; `src/App.test.tsx` renders the full workspace and exercises
+the key flows (coverage summary, resolving the cloud-growth conflict to 29%,
+consensus build, calendar, the script's narrative bar).
 
 > In a remote/container dev environment, the server binds to `0.0.0.0` (see
 > `vite.config.ts`); use your platform's port forwarding to reach `:5173`.
