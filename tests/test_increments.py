@@ -287,3 +287,32 @@ def test_engine_detects_midpoint_from_prose():
                    claims=(_claim("q2_revenue_guidance", "$1.31 to $1.34 billion"),))
     result = svc.verify_document(doc)
     assert any(f.rule == "ranges.midpoint_mismatch" for f in result.findings)
+
+
+# -- Increment 10: operating-margin ratio identity (pct ratio) -------------
+
+def _opm_reg():
+    return MetricRegistry([
+        MetricSpec(id="income_from_operations", label="Income from operations", unit=Unit.CURRENCY),
+        MetricSpec(id="total_revenue", label="Total revenue", unit=Unit.CURRENCY),
+        MetricSpec(id="operating_margin", label="Operating margin", unit=Unit.PERCENT,
+                   derived_kind="ratio_pct", derived_numerator="income_from_operations",
+                   derived_denominator="total_revenue"),
+    ])
+
+
+def test_operating_margin_flags_inconsistent():
+    store = InMemoryFactStore()
+    store.add(_fact("income_from_operations", "278000000", "FY2026-Q1"))
+    store.add(_fact("total_revenue", "1241300000", "FY2026-Q1"))
+    # 278.0 / 1241.3 = 22.4%, so a claim of 30% is inconsistent
+    doc = _doc([_claim("operating_margin", "30%")])
+    assert _rule("derived.ratio_mismatch", check_derived_consistency(doc, _opm_reg(), store))
+
+
+def test_operating_margin_ok_when_consistent():
+    store = InMemoryFactStore()
+    store.add(_fact("income_from_operations", "278000000", "FY2026-Q1"))
+    store.add(_fact("total_revenue", "1241300000", "FY2026-Q1"))
+    doc = _doc([_claim("operating_margin", "22.4%")])
+    assert not _rule("derived.ratio_mismatch", check_derived_consistency(doc, _opm_reg(), store))
