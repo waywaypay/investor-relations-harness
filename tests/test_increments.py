@@ -15,6 +15,7 @@ from attest.factstore.repository import InMemoryFactStore
 from attest.verification.rules import (
     check_derived_consistency,
     check_directional_language,
+    check_unit_consistency,
 )
 
 T = "acme"
@@ -186,3 +187,23 @@ def test_directional_ok_when_language_matches_sign():
                    text="Operating margin declined year over year.",
                    claims=(_claim("operating_margin", "21.0%"),))
     assert not _rule("directional.sign_mismatch", check_directional_language(doc, _dir_reg(), _dir_store()))
+
+
+# -- Increment 6: claim unit vs. metric-declared unit ----------------------
+
+def _unit_reg():
+    return MetricRegistry([
+        MetricSpec(id="total_revenue", label="Total revenue", unit=Unit.CURRENCY),
+    ])
+
+
+def test_unit_mismatch_flags_percent_for_currency_metric():
+    store = InMemoryFactStore()
+    doc = _doc([_claim("total_revenue", "31%")])  # currency metric, percent figure
+    assert _rule("units.unit_mismatch", check_unit_consistency(doc, _unit_reg(), store))
+
+
+def test_unit_mismatch_ok_when_units_align():
+    store = InMemoryFactStore()
+    doc = _doc([_claim("total_revenue", "$1.24 billion")])
+    assert not _rule("units.unit_mismatch", check_unit_consistency(doc, _unit_reg(), store))
