@@ -15,6 +15,7 @@ from attest.factstore.repository import InMemoryFactStore
 from attest.verification.rules import (
     check_derived_consistency,
     check_directional_language,
+    check_intra_document_consistency,
     check_unit_consistency,
 )
 
@@ -207,3 +208,34 @@ def test_unit_mismatch_ok_when_units_align():
     store = InMemoryFactStore()
     doc = _doc([_claim("total_revenue", "$1.24 billion")])
     assert not _rule("units.unit_mismatch", check_unit_consistency(doc, _unit_reg(), store))
+
+
+# -- Increment 7: intra-document figure consistency ------------------------
+
+def test_intradoc_flags_same_metric_two_values():
+    reg = MetricRegistry([MetricSpec(id="total_revenue", label="Total revenue", unit=Unit.CURRENCY)])
+    doc = Document(id="d", tenant_id=T, title="d", kind=DocumentKind.OTHER,
+                   text="Revenue was $1.24 billion ... revenue of $1.25 billion.",
+                   claims=(
+                       FigureClaim(claim_id="a", document_id="d", entity="ACME",
+                                   metric="total_revenue", period="FY2026-Q1",
+                                   displayed_text="$1.24 billion"),
+                       FigureClaim(claim_id="b", document_id="d", entity="ACME",
+                                   metric="total_revenue", period="FY2026-Q1",
+                                   displayed_text="$1.25 billion"),
+                   ))
+    assert _rule("consistency.intra_document_mismatch", check_intra_document_consistency(doc))
+
+
+def test_intradoc_ok_when_same_value_repeated():
+    doc = Document(id="d", tenant_id=T, title="d", kind=DocumentKind.OTHER,
+                   text="Revenue was $1.24 billion ... revenue of $1,241.3 million.",
+                   claims=(
+                       FigureClaim(claim_id="a", document_id="d", entity="ACME",
+                                   metric="total_revenue", period="FY2026-Q1",
+                                   displayed_text="$1.24 billion"),
+                       FigureClaim(claim_id="b", document_id="d", entity="ACME",
+                                   metric="total_revenue", period="FY2026-Q1",
+                                   displayed_text="$1,241.3 million"),
+                   ))
+    assert not _rule("consistency.intra_document_mismatch", check_intra_document_consistency(doc))

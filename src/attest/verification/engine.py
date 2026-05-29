@@ -36,6 +36,7 @@ from attest.domain.verdicts import (
 from attest.factstore.repository import FactStore
 from attest.verification.rules import (
     check_cross_document_consistency,
+    check_intra_document_consistency,
     check_derived_consistency,
     check_directional_language,
     check_forward_looking,
@@ -215,6 +216,7 @@ class VerificationEngine:
         findings.extend(check_derived_consistency(document, self.registry, self.store))
         findings.extend(check_directional_language(document, self.registry, self.store))
         findings.extend(check_unit_consistency(document, self.registry, self.store))
+        findings.extend(check_intra_document_consistency(document))
         return VerificationResult(
             document_id=document.id,
             verdicts=verdicts,
