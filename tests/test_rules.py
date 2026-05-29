@@ -1,6 +1,10 @@
+from decimal import Decimal
+
 from attest.demo import build_documents, seeded_service
 from attest.domain.document import Document, DocumentKind
+from attest.domain.facts import Fact, SourceType
 from attest.domain.metrics import DEFAULT_REGISTRY
+from attest.domain.money import Unit
 from attest.domain.verdicts import FigureClaim
 from attest.factstore.repository import InMemoryFactStore
 from attest.verification.rules import (
@@ -154,6 +158,36 @@ def test_derived_bps_delta_ok_for_correct_margin():
                [_claim("operating_margin_change_bps", "140 bps")])
     findings = check_derived_consistency(doc, DEFAULT_REGISTRY, service.store)
     assert not any(f.rule == "derived.recomputation_mismatch" for f in findings)
+
+
+def test_reg_g_reconciliation_arithmetic_flags_broken_bridge():
+    # GAAP 0.87 + SBC 0.18 + amortization 0.07 = 1.12. If the non-GAAP figure is
+    # booked as 1.20, the reconciliation bridge does not add up.
+    store = InMemoryFactStore()
+    common = dict(tenant_id="meridian", entity="MRDN", period="FY2026-Q1",
+                  unit=Unit.CURRENCY, source_type=SourceType.FILING_LINE, as_of="2026-04-28")
+    store.add_many([
+        Fact(id="g", metric="gaap_diluted_eps", value=Decimal("0.87"), **common),
+        Fact(id="s", metric="sbc_eps_adjustment", value=Decimal("0.18"), **common),
+        Fact(id="a", metric="intangibles_amort_eps_adjustment", value=Decimal("0.07"), **common),
+        Fact(id="n", metric="non_gaap_diluted_eps", value=Decimal("1.20"), **common),
+    ])
+    doc = _doc("bridge", "non-GAAP $1.20 and GAAP $0.87", [
+        _claim("non_gaap_diluted_eps", "$1.20"),
+        _claim("gaap_diluted_eps", "$0.87"),
+    ])
+    findings = check_reg_g(doc, DEFAULT_REGISTRY, store)
+    assert any(f.rule == "reg_g.reconciliation_arithmetic" for f in findings)
+
+
+def test_reg_g_reconciliation_arithmetic_ok_when_bridge_sums():
+    service = seeded_service()  # 0.87 + 0.18 + 0.07 = 1.12, as booked
+    doc = _doc("bridge", "non-GAAP $1.12 and GAAP $0.87", [
+        _claim("non_gaap_diluted_eps", "$1.12"),
+        _claim("gaap_diluted_eps", "$0.87"),
+    ])
+    findings = check_reg_g(doc, DEFAULT_REGISTRY, service.store)
+    assert not any(f.rule == "reg_g.reconciliation_arithmetic" for f in findings)
 
 
 def test_demo_script_flags_reg_g_and_release_flags_fls():
