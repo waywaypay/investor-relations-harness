@@ -26,6 +26,9 @@ pytest               # run the suite, including the eval regression gate
 attest serve         # run the API at http://127.0.0.1:8000  (docs at /docs)
 ```
 
+A React + TypeScript front-end (the disclosure-drafting workspace from the design
+brief) lives in [`web/`](web/README.md) — run it standalone with `cd web && npm install && npm run dev`.
+
 ## What it does
 
 Given a company's filing (ingested as machine-tagged XBRL) and a draft release /
