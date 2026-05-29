@@ -80,13 +80,41 @@ def check_range_sanity(document: Document, registry: MetricRegistry) -> list[Rul
     return findings
 
 
+_MIDPOINT_RE = re.compile(
+    r"midpoint[^$%\d]{0,20}?"
+    r"(\$?\s?\d[\d,]*(?:\.\d+)?\s*(?:billion|million|thousand|trillion|bn|mm|[bmkt])?|"
+    r"\d{1,3}(?:\.\d+)?\s?%)",
+    re.IGNORECASE,
+)
+
+
+def extract_stated_midpoints(document: Document) -> dict[str, str]:
+    """Pull a 'midpoint of <figure>' phrase from the prose, mapped to range metrics.
+
+    A document typically states at most one guidance midpoint; we attach it to any
+    range-valued claim in the document. Returns {} when no midpoint phrase exists.
+    """
+    m = _MIDPOINT_RE.search(document.text or "")
+    if not m:
+        return {}
+    midpoint_text = m.group(1).strip()
+    mapping: dict[str, str] = {}
+    for claim in document.claims:
+        if parse_range(claim.displayed_text) is not None:
+            mapping[claim.metric] = midpoint_text
+    return mapping
+
+
 def check_range_midpoint(
-    document: Document, registry: MetricRegistry, midpoints: dict[str, str]
+    document: Document, registry: MetricRegistry, midpoints: dict[str, str] | None = None
 ) -> list[RuleFinding]:
     """Verify a separately-stated midpoint equals the arithmetic midpoint of a range.
 
     ``midpoints`` maps a claim metric to the midpoint figure text stated for it.
+    When omitted, the midpoint is extracted from the document prose.
     """
+    if midpoints is None:
+        midpoints = extract_stated_midpoints(document)
     findings: list[RuleFinding] = []
     for claim in document.claims:
         parsed = parse_range(claim.displayed_text)

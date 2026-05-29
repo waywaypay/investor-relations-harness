@@ -40,6 +40,7 @@ from attest.verification.rules import (
     check_derived_consistency,
     check_directional_language,
     check_forward_looking,
+    check_range_midpoint,
     check_range_sanity,
     check_reg_g,
     check_unit_consistency,
@@ -219,6 +220,7 @@ class VerificationEngine:
         findings.extend(check_unit_consistency(document, self.registry, self.store))
         findings.extend(check_intra_document_consistency(document))
         findings.extend(check_range_sanity(document, self.registry))
+        findings.extend(check_range_midpoint(document, self.registry))
         return VerificationResult(
             document_id=document.id,
             verdicts=verdicts,
