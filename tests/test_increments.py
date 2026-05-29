@@ -12,7 +12,10 @@ from attest.domain.metrics import MetricRegistry, MetricSpec
 from attest.domain.money import Unit
 from attest.domain.verdicts import FigureClaim
 from attest.factstore.repository import InMemoryFactStore
-from attest.verification.rules import check_derived_consistency
+from attest.verification.rules import (
+    check_derived_consistency,
+    check_directional_language,
+)
 
 T = "acme"
 
@@ -153,3 +156,33 @@ def test_ttm_ok_when_ties():
     _seed_ttm(store)
     doc = _doc([_claim("revenue_ttm", "$4.65 billion")])
     assert not _rule("derived.recomputation_mismatch", check_derived_consistency(doc, _ttm_reg(), store))
+
+
+# -- Increment 5: directional language vs. sign of the change --------------
+
+def _dir_reg():
+    return MetricRegistry([
+        MetricSpec(id="operating_margin", label="Operating margin", unit=Unit.PERCENT),
+    ])
+
+
+def _dir_store():
+    store = InMemoryFactStore()
+    store.add(_fact("operating_margin", "21.0", "FY2026-Q1", unit=Unit.PERCENT))
+    store.add(_fact("operating_margin", "22.4", "FY2025-Q1", unit=Unit.PERCENT))  # was higher
+    return store
+
+
+def test_directional_flags_expanded_when_declined():
+    # margin fell 22.4 -> 21.0 YoY, so "expanded" is the wrong direction
+    doc = Document(id="d", tenant_id=T, title="d", kind=DocumentKind.OTHER,
+                   text="Operating margin expanded year over year.",
+                   claims=(_claim("operating_margin", "21.0%"),))
+    assert _rule("directional.sign_mismatch", check_directional_language(doc, _dir_reg(), _dir_store()))
+
+
+def test_directional_ok_when_language_matches_sign():
+    doc = Document(id="d", tenant_id=T, title="d", kind=DocumentKind.OTHER,
+                   text="Operating margin declined year over year.",
+                   claims=(_claim("operating_margin", "21.0%"),))
+    assert not _rule("directional.sign_mismatch", check_directional_language(doc, _dir_reg(), _dir_store()))
