@@ -34,6 +34,12 @@ class MetricSpec(BaseModel):
     derived_base: str | None = Field(
         default=None, description="the base metric a derived metric is computed from"
     )
+    derived_numerator: str | None = Field(
+        default=None, description="for a 'ratio' derived metric, the numerator metric"
+    )
+    derived_denominator: str | None = Field(
+        default=None, description="for a 'ratio' derived metric, the denominator metric"
+    )
     reconciliation_adjustments: tuple[str, ...] = Field(
         default=(),
         description="for non-GAAP metrics, the adjustment metrics that bridge the GAAP "

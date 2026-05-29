@@ -79,7 +79,16 @@ def check_derived_consistency(
 
     for claim in document.claims:
         spec = registry.get(claim.metric)
-        if spec is None or spec.derived_kind not in _SUPPORTED or spec.derived_base is None:
+        if spec is None:
+            continue
+
+        # Ratio identities (e.g. EPS = net income / diluted shares) compare against
+        # two same-period operands rather than a prior period.
+        if spec.derived_kind == "ratio":
+            findings.extend(_check_ratio(document, claim, spec, store))
+            continue
+
+        if spec.derived_kind not in _SUPPORTED or spec.derived_base is None:
             continue
 
         if spec.derived_kind == "qoq_growth":
@@ -125,3 +134,36 @@ def check_derived_consistency(
             )
 
     return findings
+
+
+def _check_ratio(document, claim, spec, store) -> list[RuleFinding]:
+    """Verify a ratio identity: claimed value == numerator / denominator."""
+    num_id, den_id = spec.derived_numerator, spec.derived_denominator
+    if num_id is None or den_id is None:
+        return []
+    num = store.latest(document.tenant_id, claim.entity, num_id, claim.period)
+    den = store.latest(document.tenant_id, claim.entity, den_id, claim.period)
+    if num is None or den is None or den.value == 0:
+        return []  # nothing to recompute against — never guess
+
+    try:
+        claimed = parse_quantity(claim.displayed_text)
+    except QuantityParseError:
+        return []
+
+    expected_value = num.value / den.value
+    expected = Quantity(value=expected_value, unit=claimed.unit, quantum=claimed.quantum)
+    if claimed.matches(expected, DEFAULT_POLICY):
+        return []
+    rounded = DEFAULT_POLICY.round_to(expected_value, claimed.quantum or Decimal("0.01"))
+    return [
+        RuleFinding(
+            rule="derived.ratio_mismatch",
+            severity=RuleSeverity.BLOCK,
+            document_id=document.id,
+            metric=claim.metric,
+            message=f"'{spec.label}' is stated as {claim.displayed_text} but "
+            f"{num_id} / {den_id} = {rounded}.",
+            detail=f"{num.quantity().display()} / {den.value} = {rounded}.",
+        )
+    ]
