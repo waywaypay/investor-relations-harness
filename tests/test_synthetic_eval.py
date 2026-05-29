@@ -8,10 +8,12 @@ from attest.eval.synthetic_eval import run_synthetic_eval
 def test_synthetic_eval_runs_and_reports():
     report = run_synthetic_eval()
     assert report.total > 0
-    # The engine should handle by-construction cases well; this is a robustness
-    # floor, deliberately looser than the human-labeled gate.
+    # Labels are sound by construction (latest-version only), so the engine should
+    # clear all of them. A mismatch here means either a generator-label bug or a
+    # real engine regression — both worth a failure.
     assert report.figure_false_negative_rate == 0.0
-    assert report.exact_accuracy >= 0.9
+    assert report.mismatches == [], report.mismatches
+    assert report.exact_accuracy == 1.0
 
 
 def test_synthetic_report_is_tagged_synthetic():

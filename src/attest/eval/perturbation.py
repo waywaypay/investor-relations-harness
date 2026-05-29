@@ -162,8 +162,21 @@ def perturb_fact(fact: Fact) -> list[SyntheticCase]:
 
 
 def perturb_facts(facts: list[Fact]) -> list[SyntheticCase]:
-    """Generate synthetic cases across many facts."""
-    out: list[SyntheticCase] = []
+    """Generate synthetic cases across many facts.
+
+    Restatement-aware: when a scope ``(tenant, entity, metric, period)`` has
+    multiple versions, only the latest (by ``as_of``) is perturbed. Perturbing a
+    superseded value would mislabel — the engine binds against the latest, so an
+    "identity" reformat of an old value is correctly a conflict, not traced.
+    """
+    latest_by_scope: dict[tuple, Fact] = {}
     for f in facts:
+        key = f.scope_key()
+        current = latest_by_scope.get(key)
+        if current is None or f.as_of > current.as_of:
+            latest_by_scope[key] = f
+
+    out: list[SyntheticCase] = []
+    for f in latest_by_scope.values():
         out.extend(perturb_fact(f))
     return out
