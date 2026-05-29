@@ -26,9 +26,9 @@ def test_health(client):
 
 def test_ingest_and_list_facts(client):
     report = _seed(client)
-    assert report["ingested"] == 11
+    assert report["ingested"] == 13
     facts = client.get("/tenants/meridian/facts").json()
-    assert len(facts) == 11
+    assert len(facts) == 13
 
 
 def test_verify_release_endpoint(client):

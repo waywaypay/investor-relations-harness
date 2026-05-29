@@ -1,13 +1,20 @@
 """Derived-figure recomputation.
 
 Some headline figures are not booked anywhere — they are *computed* from other
-facts (cloud growth = this year's cloud revenue over last year's, minus one). A
+facts (cloud growth = this year's cloud revenue over last year's, minus one;
+margin change = this period's margin minus last period's, in basis points). A
 stored-value tie-out can only check such a figure against a number someone typed;
 this rule recomputes it from the underlying facts and compares.
 
 That is exactly what catches the restatement at the math level: when the
 prior-year base is restated ($467.0M → $474.3M), the recomputation moves from 31%
 to 29% even if a stale 31% is still sitting in a source somewhere.
+
+Supported formulas (``MetricSpec.derived_kind``):
+
+* ``yoy_growth`` — percentage growth of ``derived_base`` vs the prior-year period.
+* ``delta_bps``  — change in ``derived_base`` (a rate) vs the prior-year period,
+  expressed in basis points.
 """
 
 from __future__ import annotations
@@ -29,6 +36,8 @@ from attest.factstore.repository import FactStore
 
 _PERIOD_RE = re.compile(r"^FY(\d{4})(-.*)?$")
 
+_SUPPORTED = {"yoy_growth", "delta_bps"}
+
 
 def _prior_year_period(period: str) -> str | None:
     """'FY2026-Q1' -> 'FY2025-Q1'. Returns None if the period isn't recognised."""
@@ -39,6 +48,17 @@ def _prior_year_period(period: str) -> str | None:
     return f"FY{year}{m.group(2) or ''}"
 
 
+def _expected(kind: str, current: Decimal, prior: Decimal) -> tuple[Decimal, Unit, str] | None:
+    """Return (value, unit, display suffix) for the recomputed figure, or None."""
+    if kind == "yoy_growth":
+        if prior == 0:
+            return None
+        return (current / prior - Decimal(1)) * Decimal(100), Unit.PERCENT, "%"
+    if kind == "delta_bps":
+        return (current - prior) * Decimal(100), Unit.BASIS_POINTS, " bps"
+    return None
+
+
 def check_derived_consistency(
     document: Document, registry: MetricRegistry, store: FactStore
 ) -> list[RuleFinding]:
@@ -46,7 +66,7 @@ def check_derived_consistency(
 
     for claim in document.claims:
         spec = registry.get(claim.metric)
-        if spec is None or spec.derived_kind != "yoy_growth" or spec.derived_base is None:
+        if spec is None or spec.derived_kind not in _SUPPORTED or spec.derived_base is None:
             continue
 
         prior_period = _prior_year_period(claim.period)
@@ -55,19 +75,22 @@ def check_derived_consistency(
 
         current = store.latest(document.tenant_id, claim.entity, spec.derived_base, claim.period)
         prior = store.latest(document.tenant_id, claim.entity, spec.derived_base, prior_period)
-        if current is None or prior is None or prior.value == 0:
+        if current is None or prior is None:
             continue  # nothing to recompute against — never guess
 
         try:
             claimed = parse_quantity(claim.displayed_text)
         except QuantityParseError:
             continue
-        if claimed.unit != Unit.PERCENT:
+
+        computed = _expected(spec.derived_kind, current.value, prior.value)
+        if computed is None:
+            continue
+        expected_value, expected_unit, suffix = computed
+        if claimed.unit != expected_unit:
             continue
 
-        expected_value = (current.value / prior.value - Decimal(1)) * Decimal(100)
-        expected = Quantity(value=expected_value, unit=Unit.PERCENT, quantum=claimed.quantum)
-
+        expected = Quantity(value=expected_value, unit=expected_unit, quantum=claimed.quantum)
         if not claimed.matches(expected, DEFAULT_POLICY):
             rounded = DEFAULT_POLICY.round_to(expected_value, claimed.quantum)
             findings.append(
@@ -77,7 +100,7 @@ def check_derived_consistency(
                     document_id=document.id,
                     metric=claim.metric,
                     message=f"'{spec.label}' is stated as {claim.displayed_text} but "
-                    f"recomputes to {rounded}% from {spec.derived_base}.",
+                    f"recomputes to {rounded}{suffix} from {spec.derived_base}.",
                     detail=f"Recomputed from {prior_period} {prior.quantity().display()} "
                     f"({prior.source_label or prior.source_type.value}) to {claim.period} "
                     f"{current.quantity().display()} "

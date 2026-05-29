@@ -131,6 +131,30 @@
       "as_of": "2025-09-15"
     },
     {
+      "metric": "operating_margin",
+      "period": "FY2026-Q1",
+      "value": "22.4",
+      "unit": "percent",
+      "decimals": 1,
+      "source_type": "filing_line",
+      "source_ref": "0001047469-26-001200#exhibit-99.1#operating-margin",
+      "label": "Form 8-K · Exhibit 99.1 · operating margin",
+      "excerpt": "Operating margin was 22.4% (income from operations of $278.0M on $1,241.3M revenue).",
+      "as_of": "2026-04-28"
+    },
+    {
+      "metric": "operating_margin",
+      "period": "FY2025-Q1",
+      "value": "21.0",
+      "unit": "percent",
+      "decimals": 1,
+      "source_type": "filing_line",
+      "source_ref": "0001047469-25-000900#exhibit-99.1#operating-margin",
+      "label": "Q1 FY2025 earnings release · operating margin",
+      "excerpt": "Operating margin was 21.0% (income from operations of $221.0M on $1,051.9M revenue).",
+      "as_of": "2025-04-28"
+    },
+    {
       "metric": "q2_revenue_guidance",
       "period": "FY2026-Q2",
       "value": "1325000000",

@@ -116,5 +116,17 @@ DEFAULT_REGISTRY = MetricRegistry(
             label="Q2 revenue guidance",
             unit=Unit.CURRENCY,
         ),
+        MetricSpec(
+            id="operating_margin",
+            label="Operating margin",
+            unit=Unit.PERCENT,
+        ),
+        MetricSpec(
+            id="operating_margin_change_bps",
+            label="Operating margin change",
+            unit=Unit.BASIS_POINTS,
+            derived_kind="delta_bps",
+            derived_base="operating_margin",
+        ),
     ]
 )
