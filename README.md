@@ -117,6 +117,14 @@ two kinds of cases stay strictly separated:
   without it grading its own homework — but they only measure **robustness
   coverage**, not reliability.
 
+- **EDGAR restatement cases** (`eval/restatement.py`) are harvested from 8-K
+  **Item 4.02** ("non-reliance") filings — adjudicated cases where a reported
+  number was wrong. Each yields two *real* labels: a draft citing the original
+  value → `conflict`, the restated value → `traced`. Unlike synthetic cases these
+  reflect how disclosures actually go wrong, carry the adjudicating accession as
+  provenance, and are eligible for the reliability gate. `attest restatements`
+  prints/emits them; a test asserts the engine *agrees* with the harvested labels.
+
 These are scored in **different buckets** (`run_eval` vs `run_synthetic_eval`) and
 the synthetic report carries a `caveat` string so its accuracy can't be quietly
 pasted next to the real gate. Summing them would inflate the headline metric with
