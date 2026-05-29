@@ -73,3 +73,15 @@ def test_signoff_override_and_audit_chain(client):
 
     verify = client.get("/audit/verify").json()
     assert verify["intact"] is True
+
+
+def test_cors_headers_present_for_dev_origin(client):
+    r = client.options(
+        "/health",
+        headers={
+            "Origin": "http://localhost:5173",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+    assert r.status_code in (200, 204)
+    assert r.headers.get("access-control-allow-origin") == "http://localhost:5173"
