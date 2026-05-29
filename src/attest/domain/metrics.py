@@ -34,6 +34,11 @@ class MetricSpec(BaseModel):
     derived_base: str | None = Field(
         default=None, description="the base metric a derived metric is computed from"
     )
+    reconciliation_adjustments: tuple[str, ...] = Field(
+        default=(),
+        description="for non-GAAP metrics, the adjustment metrics that bridge the GAAP "
+        "counterpart to this measure (gaap + sum(adjustments) == this metric)",
+    )
 
 
 class MetricRegistry:
@@ -98,6 +103,20 @@ DEFAULT_REGISTRY = MetricRegistry(
             unit=Unit.CURRENCY,
             is_non_gaap=True,
             gaap_counterpart="gaap_diluted_eps",
+            reconciliation_adjustments=(
+                "sbc_eps_adjustment",
+                "intangibles_amort_eps_adjustment",
+            ),
+        ),
+        MetricSpec(
+            id="sbc_eps_adjustment",
+            label="Stock-based compensation (per share)",
+            unit=Unit.CURRENCY,
+        ),
+        MetricSpec(
+            id="intangibles_amort_eps_adjustment",
+            label="Amortization of intangibles (per share)",
+            unit=Unit.CURRENCY,
         ),
         MetricSpec(
             id="operating_cash_flow",

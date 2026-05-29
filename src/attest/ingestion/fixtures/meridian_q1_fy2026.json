@@ -55,6 +55,30 @@
       "as_of": "2026-04-28"
     },
     {
+      "metric": "sbc_eps_adjustment",
+      "period": "FY2026-Q1",
+      "value": "0.18",
+      "unit": "USD/shares",
+      "decimals": 2,
+      "source_type": "filing_line",
+      "source_ref": "0001047469-26-001200#exhibit-99.1#non-gaap-recon",
+      "label": "Form 8-K · Exhibit 99.1 · Non-GAAP reconciliation",
+      "excerpt": "Add back: stock-based compensation of $0.18 per diluted share.",
+      "as_of": "2026-04-28"
+    },
+    {
+      "metric": "intangibles_amort_eps_adjustment",
+      "period": "FY2026-Q1",
+      "value": "0.07",
+      "unit": "USD/shares",
+      "decimals": 2,
+      "source_type": "filing_line",
+      "source_ref": "0001047469-26-001200#exhibit-99.1#non-gaap-recon",
+      "label": "Form 8-K · Exhibit 99.1 · Non-GAAP reconciliation",
+      "excerpt": "Add back: amortization of acquired intangibles of $0.07 per diluted share.",
+      "as_of": "2026-04-28"
+    },
+    {
       "tag": "us-gaap:NetCashProvidedByUsedInOperatingActivities",
       "period": "FY2026-Q1",
       "value": "338200000",

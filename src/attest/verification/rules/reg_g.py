@@ -5,15 +5,19 @@ directly comparable GAAP measure, and that the GAAP measure is given equal
 prominence. Deterministically, for every non-GAAP metric a document claims, we
 require: (1) its GAAP counterpart is also claimed in the same document, (2) a
 reconciliation source exists in the fact store for both the measure and its
-counterpart in the same period, and (3) the non-GAAP measure is not *presented
-before* its GAAP counterpart (a position proxy for "equal or greater
-prominence", judged from claim spans and skipped when spans are absent).
+counterpart in the same period, (2b) the disclosed bridge actually adds up —
+GAAP + sum(adjustments) == the non-GAAP measure — and (3) the non-GAAP measure
+is not *presented before* its GAAP counterpart (a position proxy for "equal or
+greater prominence", judged from claim spans and skipped when spans are absent).
 """
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 from attest.domain.document import Document
 from attest.domain.metrics import MetricRegistry
+from attest.domain.money import DEFAULT_POLICY
 from attest.domain.verdicts import RuleFinding, RuleSeverity
 from attest.factstore.repository import FactStore
 
@@ -63,6 +67,41 @@ def check_reg_g(
                     detail="A GAAP-to-non-GAAP reconciliation must be disclosed.",
                 )
             )
+            continue
+
+        # (2b) reconciliation arithmetic: GAAP + sum(disclosed adjustments) must
+        # equal the non-GAAP measure. A bridge that doesn't add up is caught here,
+        # not by eyeballing the exhibit. Skipped when no adjustments are declared
+        # or any adjustment fact is missing — we never guess at the bridge.
+        adjustment_ids = spec.reconciliation_adjustments
+        if adjustment_ids:
+            adj_facts = [
+                store.latest(document.tenant_id, claim.entity, adj_id, claim.period)
+                for adj_id in adjustment_ids
+            ]
+            if all(f is not None for f in adj_facts):
+                bridged = gaap_fact.value + sum(
+                    (f.value for f in adj_facts), Decimal(0)
+                )
+                quantum = non_gaap_fact.quantum or Decimal("0.01")
+                expected = DEFAULT_POLICY.round_to(bridged, quantum)
+                if expected != non_gaap_fact.value:
+                    parts = " + ".join(
+                        f"{f.value} ({registry.get(aid).label if registry.get(aid) else aid})"
+                        for aid, f in zip(adjustment_ids, adj_facts)
+                    )
+                    findings.append(
+                        RuleFinding(
+                            rule="reg_g.reconciliation_arithmetic",
+                            severity=RuleSeverity.BLOCK,
+                            document_id=document.id,
+                            metric=claim.metric,
+                            message=f"Reconciliation for '{spec.label}' does not add up: "
+                            f"GAAP {gaap_fact.value} + adjustments = {expected}, but the "
+                            f"non-GAAP measure is booked as {non_gaap_fact.value}.",
+                            detail=f"Bridge: {gaap_fact.value} (GAAP) + {parts} = {expected}.",
+                        )
+                    )
 
     # (3) equal-prominence ordering: a non-GAAP measure must not be presented
     # before its GAAP counterpart. Spans are the position proxy; if either side

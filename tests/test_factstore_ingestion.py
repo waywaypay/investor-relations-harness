@@ -45,7 +45,7 @@ def test_xbrl_ingestion_maps_tags_and_precision():
     # restatement-aware: two versions of cloud growth, latest is the restated 29%
     versions = store.versions("meridian", "MRDN:Cloud", "cloud_growth_yoy", "FY2026-Q1")
     assert [v.value for v in versions] == [Decimal("31"), Decimal("29")]
-    assert report.ingested == 13
+    assert report.ingested == 15
     assert report.skipped == 0
 
 
