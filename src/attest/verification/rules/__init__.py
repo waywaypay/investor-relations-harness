@@ -9,6 +9,7 @@ from attest.verification.rules.derived import check_derived_consistency
 from attest.verification.rules.directional import check_directional_language
 from attest.verification.rules.forward_looking import check_forward_looking
 from attest.verification.rules.reg_g import check_reg_g
+from attest.verification.rules.units import check_unit_consistency
 
 __all__ = [
     "check_reg_g",
@@ -16,4 +17,5 @@ __all__ = [
     "check_cross_document_consistency",
     "check_derived_consistency",
     "check_directional_language",
+    "check_unit_consistency",
 ]

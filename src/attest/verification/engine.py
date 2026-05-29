@@ -40,6 +40,7 @@ from attest.verification.rules import (
     check_directional_language,
     check_forward_looking,
     check_reg_g,
+    check_unit_consistency,
 )
 
 
@@ -213,6 +214,7 @@ class VerificationEngine:
         findings.extend(check_forward_looking(document, self.store))
         findings.extend(check_derived_consistency(document, self.registry, self.store))
         findings.extend(check_directional_language(document, self.registry, self.store))
+        findings.extend(check_unit_consistency(document, self.registry, self.store))
         return VerificationResult(
             document_id=document.id,
             verdicts=verdicts,
