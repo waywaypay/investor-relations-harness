@@ -121,3 +121,35 @@ def test_segment_sum_ok_when_total_ties():
     store.add(_fact("license_revenue", "629500000", "FY2026-Q1"))
     doc = _doc([_claim("total_revenue", "$1.24 billion")])
     assert not _rule("derived.sum_mismatch", check_derived_consistency(doc, _sum_reg(), store))
+
+
+# -- Increment 4: TTM period-sum (4 quarters sum to trailing twelve) -------
+
+def _ttm_reg():
+    return MetricRegistry([
+        MetricSpec(id="total_revenue", label="Total revenue", unit=Unit.CURRENCY),
+        MetricSpec(id="revenue_ttm", label="Revenue, TTM", unit=Unit.CURRENCY,
+                   derived_kind="ttm_sum", derived_base="total_revenue"),
+    ])
+
+
+def _seed_ttm(store):
+    store.add(_fact("total_revenue", "1241300000", "FY2026-Q1"))
+    store.add(_fact("total_revenue", "1190000000", "FY2025-Q4"))
+    store.add(_fact("total_revenue", "1131000000", "FY2025-Q3"))
+    store.add(_fact("total_revenue", "1083000000", "FY2025-Q2"))
+    # TTM = 4,645.3M
+
+
+def test_ttm_flags_when_off():
+    store = InMemoryFactStore()
+    _seed_ttm(store)
+    doc = _doc([_claim("revenue_ttm", "$5.0 billion")])
+    assert _rule("derived.recomputation_mismatch", check_derived_consistency(doc, _ttm_reg(), store))
+
+
+def test_ttm_ok_when_ties():
+    store = InMemoryFactStore()
+    _seed_ttm(store)
+    doc = _doc([_claim("revenue_ttm", "$4.65 billion")])
+    assert not _rule("derived.recomputation_mismatch", check_derived_consistency(doc, _ttm_reg(), store))
