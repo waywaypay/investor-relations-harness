@@ -5,6 +5,7 @@ from attest.domain.verdicts import FigureClaim
 from attest.factstore.repository import InMemoryFactStore
 from attest.verification.rules import (
     check_cross_document_consistency,
+    check_derived_consistency,
     check_forward_looking,
     check_reg_g,
 )
@@ -108,6 +109,32 @@ def test_reg_g_ordering_skipped_without_spans():
     ])
     findings = check_reg_g(doc, DEFAULT_REGISTRY, service.store)
     assert not any(f.rule == "reg_g.equal_prominence_ordering" for f in findings)
+
+
+def test_derived_recompute_flags_stale_growth():
+    # cloud_growth_yoy must equal YoY growth recomputed from cloud_revenue facts.
+    # With the restated prior-year base ($474.3M), the true figure is 29%, so a
+    # claim of 31% is a recomputation mismatch — caught at the math level.
+    service = seeded_service()
+    doc = _doc("g", "Cloud grew 31% year over year.",
+               [_claim("cloud_growth_yoy", "31%", entity="MRDN:Cloud")])
+    findings = check_derived_consistency(doc, DEFAULT_REGISTRY, service.store)
+    assert any(f.rule == "derived.recomputation_mismatch" for f in findings)
+
+
+def test_derived_recompute_ok_for_corrected_value():
+    service = seeded_service()
+    doc = _doc("g", "Cloud grew 29% year over year.",
+               [_claim("cloud_growth_yoy", "29%", entity="MRDN:Cloud")])
+    findings = check_derived_consistency(doc, DEFAULT_REGISTRY, service.store)
+    assert not any(f.rule == "derived.recomputation_mismatch" for f in findings)
+
+
+def test_derived_recompute_skips_when_base_facts_absent():
+    # No underlying facts -> nothing to recompute against -> never guess.
+    store = InMemoryFactStore()
+    doc = _doc("g", "Cloud grew 31%.", [_claim("cloud_growth_yoy", "31%", entity="MRDN:Cloud")])
+    assert check_derived_consistency(doc, DEFAULT_REGISTRY, store) == []
 
 
 def test_demo_script_flags_reg_g_and_release_flags_fls():
