@@ -16,6 +16,10 @@ Supported formulas (``MetricSpec.derived_kind``):
 * ``qoq_growth`` — percentage growth of ``derived_base`` vs the prior quarter.
 * ``delta_bps``  — change in ``derived_base`` (a rate) vs the prior-year period,
   expressed in basis points.
+* ``ttm_sum``    — base summed over the current and prior three quarters.
+* ``sum``        — ``derived_components`` summed to the metric.
+* ``ratio``      — ``derived_numerator`` / ``derived_denominator``.
+* ``ratio_pct``  — the same ratio expressed as a percent (× 100).
 """
 
 from __future__ import annotations
@@ -84,7 +88,7 @@ def check_derived_consistency(
 
         # Ratio identities (e.g. EPS = net income / diluted shares) compare against
         # two same-period operands rather than a prior period.
-        if spec.derived_kind == "ratio":
+        if spec.derived_kind in ("ratio", "ratio_pct"):
             findings.extend(_check_ratio(document, claim, spec, store))
             continue
 
@@ -237,6 +241,8 @@ def _check_ratio(document, claim, spec, store) -> list[RuleFinding]:
         return []
 
     expected_value = num.value / den.value
+    if spec.derived_kind == "ratio_pct":
+        expected_value *= Decimal(100)
     expected = Quantity(value=expected_value, unit=claimed.unit, quantum=claimed.quantum)
     if claimed.matches(expected, DEFAULT_POLICY):
         return []
