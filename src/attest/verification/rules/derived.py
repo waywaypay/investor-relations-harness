@@ -13,6 +13,7 @@ to 29% even if a stale 31% is still sitting in a source somewhere.
 Supported formulas (``MetricSpec.derived_kind``):
 
 * ``yoy_growth`` — percentage growth of ``derived_base`` vs the prior-year period.
+* ``qoq_growth`` — percentage growth of ``derived_base`` vs the prior quarter.
 * ``delta_bps``  — change in ``derived_base`` (a rate) vs the prior-year period,
   expressed in basis points.
 """
@@ -35,8 +36,9 @@ from attest.domain.verdicts import RuleFinding, RuleSeverity
 from attest.factstore.repository import FactStore
 
 _PERIOD_RE = re.compile(r"^FY(\d{4})(-.*)?$")
+_QUARTER_RE = re.compile(r"^FY(\d{4})-Q([1-4])$")
 
-_SUPPORTED = {"yoy_growth", "delta_bps"}
+_SUPPORTED = {"yoy_growth", "delta_bps", "qoq_growth"}
 
 
 def _prior_year_period(period: str) -> str | None:
@@ -48,9 +50,20 @@ def _prior_year_period(period: str) -> str | None:
     return f"FY{year}{m.group(2) or ''}"
 
 
+def _prior_quarter_period(period: str) -> str | None:
+    """'FY2026-Q1' -> 'FY2025-Q4'; 'FY2026-Q2' -> 'FY2026-Q1'. Quarterly only."""
+    m = _QUARTER_RE.match(period)
+    if not m:
+        return None
+    year, q = int(m.group(1)), int(m.group(2))
+    if q == 1:
+        return f"FY{year - 1}-Q4"
+    return f"FY{year}-Q{q - 1}"
+
+
 def _expected(kind: str, current: Decimal, prior: Decimal) -> tuple[Decimal, Unit, str] | None:
     """Return (value, unit, display suffix) for the recomputed figure, or None."""
-    if kind == "yoy_growth":
+    if kind in ("yoy_growth", "qoq_growth"):
         if prior == 0:
             return None
         return (current / prior - Decimal(1)) * Decimal(100), Unit.PERCENT, "%"
@@ -69,7 +82,10 @@ def check_derived_consistency(
         if spec is None or spec.derived_kind not in _SUPPORTED or spec.derived_base is None:
             continue
 
-        prior_period = _prior_year_period(claim.period)
+        if spec.derived_kind == "qoq_growth":
+            prior_period = _prior_quarter_period(claim.period)
+        else:
+            prior_period = _prior_year_period(claim.period)
         if prior_period is None:
             continue
 
