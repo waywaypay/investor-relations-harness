@@ -16,6 +16,7 @@ from attest.verification.rules import (
     check_derived_consistency,
     check_directional_language,
     check_intra_document_consistency,
+    check_range_sanity,
     check_unit_consistency,
 )
 
@@ -239,3 +240,21 @@ def test_intradoc_ok_when_same_value_repeated():
                                    displayed_text="$1,241.3 million"),
                    ))
     assert not _rule("consistency.intra_document_mismatch", check_intra_document_consistency(doc))
+
+
+# -- Increment 8: guidance range sanity (low <= high) ----------------------
+
+def _guide_reg():
+    return MetricRegistry([
+        MetricSpec(id="q2_revenue_guidance", label="Q2 revenue guidance", unit=Unit.CURRENCY),
+    ])
+
+
+def test_guidance_range_flags_inverted():
+    doc = _doc([_claim("q2_revenue_guidance", "$1.34 to $1.31 billion")])
+    assert _rule("ranges.inverted_range", check_range_sanity(doc, _guide_reg()))
+
+
+def test_guidance_range_ok_when_ordered():
+    doc = _doc([_claim("q2_revenue_guidance", "$1.31 to $1.34 billion")])
+    assert not _rule("ranges.inverted_range", check_range_sanity(doc, _guide_reg()))
