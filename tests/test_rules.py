@@ -137,6 +137,25 @@ def test_derived_recompute_skips_when_base_facts_absent():
     assert check_derived_consistency(doc, DEFAULT_REGISTRY, store) == []
 
 
+def test_derived_bps_delta_flags_overstated_margin():
+    # operating_margin_change_bps must equal the recomputed period-over-period
+    # change. Margin went 21.0% -> 22.4% (i.e. +140 bps), so a claim of 200 bps
+    # is a recomputation mismatch.
+    service = seeded_service()
+    doc = _doc("m", "Operating margin expanded 200 bps.",
+               [_claim("operating_margin_change_bps", "200 bps")])
+    findings = check_derived_consistency(doc, DEFAULT_REGISTRY, service.store)
+    assert any(f.rule == "derived.recomputation_mismatch" for f in findings)
+
+
+def test_derived_bps_delta_ok_for_correct_margin():
+    service = seeded_service()
+    doc = _doc("m", "Operating margin expanded 140 bps.",
+               [_claim("operating_margin_change_bps", "140 bps")])
+    findings = check_derived_consistency(doc, DEFAULT_REGISTRY, service.store)
+    assert not any(f.rule == "derived.recomputation_mismatch" for f in findings)
+
+
 def test_demo_script_flags_reg_g_and_release_flags_fls():
     service = seeded_service()
     docs = build_documents()
