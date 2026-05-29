@@ -93,3 +93,31 @@ def test_eps_ratio_ok_when_consistent():
     store.add(_fact("diluted_shares", "232100000", "FY2026-Q1", unit=Unit.SHARES))
     doc = _doc([_claim("gaap_diluted_eps", "$0.87")])
     assert not _rule("derived.ratio_mismatch", check_derived_consistency(doc, _eps_reg(), store))
+
+
+# -- Increment 3: segment sum tie-out (components sum to total) -------------
+
+def _sum_reg():
+    return MetricRegistry([
+        MetricSpec(id="cloud_revenue", label="Cloud revenue", unit=Unit.CURRENCY),
+        MetricSpec(id="license_revenue", label="License & services revenue", unit=Unit.CURRENCY),
+        MetricSpec(id="total_revenue", label="Total revenue", unit=Unit.CURRENCY,
+                   derived_kind="sum", derived_components=("cloud_revenue", "license_revenue")),
+    ])
+
+
+def test_segment_sum_flags_when_total_off():
+    store = InMemoryFactStore()
+    store.add(_fact("cloud_revenue", "611800000", "FY2026-Q1"))
+    store.add(_fact("license_revenue", "629500000", "FY2026-Q1"))
+    # components sum to 1,241.3M; a claimed total of $1.30B doesn't tie
+    doc = _doc([_claim("total_revenue", "$1.30 billion")])
+    assert _rule("derived.sum_mismatch", check_derived_consistency(doc, _sum_reg(), store))
+
+
+def test_segment_sum_ok_when_total_ties():
+    store = InMemoryFactStore()
+    store.add(_fact("cloud_revenue", "611800000", "FY2026-Q1"))
+    store.add(_fact("license_revenue", "629500000", "FY2026-Q1"))
+    doc = _doc([_claim("total_revenue", "$1.24 billion")])
+    assert not _rule("derived.sum_mismatch", check_derived_consistency(doc, _sum_reg(), store))
