@@ -16,6 +16,7 @@ from attest.verification.rules import (
     check_derived_consistency,
     check_directional_language,
     check_intra_document_consistency,
+    check_range_midpoint,
     check_range_sanity,
     check_unit_consistency,
 )
@@ -258,3 +259,31 @@ def test_guidance_range_flags_inverted():
 def test_guidance_range_ok_when_ordered():
     doc = _doc([_claim("q2_revenue_guidance", "$1.31 to $1.34 billion")])
     assert not _rule("ranges.inverted_range", check_range_sanity(doc, _guide_reg()))
+
+
+# -- Increment 9: guidance midpoint consistency ----------------------------
+
+def test_midpoint_flags_wrong_midpoint():
+    reg = _guide_reg()
+    doc = _doc([_claim("q2_revenue_guidance", "$1.31 to $1.34 billion")])
+    # true midpoint is $1.325B; a stated midpoint of $1.30B is wrong
+    findings = check_range_midpoint(doc, reg, {"q2_revenue_guidance": "$1.30 billion"})
+    assert _rule("ranges.midpoint_mismatch", findings)
+
+
+def test_midpoint_ok_when_correct():
+    reg = _guide_reg()
+    doc = _doc([_claim("q2_revenue_guidance", "$1.31 to $1.34 billion")])
+    findings = check_range_midpoint(doc, reg, {"q2_revenue_guidance": "$1.325 billion"})
+    assert not _rule("ranges.midpoint_mismatch", findings)
+
+
+def test_engine_detects_midpoint_from_prose():
+    # Genuine red: the engine does not yet extract a stated midpoint from text.
+    from attest.service import AttestService
+    svc = AttestService(registry=_guide_reg())
+    doc = Document(id="d", tenant_id=T, title="d", kind=DocumentKind.OTHER,
+                   text="We guide Q2 revenue to $1.31 to $1.34 billion, a midpoint of $1.30 billion.",
+                   claims=(_claim("q2_revenue_guidance", "$1.31 to $1.34 billion"),))
+    result = svc.verify_document(doc)
+    assert any(f.rule == "ranges.midpoint_mismatch" for f in result.findings)
