@@ -78,6 +78,7 @@ src/attest/
                        forward_looking FLS detection -> safe-harbor requirement
   audit/           append-only, event-sourced, sha256 hash-chained log
   edge/            the replaceable LLM layer (v2): claim proposer + history narrator
+  storage/         durable backends behind the store Protocols: Postgres + Redis cache
   ingestion/       connectors (EDGAR/XBRL adapter + a sample filing fixture)
   eval/            the golden-set harness + CI gate (figure FN rate must be 0)
     perturbation.py  synthetic case generator — known mutations of real filed values
@@ -200,12 +201,52 @@ src/attest/edge/
 attest verify --use-llm   # runs the demo via the edge (scripted fake when no key is set)
 ```
 
+## Production storage (Postgres + Redis)
+
+The stores were always Protocols with in-memory reference implementations; this
+is the durable backend behind them — proving the design's central claim that the
+persistence layer is **a constructor swap, not an API change**. No engine, rule,
+or API code is aware of which backend is live.
+
+```
+src/attest/storage/
+  postgres.py     PostgresFactStore + PostgresAuditLog (psycopg)
+  redis_cache.py  CachingFactStore — a read-through cache decorator over any store
+  factory.py      service_from_env() / build_storage() — the one place a backend is chosen
+  schema.sql      idempotent DDL (facts + hash-chained audit_events), bootstrapped on connect
+```
+
+- **`PostgresFactStore`** keeps every restatement version (`ORDER BY as_of, seq`)
+  and stores each `Fact` losslessly as JSONB, so reads reconstruct the exact
+  Pydantic model — Decimal values and all.
+- **`PostgresAuditLog`** reuses the *same* pure `compute_hash` the in-memory log
+  uses, so the chain is byte-identical across backends; appends take a
+  transaction-scoped advisory lock to keep the sequence contiguous and
+  tamper-evident under concurrency. `verify()` re-runs the in-memory verifier
+  over the persisted rows.
+- **`CachingFactStore`** fronts the read-heavy verification path with Redis
+  (per-scope cache, write-through invalidation), and is a transparent decorator —
+  it satisfies the `FactStore` Protocol and wraps any inner store.
+
+```bash
+docker compose up -d                          # local Postgres + Redis
+export ATTEST_DATABASE_URL=postgresql://attest:attest@localhost:5432/attest
+export ATTEST_REDIS_URL=redis://localhost:6379/0
+attest serve                                  # now durably backed; unset the vars -> in-memory
+```
+
+The drivers are an optional extra (`pip install ".[storage]"`); with no env vars
+the in-memory stores remain the default, so the demo and the test suite need no
+database. The storage integration tests run against real servers when
+`ATTEST_TEST_DATABASE_URL` / `ATTEST_TEST_REDIS_URL` are set, and skip otherwise.
+
 ## Scope
 
 In scope (and built): the deterministic spine, the rules engines, ingestion, the
-audit log, the eval harness, the API/CLI (v1), **plus the LLM edge — claim
-proposer and historical-consistency narrator** (first v2 increment, above).
-Still **out of scope**: the consensus parser, the ERP/close-package connector,
-the editor add-ins, and the production datastores (Postgres/Redis/vector/object
-store). Each store here is an in-memory reference implementation behind a
-`Protocol`, so the persistence backend is a constructor swap, not an API change.
+audit log, the eval harness, the API/CLI (v1), the LLM edge — claim proposer and
+historical-consistency narrator — **plus durable Postgres + Redis storage behind
+the existing Protocols** (above). Still **out of scope**: the consensus parser,
+the ERP/close-package connector, the editor add-ins, and the remaining production
+datastores (vector / object store). Schema migrations are an idempotent
+`schema.sql` for now; a versioned tool (e.g. Alembic) is the next step before the
+schema evolves in production.
