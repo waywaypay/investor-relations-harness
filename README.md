@@ -22,6 +22,7 @@ python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 
 attest demo          # ingest the Meridian filing, verify the close pack, print a report
+attest verify --use-llm  # same close pack, claims proposed by the LLM edge (see "v2" below)
 pytest               # run the suite, including the eval regression gate
 attest serve         # run the API at http://127.0.0.1:8000  (docs at /docs)
 ```
@@ -76,6 +77,7 @@ src/attest/
                        ranges         guidance low<=high and stated-midpoint consistency
                        forward_looking FLS detection -> safe-harbor requirement
   audit/           append-only, event-sourced, sha256 hash-chained log
+  edge/            the replaceable LLM layer (v2): claim proposer + history narrator
   ingestion/       connectors (EDGAR/XBRL adapter + a sample filing fixture)
   eval/            the golden-set harness + CI gate (figure FN rate must be 0)
     perturbation.py  synthetic case generator — known mutations of real filed values
@@ -83,7 +85,7 @@ src/attest/
     sheets_bridge.py  loads the corpus workbook's 02_Facts CSV export into facts
   api/             stateless FastAPI surface over the service
   service.py       composition root shared by the API and CLI
-  cli.py           `attest demo` / `attest serve`
+  cli.py           `attest demo` / `attest verify [--use-llm]` / `attest serve` / `attest synth`
 ```
 
 ### How the design-doc principles show up in code
@@ -154,20 +156,56 @@ attest synth                                            # from the bundled fixtu
 ```
 POST /tenants/{tenant}/ingest/xbrl              ingest an XBRL instance
 GET  /tenants/{tenant}/facts                    list facts-with-provenance
-POST /tenants/{tenant}/verify                   verify one document
-POST /tenants/{tenant}/verify-close-pack        verify + cross-document consistency
+POST /tenants/{tenant}/verify                   verify one document  (?use_llm=true for the edge)
+POST /tenants/{tenant}/verify-close-pack        verify + cross-document consistency  (?use_llm)
 POST /tenants/{tenant}/documents/{id}/sign-off  record an attestation
 POST /tenants/{tenant}/override                 record a justified override
 GET  /tenants/{tenant}/audit                    export the audit trail (a projection)
 GET  /audit/verify                              re-derive the hash chain
 ```
 
-## Scope of this v1
+## v2: the LLM edge (the *replaceable* probabilistic layer)
+
+v1 is the deterministic spine. The first v2 increment adds the **edge** — the
+model's job of *locating* candidate numbers and *reading* narrative direction —
+behind a narrow, swappable seam. The core is unchanged: the model proposes, the
+deterministic engine still disposes, and **the LLM never gets to say `traced`.**
+
+```
+src/attest/edge/
+  client.py     LLMClient Protocol · AnthropicClient (prompt-cached) · FakeLLMClient
+  prompts.py    system prompts + forced tool schemas (structured output only)
+  proposer.py   prose -> FigureClaim[]  (the production stand-in for candidates.py)
+  narrator.py   verified history + prose -> RuleFinding[]  (narrative.history_contradiction)
+  service.py    EdgeService — composition seam AttestService optionally holds
+```
+
+- **Off by default.** `AttestService(edge=None)` behaves exactly as v1. Pass
+  `edge=EdgeService(...)` to light up the `use_llm` path on `verify_document`,
+  `verify_close_pack`, the `?use_llm=true` query param, and `attest verify --use-llm`.
+- **The proposer** emits the same `FigureClaim` type the engine already consumes,
+  so the detector is a constructor choice, not a schema change. Low-confidence
+  proposals are routed to a human by the core, never asserted.
+- **The narrator** flags prose whose *story* the numbers refute ("accelerating"
+  when growth decelerated). Its findings are non-blocking (`warn`/`info`) by
+  construction — a narrative false positive advises a human, it never blocks a
+  publish.
+- **Hermetic by design.** Every test runs with no `ANTHROPIC_API_KEY` and no
+  network via `FakeLLMClient`; the integration test pins the invariant that the
+  LLM path yields byte-for-byte the same verdicts as the deterministic path. The
+  real client is an optional extra (`pip install ".[llm]"`, reads
+  `ANTHROPIC_API_KEY`), with prompt caching on the system prompt and tool defs.
+
+```bash
+attest verify --use-llm   # runs the demo via the edge (scripted fake when no key is set)
+```
+
+## Scope
 
 In scope (and built): the deterministic spine, the rules engines, ingestion, the
-audit log, the eval harness, the API/CLI. Deliberately **out of scope** for v1
-(per the build sequence): the narrative/historical-consistency LLM service, the
-consensus parser, the ERP/close-package connector, the editor add-ins, and the
-production datastores (Postgres/Redis/vector/object store). Each store here is an
-in-memory reference implementation behind a `Protocol`, so the persistence
-backend is a constructor swap, not an API change.
+audit log, the eval harness, the API/CLI (v1), **plus the LLM edge — claim
+proposer and historical-consistency narrator** (first v2 increment, above).
+Still **out of scope**: the consensus parser, the ERP/close-package connector,
+the editor add-ins, and the production datastores (Postgres/Redis/vector/object
+store). Each store here is an in-memory reference implementation behind a
+`Protocol`, so the persistence backend is a constructor swap, not an API change.

@@ -87,20 +87,33 @@ def create_app(service: AttestService | None = None) -> FastAPI:
 
     @app.post("/tenants/{tenant_id}/verify", response_model=VerifyResponse)
     def verify(
-        tenant_id: str, document: Document, svc: AttestService = Depends(get_service)
+        tenant_id: str,
+        document: Document,
+        use_llm: bool = False,
+        svc: AttestService = Depends(get_service),
     ) -> VerifyResponse:
         if document.tenant_id != tenant_id:
             raise HTTPException(status_code=422, detail="document.tenant_id mismatch")
-        return _to_verify_response(svc.verify_document(document))
+        try:
+            result = svc.verify_document(document, use_llm=use_llm)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return _to_verify_response(result)
 
     @app.post("/tenants/{tenant_id}/verify-close-pack", response_model=ClosePackResponse)
     def verify_close_pack(
-        tenant_id: str, documents: list[Document], svc: AttestService = Depends(get_service)
+        tenant_id: str,
+        documents: list[Document],
+        use_llm: bool = False,
+        svc: AttestService = Depends(get_service),
     ) -> ClosePackResponse:
         for doc in documents:
             if doc.tenant_id != tenant_id:
                 raise HTTPException(status_code=422, detail="document.tenant_id mismatch")
-        results, consistency = svc.verify_close_pack(documents)
+        try:
+            results, consistency = svc.verify_close_pack(documents, use_llm=use_llm)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         responses = [_to_verify_response(r) for r in results]
         publishable = all(r.publishable for r in responses) and not consistency
         return ClosePackResponse(
