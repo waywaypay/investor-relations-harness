@@ -84,8 +84,11 @@ def _run_serve(host: str, port: int) -> int:
     import uvicorn
 
     from attest.api.app import create_app
+    from attest.storage import service_from_env
 
-    uvicorn.run(create_app(), host=host, port=port)
+    # Postgres/Redis when ATTEST_DATABASE_URL / ATTEST_REDIS_URL are set, else
+    # the in-memory reference stores — a constructor swap, no API change.
+    uvicorn.run(create_app(service_from_env()), host=host, port=port)
     return 0
 
 
