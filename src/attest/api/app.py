@@ -8,7 +8,10 @@ API change.
 
 from __future__ import annotations
 
+import os
+
 from fastapi import Depends, FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 
 from attest.api.schemas import (
     AuditVerifyResponse,
@@ -40,6 +43,22 @@ def create_app(service: AttestService | None = None) -> FastAPI:
         description="Deterministic disclosure-verification spine for investor relations.",
     )
     app.state.service = service or AttestService()
+
+    # CORS so the web workspace (Vite dev server on :5173) can call the API
+    # directly in development. Override the allowed origins via ATTEST_CORS_ORIGINS
+    # (comma-separated) in any deployment with a known front-end origin.
+    origins_env = os.environ.get("ATTEST_CORS_ORIGINS", "").strip()
+    allow_origins = (
+        [o.strip() for o in origins_env.split(",") if o.strip()]
+        if origins_env
+        else ["http://localhost:5173", "http://127.0.0.1:5173"]
+    )
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=allow_origins,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     def get_service() -> AttestService:
         return app.state.service
@@ -106,7 +125,8 @@ def create_app(service: AttestService | None = None) -> FastAPI:
     ) -> dict:
         svc.override(
             tenant_id=tenant_id, actor=req.actor, claim_id=req.claim_id,
-            justification=req.justification,
+            justification=req.justification, reason=req.reason, metric=req.metric,
+            period=req.period, displayed_text=req.displayed_text,
         )
         return {"status": "recorded"}
 
