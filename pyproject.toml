@@ -17,6 +17,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# The LLM edge is the replaceable, probabilistic layer. It is intentionally an
+# optional extra so the deterministic core installs and runs with no model
+# dependency. Tests exercise the edge with a fake client and never need this.
+llm = [
+    "anthropic>=0.40",
+]
 dev = [
     "pytest>=8.0",
     "httpx>=0.27",

@@ -73,6 +73,10 @@ class MetricRegistry:
     def non_gaap(self) -> list[MetricSpec]:
         return [s for s in self._by_id.values() if s.is_non_gaap]
 
+    def all(self) -> list[MetricSpec]:
+        """Every registered spec, in registration order."""
+        return list(self._by_id.values())
+
     def __contains__(self, metric_id: str) -> bool:
         return metric_id in self._by_id
 
