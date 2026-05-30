@@ -85,7 +85,7 @@ src/attest/
     sheets_bridge.py  loads the corpus workbook's 02_Facts CSV export into facts
   api/             stateless FastAPI surface over the service
   service.py       composition root shared by the API and CLI
-  cli.py           `attest demo` / `attest serve`
+  cli.py           `attest demo` / `attest verify [--use-llm]` / `attest serve` / `attest synth`
 ```
 
 ### How the design-doc principles show up in code
