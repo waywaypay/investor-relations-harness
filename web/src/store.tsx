@@ -3,6 +3,7 @@ import { FIGURES } from "./data/figures";
 import { COMMITMENTS, NARRATIVES } from "./data/narratives";
 import type { Commitment, Figure, Narrative, VerdictState } from "./types";
 import { evaluateEdit } from "./lib/verify";
+import { apiBaseUrl, client } from "./api/client";
 
 type FigureMap = Record<string, Figure>;
 type NarrativeMap = Record<string, Narrative>;
@@ -49,14 +50,35 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   const editFigure = useCallback(
     (id: string, value: string) => {
+      // Optimistic local re-verify (the client-side echo of the tie-out logic),
+      // so the UI updates instantly whether or not a backend is wired.
+      let committed = "";
       setFigures((prev) => {
         const next = { ...prev[id], cur: value.trim() || prev[id].cur };
+        committed = next.cur;
         const verdict = evaluateEdit(next);
         return {
           ...prev,
           [id]: { ...next, st: verdict.st, tag: verdict.tag, editedFrom: verdict.editedFrom },
         };
       });
+
+      // When VITE_ATTEST_API is set, reconcile against the real deterministic
+      // engine. The backend is authoritative; on failure we keep the local result.
+      if (apiBaseUrl) {
+        const tagFor: Record<VerdictState, string> = { v: "✓", r: "?", f: "!", u: "?" };
+        client
+          .verifyFigure(id, committed)
+          .then((res) => {
+            setFigures((prev) => {
+              const fig = prev[id];
+              if (!fig || fig.cur !== committed) return prev; // a newer edit superseded this
+              const editedFrom = res.verdict === "f" ? fig.filed : null;
+              return { ...prev, [id]: { ...fig, st: res.verdict, tag: tagFor[res.verdict], editedFrom } };
+            });
+          })
+          .catch(() => void 0);
+      }
     },
     []
   );
