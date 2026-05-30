@@ -3,6 +3,7 @@
     attest demo     # ingest the Meridian filing, verify the close pack, print a report
     attest serve    # run the API with uvicorn
     attest synth    # generate synthetic perturbation cases (robustness coverage)
+    attest restatements  # harvest real conflict labels from an 8-K Item 4.02 record
 """
 
 from __future__ import annotations
@@ -106,6 +107,30 @@ def _run_synth(csv_path: str | None, out_path: str | None) -> int:
     return 0
 
 
+def _run_restatements(fixture: str, out_path: str | None) -> int:
+    import json
+
+    from attest.eval.restatement import cases_from_restatement, load_restatement_fixture
+
+    rec = load_restatement_fixture(fixture)
+    cases = cases_from_restatement(rec)
+    print(f"Harvested {len(cases)} real labels from {rec['filer']} 8-K Item 4.02 "
+          f"({rec['accession']}):")
+    for c in cases:
+        print(f"  [{c.expected.value:<8}] {c.metric} {c.period}: {c.text}")
+    if out_path:
+        payload = {
+            "name": "edgar_restatement",
+            "label_source": "edgar_restatement",
+            "note": "Real adjudicated restatement labels — eligible for the reliability gate.",
+            "cases": [c.as_golden_row() for c in cases],
+        }
+        with open(out_path, "w", encoding="utf-8") as fh:
+            json.dump(payload, fh, indent=2)
+        print(f"Wrote {out_path}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="attest", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -118,6 +143,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     synth.add_argument("--csv", help="path to a 02_Facts CSV export; omit to use the fixture")
     synth.add_argument("--out", help="write generated cases to this JSON path")
+    rst = sub.add_parser(
+        "restatements", help="harvest real conflict labels from an 8-K Item 4.02 record"
+    )
+    rst.add_argument("--fixture", default="meridian_cloud_4_02", help="bundled restatement fixture")
+    rst.add_argument("--out", help="write harvested cases to this JSON path")
 
     args = parser.parse_args(argv)
     if args.command == "demo":
@@ -126,6 +156,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_serve(args.host, args.port)
     if args.command == "synth":
         return _run_synth(args.csv, args.out)
+    if args.command == "restatements":
+        return _run_restatements(args.fixture, args.out)
     return 1
 
 

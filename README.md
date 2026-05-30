@@ -117,6 +117,13 @@ two kinds of cases stay strictly separated:
   without it grading its own homework — but they only measure **robustness
   coverage**, not reliability.
 
+- **EDGAR restatement cases** (`eval/restatement.py`) are harvested from 8-K
+  **Item 4.02** ("non-reliance") filings — adjudicated cases where a reported
+  number was wrong. Each yields two *real* labels: a draft citing the original
+  value → `conflict`, the restated value → `traced`. Unlike synthetic cases these
+  reflect how disclosures actually go wrong, carry the adjudicating accession as
+  provenance, and are eligible for the reliability gate. `attest restatements`
+  prints/emits them; a test asserts the engine *agrees* with the harvested labels.
 - **Production-feedback candidates** (`eval/feedback.py`) are derived from human
   *overrides* in the audit log. Only an override tagged `engine_wrong` becomes a
   candidate (an "accepting risk" or "dismissing noise" override would poison

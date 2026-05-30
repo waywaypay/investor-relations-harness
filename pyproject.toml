@@ -29,7 +29,7 @@ attest = "attest.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-attest = ["ingestion/fixtures/*.json", "eval/golden/*.json"]
+attest = ["ingestion/fixtures/*.json", "eval/golden/*.json", "eval/restatement_fixtures/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
