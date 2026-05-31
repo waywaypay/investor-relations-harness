@@ -101,8 +101,49 @@ def build_documents() -> list[Document]:
     return [release, script, qa]
 
 
-def seeded_service() -> AttestService:
+def seeded_service(*, edge=None) -> AttestService:
     """An AttestService with the Meridian filing ingested and ready to verify."""
-    service = AttestService()
+    service = AttestService(edge=edge)
     service.ingest_xbrl(load_fixture("meridian_q1_fy2026"), tenant_id=TENANT)
     return service
+
+
+def _claims_as_figures(document: Document) -> dict:
+    """Render a demo document's claims in the proposer's tool-input shape."""
+    return {
+        "figures": [
+            {
+                "displayed_text": c.displayed_text,
+                "metric": c.metric,
+                "entity": c.entity,
+                "period": c.period,
+                "confidence": c.detect_confidence.value,
+            }
+            for c in document.claims
+        ]
+    }
+
+
+def demo_edge_service():
+    """An :class:`EdgeService` over a scripted fake client for offline LLM runs.
+
+    The fake proposer reproduces each demo document's own claims (so the LLM path
+    yields byte-for-byte the same verdicts as the deterministic path), and the
+    fake narrator emits no flags. This is what `attest verify --use-llm` falls back
+    to when no ``ANTHROPIC_API_KEY`` is set, and what the edge tests run against.
+    """
+    from attest.edge.client import FakeLLMClient, LLMResult
+    from attest.edge.service import EdgeService
+
+    docs = {d.id: d for d in build_documents()}
+
+    def handler(*, system, messages, tools, tool_name, **_):
+        content = messages[0]["content"]
+        if tool_name == "report_figures":
+            for doc_id, doc in docs.items():
+                if f"id={doc_id!r}" in content:
+                    return LLMResult(tool_inputs=(_claims_as_figures(doc),))
+            return LLMResult(tool_inputs=({"figures": []},))
+        return LLMResult(tool_inputs=({"flags": []},))
+
+    return EdgeService(FakeLLMClient(handler=handler))

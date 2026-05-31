@@ -45,6 +45,13 @@ class OverrideRequest(BaseModel):
     actor: str
     claim_id: str
     justification: str = Field(min_length=1)
+    reason: str | None = Field(
+        default=None,
+        description="structured disambiguation: engine_wrong | accepting_risk | dismissing | other",
+    )
+    metric: str | None = None
+    period: str | None = None
+    displayed_text: str | None = None
 
 
 class AuditVerifyResponse(BaseModel):

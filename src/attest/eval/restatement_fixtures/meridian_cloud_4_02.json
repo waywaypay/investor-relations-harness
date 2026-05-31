@@ -1,0 +1,30 @@
+{
+  "tenant": "meridian",
+  "filer": "Meridian Systems, Inc.",
+  "accession": "0001047469-25-004500",
+  "form": "10-K",
+  "item_4_02": {
+    "filed": "2025-09-15",
+    "summary": "Non-reliance on previously issued financials: prior-year cloud segment revenue was reclassified under a revenue-recognition correction.",
+    "non_reliance": true
+  },
+  "entity": "MRDN:Cloud",
+  "metric": "cloud_revenue",
+  "period": "FY2025-Q1",
+  "unit": "currency",
+  "decimals": -5,
+  "original": {
+    "value": "467000000",
+    "display": "$467.0 million",
+    "as_of": "2025-04-28",
+    "source_ref": "0001047469-25-000900#exhibit-99.1",
+    "label": "Q1 FY2025 earnings release (original, later restated)"
+  },
+  "restated": {
+    "value": "474300000",
+    "display": "$474.3 million",
+    "as_of": "2025-09-15",
+    "source_ref": "0001047469-25-004500#note-2-restatement",
+    "label": "FY2025 Form 10-K, Note 2 (restated)"
+  }
+}
