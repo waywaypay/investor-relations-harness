@@ -23,8 +23,14 @@ pip install -e ".[dev]"
 
 attest demo          # ingest the Meridian filing, verify the close pack, print a report
 pytest               # run the suite, including the eval regression gate
-attest serve         # run the API at http://127.0.0.1:8000  (docs at /docs)
+attest serve         # API + upload UI at http://127.0.0.1:8000  (API docs at /docs)
 ```
+
+Open **http://127.0.0.1:8000** and you get an upload page: drop a real press
+release / earnings script / Q&A (`.txt`, `.md`, `.html`, `.docx`, `.pdf`, `.rtf`)
+or paste the text, click *Load Meridian demo filing* to seed filed sources, and
+hit *Analyze*. Every figure is highlighted in place by verdict, with the Reg G /
+safe-harbor / consistency findings underneath.
 
 ## What it does
 
@@ -100,15 +106,54 @@ src/attest/
 ## API surface
 
 ```
+GET  /                                           the upload & verify web UI
 POST /tenants/{tenant}/ingest/xbrl              ingest an XBRL instance
+POST /tenants/{tenant}/ingest/demo              seed the bundled Meridian filing
 GET  /tenants/{tenant}/facts                    list facts-with-provenance
-POST /tenants/{tenant}/verify                   verify one document
+GET  /tenants/{tenant}/extraction/aliases       the tenant's metric synonyms
+PUT  /tenants/{tenant}/extraction/aliases       configure the tenant's metric synonyms
+POST /tenants/{tenant}/analyze                  upload/paste a draft -> verdicts + findings
+POST /tenants/{tenant}/verify                   verify one document (pre-built claims)
 POST /tenants/{tenant}/verify-close-pack        verify + cross-document consistency
 POST /tenants/{tenant}/documents/{id}/sign-off  record an attestation
 POST /tenants/{tenant}/override                 record a justified override
 GET  /tenants/{tenant}/audit                    export the audit trail (a projection)
 GET  /audit/verify                              re-derive the hash chain
 ```
+
+`POST /analyze` accepts a multipart `file` **or** a `text` field (plus optional
+`title`, `kind`, `entity`, `period`). It recovers the prose, lets the edge
+propose figure claims, and runs the full engine — the same spine the demo close
+pack flows through, now driven by a real document.
+
+### Uploading real documents — and where the "edge" lives
+
+`attest analyze` needs something the demo provides for free: the mapping from a
+numeric span in prose to *what metric it asserts*. The architecture is explicit
+that this is the probabilistic edge's job and that **the model is the replaceable
+component**. `src/attest/extraction/` is a deterministic, model-free reference
+implementation of that edge — greedy figure detection plus keyword/alias mapping,
+segment-entity resolution grounded in the tenant's own ingested facts, and light
+period inference. It deliberately *over*-detects and labels anything it cannot
+confidently attribute as low-confidence, so the deterministic core still disposes
+and a guessed binding is never asserted as `traced`. Swap in an LLM here and
+nothing downstream changes.
+
+The metric vocabulary is **tenant-configurable** — every issuer's house style
+differs ("topline" vs "net revenue", segment names, non-GAAP labels). Each tenant
+starts from a default `AliasConfig` and layers its own synonyms over it via
+`PUT /tenants/{tenant}/extraction/aliases` (or the *Custom terms* field in the
+UI):
+
+```bash
+curl -X PUT .../tenants/meridian/extraction/aliases \
+  -H 'content-type: application/json' \
+  -d '{"aliases": {"total_revenue": ["topline", "net sales"]}, "replace": false}'
+```
+
+`replace: false` unions the phrases into the metric's existing list; `true`
+overwrites it. The registry's own label is always in scope, unknown metric ids
+are rejected, and a tenant's config never affects another's.
 
 ## Scope of this v1
 
