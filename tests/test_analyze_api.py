@@ -31,11 +31,11 @@ def _seed_demo(client):
     assert r.json()["ingested"] == 15
 
 
-def test_home_serves_upload_ui(client):
+def test_home_serves_ui(client):
     r = client.get("/")
     assert r.status_code == 200
     assert "text/html" in r.headers["content-type"]
-    assert "Analyze document" in r.text  # the upload button is there
+    assert "Attest" in r.text  # the served workspace (built SPA or fallback page)
 
 
 def test_ingest_demo_seeds_filed_sources(client):

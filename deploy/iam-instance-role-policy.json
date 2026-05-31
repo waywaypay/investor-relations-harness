@@ -1,0 +1,27 @@
+{
+  "Version": "2012-10-17",
+  "Comment": "Permissions for the RUNNING container (App Runner instance role) to read its secrets. Scope every ARN to attest/* — never use Resource: '*' for secrets. Add the kms statement only if the secret/parameter is encrypted with a customer-managed KMS key.",
+  "Statement": [
+    {
+      "Sid": "ReadSecretsManager",
+      "Effect": "Allow",
+      "Action": "secretsmanager:GetSecretValue",
+      "Resource": "arn:aws:secretsmanager:<REGION>:<ACCOUNT_ID>:secret:attest/*"
+    },
+    {
+      "Sid": "ReadSsmParameters",
+      "Effect": "Allow",
+      "Action": [
+        "ssm:GetParameter",
+        "ssm:GetParameters"
+      ],
+      "Resource": "arn:aws:ssm:<REGION>:<ACCOUNT_ID>:parameter/attest/*"
+    },
+    {
+      "Sid": "DecryptCustomerManagedKey",
+      "Effect": "Allow",
+      "Action": "kms:Decrypt",
+      "Resource": "arn:aws:kms:<REGION>:<ACCOUNT_ID>:key/<KMS_KEY_ID>"
+    }
+  ]
+}
