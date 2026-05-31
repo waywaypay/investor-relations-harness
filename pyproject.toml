@@ -44,6 +44,7 @@ where = ["src"]
 [tool.setuptools.package-data]
 attest = [
     "ingestion/fixtures/*.json",
+    "ingestion/fixtures/*.txt",
     "eval/golden/*.json",
     "eval/restatement_fixtures/*.json",
     "api/static/*.html",

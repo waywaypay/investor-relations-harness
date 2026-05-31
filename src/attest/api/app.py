@@ -22,6 +22,7 @@ from attest.api.schemas import (
     AuditVerifyResponse,
     ClosePackResponse,
     EditRequest,
+    GuidanceIngestRequest,
     IngestResponse,
     OverrideRequest,
     SignOffRequest,
@@ -110,6 +111,28 @@ def create_app(service: AttestService | None = None, *, seed_demo: bool = False)
         if "facts" not in instance:
             raise HTTPException(status_code=422, detail="instance missing 'facts'")
         report = svc.ingest_xbrl(instance, tenant_id=tenant_id)
+        return IngestResponse(
+            source=report.source,
+            ingested=report.ingested,
+            skipped=report.skipped,
+            skipped_tags=list(report.skipped_tags),
+        )
+
+    @app.post("/tenants/{tenant_id}/ingest/guidance", response_model=IngestResponse)
+    def ingest_guidance(
+        tenant_id: str, req: GuidanceIngestRequest, svc: AttestService = Depends(get_service)
+    ) -> IngestResponse:
+        """Extract management's forward guidance from 8-K EX-99.1 prose into the fact
+        store, each figure cited back to the exact sentence it came from."""
+        report = svc.ingest_guidance(
+            text=req.text,
+            tenant_id=tenant_id,
+            entity=req.entity,
+            accession=req.accession,
+            base_period=req.base_period,
+            as_of=req.as_of,
+            label=req.label,
+        )
         return IngestResponse(
             source=report.source,
             ingested=report.ingested,

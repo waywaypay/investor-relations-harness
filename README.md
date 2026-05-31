@@ -79,7 +79,8 @@ src/attest/
   audit/           append-only, event-sourced, sha256 hash-chained log
   edge/            the replaceable LLM layer (v2): claim proposer + history narrator
   storage/         durable backends behind the store Protocols: Postgres + Redis cache
-  ingestion/       connectors (EDGAR/XBRL adapter + a sample filing fixture)
+  ingestion/       connectors (EDGAR/XBRL adapter, 8-K EX-99.1 guidance adapter,
+                                sample filing + press-release fixtures)
   eval/            the golden-set harness + CI gate (figure FN rate must be 0)
     perturbation.py  synthetic case generator — known mutations of real filed values
     synthetic_eval.py scores the engine on synthetic cases in a SEPARATE bucket
@@ -157,6 +158,7 @@ attest synth                                            # from the bundled fixtu
 ```
 GET  /                                           the upload & verify web UI
 POST /tenants/{tenant}/ingest/xbrl              ingest an XBRL instance
+POST /tenants/{tenant}/ingest/guidance          extract forward guidance from 8-K EX-99.1 prose
 POST /tenants/{tenant}/ingest/demo              seed the bundled Meridian filing
 GET  /tenants/{tenant}/facts                    list facts-with-provenance
 GET  /tenants/{tenant}/extraction/aliases       the tenant's metric synonyms
@@ -203,6 +205,35 @@ curl -X PUT .../tenants/meridian/extraction/aliases \
 `replace: false` unions the phrases into the metric's existing list; `true`
 overwrites it. The registry's own label is always in scope, unknown metric ids
 are rejected, and a tenant's config never affects another's.
+
+### Forward guidance — the one figure class that isn't in XBRL
+
+XBRL is a gift for *reported* numbers, but management's next-period **guidance**
+(revenue / EPS / operating margin) lives only in the press-release prose — the
+8-K Exhibit 99.1 — never in a tagged fact. `src/attest/ingestion/guidance.py` is
+the prose analog of the XBRL adapter: it consumes the EX-99.1 text your SEC
+connector already fetches and lands each guidance statement as a citable `Fact`,
+with the **exact sentence it came from** in `source_excerpt` and a pointer back to
+the filed exhibit in `source_ref`. That is the anti–"cited the wrong number"
+guarantee applied to the figure that is otherwise unverifiable: *here is the
+number management gave, and here is the line it came from.*
+
+```bash
+curl -X POST .../tenants/meridian/ingest/guidance \
+  -H 'content-type: application/json' \
+  -d '{"text": "<EX-99.1 prose>", "entity": "MRDN",
+       "accession": "0001047469-26-001200", "base_period": "FY2026-Q1"}'
+```
+
+It is deterministic and model-free like every connector: it attributes a metric by
+keyword + unit, parses the figure with the same `parse_quantity` the spine uses
+(a range collapses to its midpoint; the excerpt keeps the range verbatim), infers
+the target period, and **only emits a fact when it can both attribute and parse** —
+everything else is reported as skipped, never guessed. Because guidance published
+in a filed 8-K exhibit is a real, citable disclosure, these facts are `filing_line`
+(traceable), distinct from the internal pre-filing planning guidance that ingests
+as non-filed `management_input`. A later draft that reaffirms prior guidance then
+ties out to the exact published sentence.
 
 ## v2: the LLM edge (the *replaceable* probabilistic layer)
 

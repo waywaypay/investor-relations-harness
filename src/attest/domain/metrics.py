@@ -152,6 +152,24 @@ DEFAULT_REGISTRY = MetricRegistry(
             label="Q2 revenue guidance",
             unit=Unit.CURRENCY,
         ),
+        # Forward guidance lives in press-release prose, never in XBRL. These are the
+        # period-agnostic targets the 8-K EX-99.1 guidance connector binds to; the
+        # period field carries which quarter / full year a given figure is for.
+        MetricSpec(
+            id="revenue_guidance",
+            label="Revenue guidance",
+            unit=Unit.CURRENCY,
+        ),
+        MetricSpec(
+            id="eps_guidance",
+            label="EPS guidance",
+            unit=Unit.CURRENCY,
+        ),
+        MetricSpec(
+            id="operating_margin_guidance",
+            label="Operating margin guidance",
+            unit=Unit.PERCENT,
+        ),
         MetricSpec(
             id="operating_margin",
             label="Operating margin",
