@@ -11,7 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 
 from attest.api.schemas import (
     AliasConfigRequest,
@@ -62,9 +62,22 @@ def create_app(service: AttestService | None = None) -> FastAPI:
             return HTMLResponse("<h1>Attest</h1><p>UI asset missing.</p>", status_code=500)
         return HTMLResponse(index.read_text(encoding="utf-8"))
 
-    @app.get("/health")
+    @app.get("/health", include_in_schema=False)
     def health() -> dict:
-        return {"status": "ok", "audit_intact": app.state.service.audit_verify()}
+        """Liveness: cheap, no work. This is the probe a load balancer / App Runner
+        hits every few seconds, so it must not re-derive the audit chain."""
+        return {"status": "ok"}
+
+    @app.get("/ready", include_in_schema=False)
+    def ready() -> JSONResponse:
+        """Readiness + integrity: confirms the service is wired and the audit
+        hash-chain still re-derives. Returns 503 if the chain is broken so an
+        orchestrator pulls the instance out of rotation. When a persistent store
+        lands, add its connectivity check here."""
+        intact = app.state.service.audit_verify()
+        status = 200 if intact else 503
+        return JSONResponse({"status": "ready" if intact else "degraded",
+                             "audit_intact": intact}, status_code=status)
 
     @app.post("/tenants/{tenant_id}/ingest/xbrl", response_model=IngestResponse)
     def ingest_xbrl(
