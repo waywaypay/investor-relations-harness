@@ -57,7 +57,9 @@ def _run_serve(host: str, port: int) -> int:
 
     from attest.api.app import create_app
 
-    uvicorn.run(create_app(), host=host, port=port)
+    print(f"Attest UI:  http://{host}:{port}/        (interactive front-end)")
+    print(f"API docs:   http://{host}:{port}/docs    (OpenAPI / Swagger)")
+    uvicorn.run(create_app(seed_demo=True), host=host, port=port)
     return 0
 
 

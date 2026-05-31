@@ -9,7 +9,9 @@ API change.
 from __future__ import annotations
 
 from fastapi import Depends, FastAPI, HTTPException
+from fastapi.responses import HTMLResponse
 
+from attest.api.frontend import index_html
 from attest.api.schemas import (
     AuditVerifyResponse,
     ClosePackResponse,
@@ -33,16 +35,29 @@ def _to_verify_response(result: VerificationResult) -> VerifyResponse:
     )
 
 
-def create_app(service: AttestService | None = None) -> FastAPI:
+def create_app(service: AttestService | None = None, *, seed_demo: bool = False) -> FastAPI:
     app = FastAPI(
         title="Attest API",
         version="0.1.0",
         description="Deterministic disclosure-verification spine for investor relations.",
     )
-    app.state.service = service or AttestService()
+    if service is None:
+        if seed_demo:
+            # Ship a ready-to-explore instance: the Meridian filing is ingested so
+            # the bundled front-end ties figures out the moment the page loads.
+            from attest.demo import seeded_service
+
+            service = seeded_service()
+        else:
+            service = AttestService()
+    app.state.service = service
 
     def get_service() -> AttestService:
         return app.state.service
+
+    @app.get("/", response_class=HTMLResponse, include_in_schema=False)
+    def index() -> str:
+        return index_html()
 
     @app.get("/health")
     def health() -> dict:
