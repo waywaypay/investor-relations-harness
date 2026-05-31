@@ -17,6 +17,7 @@ under-detection is the failure mode, exactly as for the eventual LLM.
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 
 from attest.domain.facts import Confidence
@@ -26,9 +27,12 @@ from attest.domain.verdicts import FigureClaim
 from attest.factstore.repository import FactStore
 from attest.verification.candidates import detect_candidates
 
-# Curated aliases per canonical metric. Labels from the registry are folded in at
-# runtime; this table adds the natural-language synonyms an IR draft actually uses.
-# In production these are tenant-configurable and/or learned; the shape is the same.
+# Curated aliases per canonical metric — the *default* vocabulary. Labels from the
+# registry are folded in at runtime; this table adds the natural-language synonyms
+# an IR draft actually uses. Every issuer's house style differs ("topline" vs "net
+# revenue", segment names, non-GAAP labels), so this is a per-tenant override point
+# (:class:`AliasConfig`); the shape stays the same whether it's this table, tenant
+# config, or a learned model.
 _ALIASES: dict[str, tuple[str, ...]] = {
     "total_revenue": ("total revenue", "total net revenue", "net revenue", "revenue", "net sales", "total sales", "sales"),
     "cloud_revenue": ("cloud segment revenue", "cloud revenue", "cloud segment", "cloud business"),
@@ -65,6 +69,49 @@ _QUARTER_WORDS = {
 }
 _NEXT_Q_WORDS = re.compile(r"\b(first|second|third|fourth)\s+quarter\b", re.IGNORECASE)
 _PERIOD_RE = re.compile(r"FY\d{4}-Q[1-4]", re.IGNORECASE)
+
+
+@dataclass(frozen=True)
+class AliasConfig:
+    """A tenant's metric-attribution vocabulary for the extraction edge.
+
+    Maps a canonical metric id to the natural-language phrases that, near a figure,
+    signal that figure asserts the metric. This is the one piece of the edge that
+    is genuinely tenant-specific, so it is a first-class, swappable value rather
+    than a module constant. The registry's own ``label`` is always folded in at
+    match time, so a tenant only configures the *extra* synonyms — and can never
+    fully blind the extractor to a metric.
+    """
+
+    aliases: Mapping[str, tuple[str, ...]]
+
+    def for_metric(self, metric_id: str) -> tuple[str, ...]:
+        return tuple(self.aliases.get(metric_id, ()))
+
+    def extend(
+        self, overrides: Mapping[str, Iterable[str]], *, replace: bool = False
+    ) -> "AliasConfig":
+        """Return a new config with ``overrides`` applied per metric.
+
+        ``replace=False`` (default) unions the new phrases into the metric's
+        existing ones; ``replace=True`` overwrites that metric's list outright.
+        Metrics not named in ``overrides`` are untouched either way.
+        """
+        merged: dict[str, tuple[str, ...]] = {k: tuple(v) for k, v in self.aliases.items()}
+        for metric_id, phrases in overrides.items():
+            cleaned = tuple(dict.fromkeys(p.strip().lower() for p in phrases if p and p.strip()))
+            if replace:
+                merged[metric_id] = cleaned
+            else:
+                merged[metric_id] = tuple(dict.fromkeys(merged.get(metric_id, ()) + cleaned))
+        return AliasConfig(aliases=merged)
+
+    def as_dict(self) -> dict[str, list[str]]:
+        return {k: list(v) for k, v in self.aliases.items() if v}
+
+
+# The default vocabulary every tenant starts from.
+DEFAULT_ALIASES = AliasConfig(aliases={k: v for k, v in _ALIASES.items()})
 
 
 @dataclass(frozen=True)
@@ -121,19 +168,29 @@ def _next_period(period: str | None) -> str | None:
 class ClaimExtractor:
     """Proposes :class:`FigureClaim` s from raw prose (the model-free edge)."""
 
-    def __init__(self, registry: MetricRegistry, store: FactStore) -> None:
+    def __init__(
+        self,
+        registry: MetricRegistry,
+        store: FactStore,
+        aliases: AliasConfig | None = None,
+    ) -> None:
         self.registry = registry
         self.store = store
-        self._views = self._build_views(registry)
+        self.aliases = aliases or DEFAULT_ALIASES
+        self._views = self._build_views(registry, self.aliases)
 
     @staticmethod
-    def _build_views(registry: MetricRegistry) -> list[_MetricView]:
+    def _build_views(registry: MetricRegistry, aliases: AliasConfig) -> list[_MetricView]:
         views: list[_MetricView] = []
-        for metric_id, spec in registry._by_id.items():  # type: ignore[attr-defined]
-            aliases = set(_ALIASES.get(metric_id, ()))
-            aliases.add(spec.label.lower())
+        for spec in registry.metrics():
+            phrases = set(aliases.for_metric(spec.id))
+            phrases.add(spec.label.lower())  # the registry label is always in scope
             views.append(
-                _MetricView(metric_id=metric_id, unit=spec.unit, aliases=tuple(sorted(aliases, key=len, reverse=True)))
+                _MetricView(
+                    metric_id=spec.id,
+                    unit=spec.unit,
+                    aliases=tuple(sorted(phrases, key=len, reverse=True)),
+                )
             )
         return views
 

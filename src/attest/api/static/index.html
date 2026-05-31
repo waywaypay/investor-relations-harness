@@ -117,6 +117,10 @@
       <option value="other">Other</option>
     </select>
 
+    <label>Custom terms <span style="text-transform:none;letter-spacing:0">— your house style (optional)</span></label>
+    <textarea id="aliases" style="min-height:64px" placeholder="metric_id: synonym, synonym&#10;total_revenue: topline, net sales&#10;non_gaap_diluted_eps: adjusted eps"></textarea>
+    <p class="hint" style="margin-top:4px">One metric per line as <code>metric_id: synonyms</code>. Saved for this tenant before analysis, so the edge attributes your wording correctly.</p>
+
     <div class="drop" id="drop">
       <b>Click to upload</b> or drop a file<br />
       <small>.txt · .md · .html · .docx · .pdf · .rtf · .csv</small>
@@ -176,6 +180,33 @@ $('seed').onclick = async () => {
   $('seed').disabled = false; $('seed').textContent = 'Load Meridian demo filing (filed sources)';
 };
 
+function parseAliases(raw) {
+  const out = {};
+  for (const line of raw.split('\n')) {
+    const i = line.indexOf(':');
+    if (i < 0) continue;
+    const metric = line.slice(0, i).trim();
+    const syns = line.slice(i + 1).split(',').map(s => s.trim()).filter(Boolean);
+    if (metric && syns.length) out[metric] = syns;
+  }
+  return out;
+}
+
+async function saveAliases(tenant) {
+  const overrides = parseAliases($('aliases').value);
+  if (!Object.keys(overrides).length) return true;
+  const r = await fetch(`/tenants/${encodeURIComponent(tenant)}/extraction/aliases`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ aliases: overrides, replace: false }),
+  });
+  if (!r.ok) {
+    const e = await r.json().catch(() => ({ detail: r.statusText }));
+    $('out').innerHTML = `<div class="banner no">Custom terms rejected: ${esc(String(e.detail || ''))}</div>`;
+    return false;
+  }
+  return true;
+}
+
 $('analyze').onclick = async () => {
   const tenant = $('tenant').value.trim() || 'meridian';
   const fd = new FormData();
@@ -189,6 +220,7 @@ $('analyze').onclick = async () => {
 
   $('analyze').disabled = true; $('analyze').textContent = 'Analyzing…';
   try {
+    if (!(await saveAliases(tenant))) { $('analyze').disabled = false; $('analyze').textContent = 'Analyze document'; return; }
     const r = await fetch(`/tenants/${encodeURIComponent(tenant)}/analyze`, { method: 'POST', body: fd });
     if (!r.ok) { const e = await r.json().catch(()=>({detail:r.statusText})); $('out').innerHTML = `<div class="banner no">Error ${r.status}: ${esc(String(e.detail||''))}</div>`; }
     else render(await r.json());

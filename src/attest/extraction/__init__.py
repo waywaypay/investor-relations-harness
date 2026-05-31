@@ -13,7 +13,19 @@ dispose of.
 
 from __future__ import annotations
 
-from attest.extraction.claims import ClaimExtractor, infer_period
+from attest.extraction.claims import (
+    DEFAULT_ALIASES,
+    AliasConfig,
+    ClaimExtractor,
+    infer_period,
+)
 from attest.extraction.text import ExtractedText, extract_text
 
-__all__ = ["ClaimExtractor", "infer_period", "ExtractedText", "extract_text"]
+__all__ = [
+    "AliasConfig",
+    "DEFAULT_ALIASES",
+    "ClaimExtractor",
+    "infer_period",
+    "ExtractedText",
+    "extract_text",
+]

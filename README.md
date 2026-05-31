@@ -110,6 +110,8 @@ GET  /                                           the upload & verify web UI
 POST /tenants/{tenant}/ingest/xbrl              ingest an XBRL instance
 POST /tenants/{tenant}/ingest/demo              seed the bundled Meridian filing
 GET  /tenants/{tenant}/facts                    list facts-with-provenance
+GET  /tenants/{tenant}/extraction/aliases       the tenant's metric synonyms
+PUT  /tenants/{tenant}/extraction/aliases       configure the tenant's metric synonyms
 POST /tenants/{tenant}/analyze                  upload/paste a draft -> verdicts + findings
 POST /tenants/{tenant}/verify                   verify one document (pre-built claims)
 POST /tenants/{tenant}/verify-close-pack        verify + cross-document consistency
@@ -136,6 +138,22 @@ period inference. It deliberately *over*-detects and labels anything it cannot
 confidently attribute as low-confidence, so the deterministic core still disposes
 and a guessed binding is never asserted as `traced`. Swap in an LLM here and
 nothing downstream changes.
+
+The metric vocabulary is **tenant-configurable** — every issuer's house style
+differs ("topline" vs "net revenue", segment names, non-GAAP labels). Each tenant
+starts from a default `AliasConfig` and layers its own synonyms over it via
+`PUT /tenants/{tenant}/extraction/aliases` (or the *Custom terms* field in the
+UI):
+
+```bash
+curl -X PUT .../tenants/meridian/extraction/aliases \
+  -H 'content-type: application/json' \
+  -d '{"aliases": {"total_revenue": ["topline", "net sales"]}, "replace": false}'
+```
+
+`replace: false` unions the phrases into the metric's existing list; `true`
+overwrites it. The registry's own label is always in scope, unknown metric ids
+are rejected, and a tenant's config never affects another's.
 
 ## Scope of this v1
 

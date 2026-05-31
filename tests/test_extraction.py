@@ -11,10 +11,12 @@ from __future__ import annotations
 import io
 import zipfile
 
+import pytest
+
 from attest.demo import seeded_service
 from attest.domain.document import DocumentKind
 from attest.domain.facts import Confidence
-from attest.extraction.claims import ClaimExtractor, infer_period
+from attest.extraction.claims import DEFAULT_ALIASES, AliasConfig, ClaimExtractor, infer_period
 from attest.extraction.text import extract_text
 
 RELEASE = (
@@ -139,6 +141,49 @@ def test_every_claim_carries_a_span_for_highlighting():
         assert c.span is not None
         s, e = c.span
         assert RELEASE[s:e].strip() == c.displayed_text
+
+
+# -- tenant-configurable vocabulary ------------------------------------------
+
+def test_alias_config_extend_unions_and_replaces():
+    base = AliasConfig({"total_revenue": ("revenue",)})
+    unioned = base.extend({"total_revenue": ["Topline", "revenue"]})
+    assert unioned.for_metric("total_revenue") == ("revenue", "topline")  # deduped, lowercased
+    replaced = base.extend({"total_revenue": ["net sales"]}, replace=True)
+    assert replaced.for_metric("total_revenue") == ("net sales",)
+
+
+def test_alias_config_leaves_other_metrics_untouched():
+    extended = DEFAULT_ALIASES.extend({"total_revenue": ["topline"]})
+    assert "topline" in extended.for_metric("total_revenue")
+    assert extended.for_metric("gaap_diluted_eps") == DEFAULT_ALIASES.for_metric("gaap_diluted_eps")
+
+
+def test_extractor_honours_tenant_house_style():
+    svc = seeded_service()
+    text = "Topline was $1.24 billion for the quarter."
+    # Default vocabulary doesn't know "topline" — the figure is unattributed.
+    default = ClaimExtractor(svc.registry, svc.store).extract(
+        text, document_id="d", tenant_id="meridian", entity="MRDN", period="FY2026-Q1"
+    )
+    assert default[0].metric == "unidentified"
+    # With the tenant's configured synonym, it attributes — and the engine traces it.
+    aliases = DEFAULT_ALIASES.extend({"total_revenue": ["topline"]})
+    tuned = ClaimExtractor(svc.registry, svc.store, aliases).extract(
+        text, document_id="d", tenant_id="meridian", entity="MRDN", period="FY2026-Q1"
+    )
+    assert tuned[0].metric == "total_revenue"
+
+
+def test_service_configure_aliases_is_per_tenant_and_validates():
+    svc = seeded_service()
+    svc.configure_aliases("meridian", {"total_revenue": ["topline"]})
+    assert "topline" in svc.aliases_for("meridian").for_metric("total_revenue")
+    # A different tenant is unaffected.
+    assert "topline" not in svc.aliases_for("acme").for_metric("total_revenue")
+    # Unknown metric ids are rejected, not silently accepted.
+    with pytest.raises(ValueError):
+        svc.configure_aliases("meridian", {"not_a_metric": ["x"]})
 
 
 def test_full_pipeline_reproduces_the_restatement_conflict():

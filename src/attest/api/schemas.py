@@ -59,3 +59,20 @@ class OverrideRequest(BaseModel):
 class AuditVerifyResponse(BaseModel):
     intact: bool
     event_count: int
+
+
+class AliasConfigRequest(BaseModel):
+    """Tenant-supplied extraction synonyms: canonical metric id -> phrases."""
+
+    aliases: dict[str, list[str]] = Field(
+        description="metric id -> natural-language phrases that attribute a figure to it"
+    )
+    replace: bool = Field(
+        default=False,
+        description="overwrite the named metrics' phrases (true) or union them in (false)",
+    )
+
+
+class AliasConfigResponse(BaseModel):
+    tenant_id: str
+    aliases: dict[str, list[str]]

@@ -10,10 +10,12 @@ from __future__ import annotations
 
 from attest.audit.events import EventType
 from attest.audit.log import AuditLog, InMemoryAuditLog
+from collections.abc import Iterable, Mapping
+
 from attest.domain.document import Document, DocumentKind
 from attest.domain.metrics import DEFAULT_REGISTRY, MetricRegistry
 from attest.domain.money import DEFAULT_POLICY, RoundingPolicy
-from attest.extraction.claims import ClaimExtractor, infer_period
+from attest.extraction.claims import DEFAULT_ALIASES, AliasConfig, ClaimExtractor, infer_period
 from attest.factstore.repository import FactStore, InMemoryFactStore
 from attest.ingestion.base import IngestionReport
 from attest.ingestion.edgar_xbrl import XBRLConnector
@@ -29,6 +31,7 @@ class AttestService:
         registry: MetricRegistry | None = None,
         audit_log: AuditLog | None = None,
         policy: RoundingPolicy = DEFAULT_POLICY,
+        aliases: AliasConfig | None = None,
     ) -> None:
         self.store = store or InMemoryFactStore()
         self.registry = registry or DEFAULT_REGISTRY
@@ -36,6 +39,9 @@ class AttestService:
         self.engine = VerificationEngine(
             self.store, self.registry, policy=policy, audit_log=self.audit_log
         )
+        # The extraction edge's metric vocabulary, per tenant, over a default.
+        self._default_aliases = aliases or DEFAULT_ALIASES
+        self._aliases_by_tenant: dict[str, AliasConfig] = {}
 
     # -- ingestion -----------------------------------------------------------
 
@@ -86,7 +92,8 @@ class AttestService:
         entity = entity or self.default_entity(tenant_id)
         period = period or infer_period(title, text)
         doc_id = document_id or kind.value
-        claims = ClaimExtractor(self.registry, self.store).extract(
+        extractor = ClaimExtractor(self.registry, self.store, self.aliases_for(tenant_id))
+        claims = extractor.extract(
             text, document_id=doc_id, tenant_id=tenant_id, entity=entity, period=period
         )
         document = Document(
@@ -100,6 +107,32 @@ class AttestService:
             if ":" not in fact.entity:  # a parent issuer, not a segment
                 return fact.entity
         return tenant_id.upper()
+
+    # -- extraction vocabulary (tenant-configurable) -------------------------
+
+    def aliases_for(self, tenant_id: str) -> AliasConfig:
+        """The metric-attribution vocabulary in effect for a tenant."""
+        return self._aliases_by_tenant.get(tenant_id, self._default_aliases)
+
+    def configure_aliases(
+        self,
+        tenant_id: str,
+        overrides: Mapping[str, Iterable[str]],
+        *,
+        replace: bool = False,
+    ) -> AliasConfig:
+        """Set a tenant's extraction synonyms, layered over its current config.
+
+        ``replace`` overwrites the named metrics' lists; otherwise the phrases are
+        unioned in. Unknown metric ids are rejected so a typo can't silently create
+        a phantom metric the engine will never bind.
+        """
+        unknown = sorted(m for m in overrides if m not in self.registry)
+        if unknown:
+            raise ValueError(f"unknown metric id(s): {', '.join(unknown)}")
+        config = self.aliases_for(tenant_id).extend(overrides, replace=replace)
+        self._aliases_by_tenant[tenant_id] = config
+        return config
 
     # -- human-in-the-loop accountability ------------------------------------
 

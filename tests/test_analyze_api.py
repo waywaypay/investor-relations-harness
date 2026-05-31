@@ -120,6 +120,50 @@ def test_analyze_requires_some_input(client):
     assert r.status_code == 422
 
 
+def test_get_aliases_returns_default_vocabulary(client):
+    body = client.get("/tenants/meridian/extraction/aliases").json()
+    assert body["tenant_id"] == "meridian"
+    assert "total_revenue" in body["aliases"]
+
+
+def test_put_aliases_then_analyze_uses_house_style(client):
+    _seed_demo(client)
+    text = "Topline was $1.24 billion for the quarter."
+    # Without config the company's term isn't recognised.
+    before = client.post(
+        "/tenants/meridian/analyze",
+        data={"text": text, "kind": "release", "entity": "MRDN", "period": "FY2026-Q1"},
+    ).json()
+    assert before["counts"]["traced"] == 0
+
+    r = client.put(
+        "/tenants/meridian/extraction/aliases",
+        json={"aliases": {"total_revenue": ["topline"]}},
+    )
+    assert r.status_code == 200
+    assert "topline" in r.json()["aliases"]["total_revenue"]
+
+    after = client.post(
+        "/tenants/meridian/analyze",
+        data={"text": text, "kind": "release", "entity": "MRDN", "period": "FY2026-Q1"},
+    ).json()
+    assert after["counts"]["traced"] == 1  # now attributed and tied out
+
+
+def test_put_aliases_rejects_unknown_metric(client):
+    r = client.put(
+        "/tenants/meridian/extraction/aliases",
+        json={"aliases": {"not_a_metric": ["foo"]}},
+    )
+    assert r.status_code == 422
+
+
+def test_alias_config_is_per_tenant(client):
+    client.put("/tenants/meridian/extraction/aliases", json={"aliases": {"total_revenue": ["topline"]}})
+    other = client.get("/tenants/acme/extraction/aliases").json()
+    assert "topline" not in other["aliases"].get("total_revenue", [])
+
+
 def test_analyze_records_verdicts_in_audit_chain(client):
     _seed_demo(client)
     client.post("/tenants/meridian/analyze",

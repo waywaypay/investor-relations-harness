@@ -14,6 +14,8 @@ from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse
 
 from attest.api.schemas import (
+    AliasConfigRequest,
+    AliasConfigResponse,
     AnalyzeResponse,
     AuditVerifyResponse,
     ClosePackResponse,
@@ -101,6 +103,23 @@ def create_app(service: AttestService | None = None) -> FastAPI:
             skipped=report.skipped,
             skipped_tags=list(report.skipped_tags),
         )
+
+    @app.get("/tenants/{tenant_id}/extraction/aliases", response_model=AliasConfigResponse)
+    def get_aliases(tenant_id: str, svc: AttestService = Depends(get_service)) -> AliasConfigResponse:
+        """The extraction vocabulary (metric -> synonyms) in effect for the tenant."""
+        return AliasConfigResponse(tenant_id=tenant_id, aliases=svc.aliases_for(tenant_id).as_dict())
+
+    @app.put("/tenants/{tenant_id}/extraction/aliases", response_model=AliasConfigResponse)
+    def put_aliases(
+        tenant_id: str, req: AliasConfigRequest, svc: AttestService = Depends(get_service)
+    ) -> AliasConfigResponse:
+        """Configure the tenant's extraction synonyms (house style, segment names,
+        non-GAAP labels). Unknown metric ids are rejected."""
+        try:
+            config = svc.configure_aliases(tenant_id, req.aliases, replace=req.replace)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return AliasConfigResponse(tenant_id=tenant_id, aliases=config.as_dict())
 
     @app.post("/tenants/{tenant_id}/analyze", response_model=AnalyzeResponse)
     async def analyze(
