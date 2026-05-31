@@ -1,109 +1,136 @@
-// Domain types for the Attest workspace. Mirrors the backend's verdict vocabulary
-// where they overlap; the UI carries extra presentational fields (badge, page).
+// Types for the Attest workspace.
+//
+// These mirror the FastAPI backend's wire shapes (see src/attest/api/schemas.py
+// and src/attest/domain/verdicts.py). The app no longer ships any seed
+// documents — every document on screen is one the user uploaded and the backend
+// analyzed.
 
-export type VerdictState = "v" | "r" | "f" | "u"; // traced | review | conflict | untraced
+// The four deterministic dispositions a figure can resolve to.
+export type Verdict = "traced" | "needs_review" | "conflict" | "untraced";
 
-export interface FigureField {
-  label: string;
-  value: string;
-  tone?: "" | "bad" | "good";
+// Short single-letter state used for the figure styling classes (.fig.v/.r/.f/.u).
+export type VerdictState = "v" | "r" | "f" | "u";
+
+export const VERDICT_STATE: Record<Verdict, VerdictState> = {
+  traced: "v",
+  needs_review: "r",
+  conflict: "f",
+  untraced: "u",
+};
+
+export const VERDICT_LABEL: Record<Verdict, string> = {
+  traced: "Traced",
+  needs_review: "Needs review",
+  conflict: "Conflict",
+  untraced: "Untraced",
+};
+
+export interface Provenance {
+  source: string;
+  ref?: string | null;
+  as_of?: string | null;
+  confidence?: string;
 }
 
-export interface Figure {
-  id: string;
-  v: string; // canonical headline value (modal title)
-  lbl: string;
-  st: VerdictState;
-  badge: string;
-  tag: string; // superscript tag shown in-line
-  cur: string; // current displayed text (mutable via edits)
-  filed: string | null; // canonical filed value used to verify edits; null = no filed source
-  editedFrom?: string | null;
-  snip: string; // short HTML snippet (unused in modal but kept for parity)
-  cite: string;
-  page: string; // HTML source excerpt
-  reason: string; // HTML reason
-  fields: FigureField[];
-}
-
-export type NarrativeState = "ok" | "warn" | "conflict";
-export type NarrativeKind =
-  | "onmessage"
-  | "wording"
-  | "narrative"
-  | "forwardlooking";
-
-export interface HistoryRow {
-  p: string;
-  q: string;
-  m: string;
-  s: "consistent" | "drift" | "contradict" | "baseline";
-}
-
-export interface NarrativeHistory {
-  worst: "drift" | "contradict";
-  verdict: string;
-  rows: HistoryRow[];
-}
-
-export interface Narrative {
-  id: string;
-  phrase: string;
-  cur: string;
-  kind: NarrativeKind;
-  st: NarrativeState;
-  tag: string;
-  title: string;
-  against: string;
-  compare: string; // HTML
-  detail: string;
-  suggestion: string | null;
-  applyLabel?: string;
-  history?: NarrativeHistory;
-}
-
-export interface Commitment {
-  id: string;
+// A candidate figure the edge proposed from the prose.
+export interface ApiClaim {
+  claim_id: string;
+  document_id: string;
+  entity: string;
+  metric: string;
   period: string;
-  status: "open" | "done";
-  text: string;
+  displayed_text: string;
+  span: [number, number] | null;
+  detect_confidence: string;
+}
+
+// The deterministic disposition of a single claim.
+export interface ApiVerdict {
+  claim_id: string;
+  document_id: string;
+  entity: string;
+  metric: string;
+  period: string;
+  displayed_text: string;
+  verdict: Verdict;
+  reason: string;
+  provenance: Provenance | null;
+  source_value: string | null;
+  as_of: string | null;
+}
+
+export type RuleSeverity = "block" | "warn" | "info";
+
+export interface RuleFinding {
+  rule: string;
+  severity: RuleSeverity;
+  document_id: string | null;
+  metric: string | null;
+  message: string;
   detail: string;
 }
 
-// Inline document tokens.
-export type Inline =
-  | { kind: "text"; html: string } // raw inline markup (e.g. cue spans)
-  | { kind: "fig"; id: string }
-  | { kind: "nar"; id: string };
-
-export type Block =
-  | { kind: "eyebrow"; text: string }
-  | { kind: "h1"; text: string }
-  | { kind: "dek"; text: string }
-  | { kind: "hr" }
-  | { kind: "h2"; text: string }
-  | { kind: "narbar" } // placeholder; rendered as the live narrative summary
-  | { kind: "speaker"; text: string }
-  | { kind: "p"; parts: Inline[] }
-  | { kind: "qa"; tag: string; q: string; a: Inline[] };
-
-export type DocKind = "release" | "script" | "qa";
-
-export interface DocMeta {
-  id: DocKind;
-  name: string;
+// The /analyze response: verification of an uploaded draft, enriched for render.
+export interface AnalyzeResult {
+  document_id: string;
+  verdicts: ApiVerdict[];
+  findings: RuleFinding[];
+  counts: Record<string, number>;
+  publishable: boolean;
+  title: string;
   kind: string;
-  icon: string; // svg markup
-  blocks: Block[];
+  entity: string;
+  period: string | null;
+  text: string;
+  claims: ApiClaim[];
+  warnings: string[];
 }
 
-export interface TrendPoint {
-  l: string;
-  v: number;
+// A filed fact in the tenant's store (GET /facts).
+export interface FactRow {
+  entity: string;
+  metric: string;
+  period: string;
+  value: unknown;
+  provenance?: Provenance | null;
+  [k: string]: unknown;
 }
-export interface TrendSeries {
-  u: "m" | "eps" | "pct";
-  q: TrendPoint[];
-  y: TrendPoint[];
-  fwd?: { lo: number; hi: number; l: string };
+
+export type DocKind = "release" | "script" | "qa" | "other";
+
+export const DOC_KINDS: { value: DocKind; label: string }[] = [
+  { value: "release", label: "Earnings release" },
+  { value: "script", label: "Prepared remarks" },
+  { value: "qa", label: "Q&A prep" },
+  { value: "other", label: "Other document" },
+];
+
+// A document the user uploaded and the backend analyzed, as held in the store.
+// `localId` is unique per upload (the backend keys document_id by kind, which
+// collides when you upload two releases).
+export interface UploadedDoc {
+  localId: string;
+  title: string;
+  kind: string;
+  entity: string;
+  period: string | null;
+  text: string;
+  claims: ApiClaim[];
+  verdicts: Record<string, ApiVerdict>; // by claim_id
+  findings: RuleFinding[];
+  counts: Record<string, number>;
+  publishable: boolean;
+  warnings: string[];
+  uploadedAt: number;
+  // The original input kept so the document can be re-analyzed when sources change.
+  sourceText: string;
+}
+
+export interface UploadInput {
+  file?: File;
+  text?: string;
+  title?: string;
+  kind: DocKind;
+  entity?: string;
+  period?: string;
 }

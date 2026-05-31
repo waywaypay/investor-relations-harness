@@ -1,70 +1,113 @@
-import { describe, expect, it, beforeEach } from "vitest";
-import { render, screen, fireEvent, within } from "@testing-library/react";
+import { describe, expect, it, vi, beforeEach } from "vitest";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import type { AnalyzeResult, FactRow } from "./types";
+
+// Mock the API client so the workspace runs without a live backend.
+const analyze = vi.fn();
+const listFacts = vi.fn(async (): Promise<FactRow[]> => []);
+const ingestDemo = vi.fn();
+
+vi.mock("./api/client", () => ({
+  TENANT: "meridian",
+  apiBaseUrl: "",
+  client: {
+    analyze: (...a: unknown[]) => analyze(...a),
+    listFacts: () => listFacts(),
+    ingestDemo: () => ingestDemo(),
+    ingestXbrl: vi.fn(),
+    ingestGuidance: vi.fn(),
+  },
+}));
+
 import { App } from "./App";
 
+const sampleResult: AnalyzeResult = {
+  document_id: "release",
+  title: "Q1 FY2026 Earnings Release",
+  kind: "release",
+  entity: "MRDN",
+  period: "FY2026-Q1",
+  text: "Meridian reported total revenue of $1.24 billion this quarter.",
+  claims: [
+    {
+      claim_id: "c1",
+      document_id: "release",
+      entity: "MRDN",
+      metric: "total_revenue",
+      period: "FY2026-Q1",
+      displayed_text: "$1.24 billion",
+      span: [35, 48],
+      detect_confidence: "high",
+    },
+  ],
+  verdicts: [
+    {
+      claim_id: "c1",
+      document_id: "release",
+      entity: "MRDN",
+      metric: "total_revenue",
+      period: "FY2026-Q1",
+      displayed_text: "$1.24 billion",
+      verdict: "traced",
+      reason: "Exact match to the filed source.",
+      provenance: { source: "MRDN 10-Q" },
+      source_value: "$1.24 billion",
+      as_of: null,
+    },
+  ],
+  findings: [],
+  counts: { traced: 1 },
+  publishable: true,
+  warnings: [],
+};
+
 describe("Attest workspace", () => {
-  beforeEach(() => render(<App />));
+  beforeEach(() => {
+    analyze.mockReset();
+    listFacts.mockReset();
+    ingestDemo.mockReset();
+    listFacts.mockResolvedValue([]);
+  });
 
-  it("renders the brand and the release as the default document", () => {
+  it("renders the empty state with no preloaded documents", async () => {
+    render(<App />);
     expect(screen.getByText("Attest")).toBeInTheDocument();
-    expect(
-      screen.getByText(/Meridian Systems Reports First Quarter Fiscal 2026 Results/i)
-    ).toBeInTheDocument();
+    expect(screen.getByText(/Upload a disclosure draft/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Meridian Systems Reports/i)).not.toBeInTheDocument();
   });
 
-  it("shows the coverage summary for the release (6 of 8 traced)", () => {
-    // The release has 8 figures: 6 traced, 1 conflict (cloudgrowth), 1 review (guidance).
+  it("uploads a pasted draft and renders its traced figure", async () => {
+    analyze.mockResolvedValue(sampleResult);
+    render(<App />);
+
+    fireEvent.click(screen.getByText("+ Upload a document"));
+    fireEvent.click(screen.getByText("Paste text"));
+    fireEvent.change(screen.getByPlaceholderText(/Paste the press release/i), {
+      target: { value: sampleResult.text },
+    });
+    fireEvent.click(screen.getByText("Analyze document"));
+
+    await waitFor(() => expect(analyze).toHaveBeenCalledTimes(1));
+    // The analyzed document now drives the workspace.
+    expect(await screen.findByText("$1.24 billion")).toBeInTheDocument();
     expect(screen.getByText(/figures traced/i)).toBeInTheDocument();
-    const cov = screen.getByText(/figures traced/i).closest(".cov-txt")!;
-    expect(within(cov as HTMLElement).getAllByText("6").length).toBeGreaterThan(0);
-    expect(within(cov as HTMLElement).getByText("8")).toBeInTheDocument();
+    // It appears in the sidebar document list and can be toggled.
+    expect(screen.getAllByText("Q1 FY2026 Earnings Release").length).toBeGreaterThan(0);
   });
 
-  it("opens the figure modal on click and resolves the cloud-growth conflict to 29%", () => {
-    // The conflicted figure renders its current text "31%".
-    const fig = screen.getByText("31%");
+  it("opens the figure modal with the verdict detail on click", async () => {
+    analyze.mockResolvedValue(sampleResult);
+    render(<App />);
+    fireEvent.click(screen.getByText("+ Upload a document"));
+    fireEvent.click(screen.getByText("Paste text"));
+    fireEvent.change(screen.getByPlaceholderText(/Paste the press release/i), {
+      target: { value: sampleResult.text },
+    });
+    fireEvent.click(screen.getByText("Analyze document"));
+
+    const fig = await screen.findByText("$1.24 billion");
     fireEvent.click(fig);
-    // Modal shows the conflict reason + the corrective action.
-    const apply = screen.getByText(/Apply corrected 29%/i);
-    fireEvent.click(apply);
-    // After resolving, the figure reads 29% and the toast confirms.
-    expect(screen.getByText("29%")).toBeInTheDocument();
-    expect(screen.getByText(/Corrected to 29%/i)).toBeInTheDocument();
-  });
-
-  it("in edit mode, clicking a figure lets you edit it instead of opening the modal", () => {
-    // Enter edit mode; figure tokens become contentEditable.
-    fireEvent.click(screen.getByText("Edit draft"));
-    const fig = screen.getByText("31%");
-    expect(fig).toHaveAttribute("contenteditable", "true");
-    // Clicking the figure while editing must NOT pop the inspection modal —
-    // otherwise the modal hijacks the click and inline editing is impossible.
-    fireEvent.click(fig);
-    expect(screen.queryByText(/Source as filed/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Apply corrected 29%/i)).not.toBeInTheDocument();
-  });
-
-  it("navigates to consensus and requires two models before building", () => {
-    fireEvent.click(screen.getByText("Street consensus"));
-    expect(screen.getByText(/Drop sell-side models/i)).toBeInTheDocument();
-    expect(screen.getByText(/at least two analyst models/i)).toBeInTheDocument();
-    // Ingest two models by clicking the dropzone twice -> consensus table appears.
-    const dz = screen.getByText(/Drop sell-side models/i).closest(".dropzone")!;
-    fireEvent.click(dz);
-    fireEvent.click(dz);
-    expect(screen.getByText(/vs Street/i)).toBeInTheDocument();
-  });
-
-  it("navigates to the calendar and shows the runbook progress", () => {
-    fireEvent.click(screen.getByText("Calendar & tasks"));
-    expect(screen.getByText(/Earnings calendar/i)).toBeInTheDocument();
-    expect(screen.getByText(/complete/i)).toBeInTheDocument();
-  });
-
-  it("on the script, surfaces the narrative summary bar", () => {
-    fireEvent.click(screen.getByText("Prepared remarks"));
-    expect(screen.getByText(/Narrative & language/i)).toBeInTheDocument();
-    // the data-conflict narrative ("accelerating") is present in the script
-    expect(screen.getByText("accelerating")).toBeInTheDocument();
+    expect(screen.getByText(/Exact match to the filed source/i)).toBeInTheDocument();
+    expect(screen.getByText(/Traced to a filed source/i)).toBeInTheDocument();
   });
 });

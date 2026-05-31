@@ -1,79 +1,83 @@
 # Attest — web workspace
 
-A React + TypeScript port of the Attest disclosure-drafting workspace: the
-editor, figure-verification popovers/modals, narrative & commitment checks,
-Street consensus, and the earnings calendar.
+A React + TypeScript workspace for the Attest disclosure spine. You **upload your
+own documents** (earnings release, prepared remarks, Q&A), and the backend
+extracts every figure, ties each one out against your filed sources, and renders
+the verdicts inline (traced / needs review / conflict / untraced). Toggle between
+the documents you've uploaded in the sidebar.
+
+Nothing is preloaded — there is no fake document data. The only seed is the
+*filed source* the backend ties drafts out against, which you supply: load the
+bundled demo numbers in one click, or ingest your own XBRL / 8-K guidance.
 
 ## Run it
+
+The app talks to the FastAPI backend on the **same origin**, so the simplest way
+to run it is to let the backend serve the built bundle:
+
+```bash
+# from the repo root
+pip install -e .
+python scripts/build_spa.py     # build the SPA + inline it into the served bundle
+attest serve                    # http://127.0.0.1:8000  (UI + API, same origin)
+```
+
+`attest serve` seeds the bundled Meridian filing as filed sources, so an uploaded
+draft has numbers to trace against immediately.
+
+### Front-end dev loop (Vite) against a running backend
 
 ```bash
 cd web
 npm install
-npm run dev        # http://localhost:5173
+# point the dev server at a backend running elsewhere:
+VITE_ATTEST_API=http://127.0.0.1:8000 npm run dev   # http://localhost:5173
 ```
+
+`VITE_ATTEST_API` overrides the API base; unset, the app uses a relative base
+(same origin), which is what the served bundle wants. The backend allows the Vite
+dev origin via CORS (override with `ATTEST_CORS_ORIGINS`).
 
 Other scripts:
 
 ```bash
 npm run build      # type-check + production build to dist/
-npm run preview    # serve the built bundle
 npm run typecheck  # tsc --noEmit
 npm run test       # vitest run (unit + component/integration tests)
 ```
 
-Tests use Vitest + React Testing Library (jsdom). `src/lib/verify.test.ts` covers
-the verification echo; `src/App.test.tsx` renders the full workspace and exercises
-the key flows (coverage summary, resolving the cloud-growth conflict to 29%,
-consensus build, calendar, the script's narrative bar).
+## How it works
 
-> In a remote/container dev environment, the server binds to `0.0.0.0` (see
-> `vite.config.ts`); use your platform's port forwarding to reach `:5173`.
-
-## What's wired to what
-
-This is a **standalone faithful port** of the prototype — it runs entirely on
-client-side data (`src/data/`), so every surface works visually without a
-backend. The figure-verification path mirrors the Python engine's behaviour
-closely enough for the live-edit experience (`src/lib/verify.ts`).
-
-The **API seam** lives in `src/api/client.ts`. Components depend on that typed
-interface, not on the transport. By default the app verifies locally
-(`src/lib/verify.ts`); set `VITE_ATTEST_API` to make figure edits reconcile
-against the real deterministic engine.
-
-### Live verification against the backend
-
-```bash
-# 1. run the backend (from the repo root)
-attest serve                 # FastAPI on http://127.0.0.1:8000
-
-# 2. seed the Meridian filing into the running API
-curl -X POST http://127.0.0.1:8000/tenants/meridian/ingest/xbrl \
-  -H 'Content-Type: application/json' \
-  -d @src/attest/ingestion/fixtures/meridian_q1_fy2026.json
-
-# 3. point the web app at it
-cd web
-VITE_ATTEST_API=http://127.0.0.1:8000 npm run dev
-```
-
-With `VITE_ATTEST_API` set, editing a figure POSTs a one-claim document to
-`/verify` and applies the engine's real verdict (`traced`/`conflict`/…); the
-local echo is the optimistic first paint and the fallback if the call fails. The
-backend already allows the Vite dev origin via CORS (override with
-`ATTEST_CORS_ORIGINS`). Narrative, consensus, and calendar remain client-side
-until those services exist (design-doc v2/v3).
+1. **Sources** — drafts tie out against the tenant's filed facts. Establish them
+   from the *Sources* panel: *Load demo filed numbers* (the bundled Meridian
+   filing), *Upload XBRL* (your own instance JSON), or *Paste guidance* (8-K
+   EX-99.1 prose). Ingesting sources re-verifies every open draft.
+2. **Upload** — drop or paste a draft and pick its type/period. The app POSTs it
+   to `POST /tenants/{tenant}/analyze`; the backend recovers the prose, the edge
+   proposes figure claims (with character spans), and the deterministic engine
+   renders the verdicts.
+3. **Toggle & review** — each upload appears in the sidebar with its coverage.
+   Figures are highlighted in place by verdict; hover for the source value and
+   reason, click for the full disposition. Rule findings and extraction warnings
+   render under the document.
 
 ## Structure
 
 ```
 src/
-  data/         seed data ported from the prototype (figures, narratives, trends,
-                documents as typed blocks, consensus/calendar)
-  components/   TopBar, Sidebar, DocumentView, FigureModal, NarrativeModal,
-                CommitmentModal, Popover, TrendChart, Consensus, Calendar
-  lib/          verify (client-side echo of the tie-out logic), icons
-  api/          the client seam for the FastAPI backend
-  store.tsx     central state (figures/narratives/commitments) + actions
-  types.ts      domain + document-block types
+  api/client.ts     typed seam to the FastAPI backend (analyze, ingest, facts)
+  store.tsx         workspace state: uploaded documents, active doc, filed facts
+  types.ts          wire types mirroring src/attest (verdicts, claims, findings)
+  components/
+    TopBar          coverage ring for the active doc + Upload / Sources actions
+    Sidebar         uploaded-document list (toggle) + sources summary
+    DocumentView    renders an analyzed draft, splicing figure spans by verdict
+    UploadModal     file/paste upload form
+    SourcesModal    load demo / ingest XBRL / paste guidance + filed-fact list
+    FigureModal     full verdict detail for a clicked figure
+    Popover         hover card with the verdict, source value, and reason
 ```
+
+The served single-file bundle is regenerated by `scripts/build_spa.py`, which
+runs the Vite build and inlines the JS/CSS into
+`src/attest/api/static/index.html` (the file `attest serve` returns at `/`).
