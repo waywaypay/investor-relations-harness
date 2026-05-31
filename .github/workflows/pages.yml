@@ -1,0 +1,65 @@
+name: Deploy static demo to GitHub Pages
+
+# Publishes the self-contained static demo in docs/ to GitHub Pages. The demo
+# replays real verification-engine output, so the build regenerates demo-data.json
+# from the installed package before uploading — what ships is genuine engine output,
+# never a hand-edited mock.
+
+on:
+  push:
+    branches:
+      - claude/keen-gates-E6OdR   # default branch
+      - claude/dreamy-cori-3GcvU  # feature branch (so the demo can go live before merge)
+    paths:
+      - "docs/**"
+      - "scripts/gen_static_demo.py"
+      - "src/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow one concurrent deployment; let an in-progress run finish.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install package
+        run: pip install -e .
+
+      - name: Regenerate demo data from the real engine
+        run: python scripts/gen_static_demo.py
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - name: Upload docs/ as the Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,0 +1,588 @@
+{
+  "sample_text": "Meridian Systems Reports First Quarter Fiscal 2026 Results\n\nMeridian Systems reported total revenue of $1.24 billion, up 18% year over year. The company delivered GAAP diluted EPS of $0.87 and non-GAAP diluted EPS of $1.12. Cloud segment revenue reached $612 million, up 31% from the prior-year period. Operating cash flow was $338 million. Meridian repurchased $250 million of common stock. For the second quarter, the company expects total revenue in the range of $1.31 to $1.34 billion.",
+  "ingested": 15,
+  "unseeded": {
+    "document_id": "release",
+    "verdicts": [
+      {
+        "claim_id": "release-c2",
+        "document_id": "release",
+        "entity": "MRDN",
+        "metric": "total_revenue",
+        "period": "FY2026-Q1",
+        "displayed_text": "$1.24 billion",
+        "verdict": "untraced",
+        "reason": "No source bound for 'total_revenue' in FY2026-Q1.",
+        "provenance": null,
+        "source_value": null,
+        "as_of": null
+      },
+      {
+        "claim_id": "release-c3",
+        "document_id": "release",
+        "entity": "MRDN",
+        "metric": "unidentified",
+        "period": "FY2026-Q1",
+        "displayed_text": "18%",
+        "verdict": "untraced",
+        "reason": "No source bound for 'unidentified' in FY2026-Q1.",
+        "provenance": null,
+        "source_value": null,
+        "as_of": null
+      },
+      {
+        "claim_id": "release-c4",
+        "document_id": "release",
+        "entity": "MRDN",
+        "metric": "gaap_diluted_eps",
+        "period": "FY2026-Q1",
+        "displayed_text": "$0.87",
+        "verdict": "untraced",
+        "reason": "No source bound for 'gaap_diluted_eps' in FY2026-Q1.",
+        "provenance": null,
+        "source_value": null,
+        "as_of": null
+      },
+      {
+        "claim_id": "release-c5",
+        "document_id": "release",
+        "entity": "MRDN",
+        "metric": "non_gaap_diluted_eps",
+        "period": "FY2026-Q1",
+        "displayed_text": "$1.12",
+        "verdict": "untraced",
+        "reason": "No source bound for 'non_gaap_diluted_eps' in FY2026-Q1.",
+        "provenance": null,
+        "source_value": null,
+        "as_of": null
+      },
+      {
+        "claim_id": "release-c6",
+        "document_id": "release",
+        "entity": "MRDN",
+        "metric": "cloud_revenue",
+        "period": "FY2026-Q1",
+        "displayed_text": "$612 million",
+        "verdict": "untraced",
+        "reason": "No source bound for 'cloud_revenue' in FY2026-Q1.",
+        "provenance": null,
+        "source_value": null,
+        "as_of": null
+      },
+      {
+        "claim_id": "release-c7",
+        "document_id": "release",
+        "entity": "MRDN",
+        "metric": "cloud_growth_yoy",
+        "period": "FY2026-Q1",
+        "displayed_text": "31%",
+        "verdict": "untraced",
+        "reason": "No source bound for 'cloud_growth_yoy' in FY2026-Q1.",
+        "provenance": null,
+        "source_value": null,
+        "as_of": null
+      },
+      {
+        "claim_id": "release-c8",
+        "document_id": "release",
+        "entity": "MRDN",
+        "metric": "operating_cash_flow",
+        "period": "FY2026-Q1",
+        "displayed_text": "$338 million",
+        "verdict": "untraced",
+        "reason": "No source bound for 'operating_cash_flow' in FY2026-Q1.",
+        "provenance": null,
+        "source_value": null,
+        "as_of": null
+      },
+      {
+        "claim_id": "release-c9",
+        "document_id": "release",
+        "entity": "MRDN",
+        "metric": "share_repurchases",
+        "period": "FY2026-Q1",
+        "displayed_text": "$250 million",
+        "verdict": "untraced",
+        "reason": "No source bound for 'share_repurchases' in FY2026-Q1.",
+        "provenance": null,
+        "source_value": null,
+        "as_of": null
+      },
+      {
+        "claim_id": "release-c1",
+        "document_id": "release",
+        "entity": "MRDN",
+        "metric": "q2_revenue_guidance",
+        "period": "FY2026-Q2",
+        "displayed_text": "$1.31 to $1.34 billion",
+        "verdict": "untraced",
+        "reason": "No source bound for 'q2_revenue_guidance' in FY2026-Q2.",
+        "provenance": null,
+        "source_value": null,
+        "as_of": null
+      }
+    ],
+    "findings": [
+      {
+        "rule": "reg_g.reconciliation_required",
+        "severity": "block",
+        "document_id": "release",
+        "metric": "non_gaap_diluted_eps",
+        "message": "No reconciliation source found bridging 'Non-GAAP diluted EPS' to its GAAP counterpart for FY2026-Q1.",
+        "detail": "A GAAP-to-non-GAAP reconciliation must be disclosed."
+      },
+      {
+        "rule": "forward_looking.safe_harbor_required",
+        "severity": "block",
+        "document_id": "release",
+        "metric": null,
+        "message": "Forward-looking statements present without safe-harbor language.",
+        "detail": "Detected forward-looking language. Attach safe-harbor language before this document can publish."
+      }
+    ],
+    "counts": {
+      "traced": 0,
+      "needs_review": 0,
+      "conflict": 0,
+      "untraced": 9
+    },
+    "publishable": false,
+    "title": "Pasted document",
+    "kind": "release",
+    "entity": "MRDN",
+    "period": "FY2026-Q1",
+    "text": "Meridian Systems Reports First Quarter Fiscal 2026 Results\n\nMeridian Systems reported total revenue of $1.24 billion, up 18% year over year. The company delivered GAAP diluted EPS of $0.87 and non-GAAP diluted EPS of $1.12. Cloud segment revenue reached $612 million, up 31% from the prior-year period. Operating cash flow was $338 million. Meridian repurchased $250 million of common stock. For the second quarter, the company expects total revenue in the range of $1.31 to $1.34 billion.",
+    "claims": [
+      {
+        "claim_id": "release-c2",
+        "document_id": "release",
+        "entity": "MRDN",
+        "metric": "total_revenue",
+        "period": "FY2026-Q1",
+        "displayed_text": "$1.24 billion",
+        "span": [
+          103,
+          116
+        ],
+        "detect_confidence": "high"
+      },
+      {
+        "claim_id": "release-c3",
+        "document_id": "release",
+        "entity": "MRDN",
+        "metric": "unidentified",
+        "period": "FY2026-Q1",
+        "displayed_text": "18%",
+        "span": [
+          121,
+          124
+        ],
+        "detect_confidence": "low"
+      },
+      {
+        "claim_id": "release-c4",
+        "document_id": "release",
+        "entity": "MRDN",
+        "metric": "gaap_diluted_eps",
+        "period": "FY2026-Q1",
+        "displayed_text": "$0.87",
+        "span": [
+          183,
+          189
+        ],
+        "detect_confidence": "high"
+      },
+      {
+        "claim_id": "release-c5",
+        "document_id": "release",
+        "entity": "MRDN",
+        "metric": "non_gaap_diluted_eps",
+        "period": "FY2026-Q1",
+        "displayed_text": "$1.12",
+        "span": [
+          217,
+          222
+        ],
+        "detect_confidence": "high"
+      },
+      {
+        "claim_id": "release-c6",
+        "document_id": "release",
+        "entity": "MRDN",
+        "metric": "cloud_revenue",
+        "period": "FY2026-Q1",
+        "displayed_text": "$612 million",
+        "span": [
+          254,
+          266
+        ],
+        "detect_confidence": "high"
+      },
+      {
+        "claim_id": "release-c7",
+        "document_id": "release",
+        "entity": "MRDN",
+        "metric": "cloud_growth_yoy",
+        "period": "FY2026-Q1",
+        "displayed_text": "31%",
+        "span": [
+          271,
+          274
+        ],
+        "detect_confidence": "high"
+      },
+      {
+        "claim_id": "release-c8",
+        "document_id": "release",
+        "entity": "MRDN",
+        "metric": "operating_cash_flow",
+        "period": "FY2026-Q1",
+        "displayed_text": "$338 million",
+        "span": [
+          327,
+          339
+        ],
+        "detect_confidence": "high"
+      },
+      {
+        "claim_id": "release-c9",
+        "document_id": "release",
+        "entity": "MRDN",
+        "metric": "share_repurchases",
+        "period": "FY2026-Q1",
+        "displayed_text": "$250 million",
+        "span": [
+          362,
+          374
+        ],
+        "detect_confidence": "high"
+      },
+      {
+        "claim_id": "release-c1",
+        "document_id": "release",
+        "entity": "MRDN",
+        "metric": "q2_revenue_guidance",
+        "period": "FY2026-Q2",
+        "displayed_text": "$1.31 to $1.34 billion",
+        "span": [
+          466,
+          488
+        ],
+        "detect_confidence": "high"
+      }
+    ],
+    "warnings": []
+  },
+  "seeded": {
+    "document_id": "release",
+    "verdicts": [
+      {
+        "claim_id": "release-c2",
+        "document_id": "release",
+        "entity": "MRDN",
+        "metric": "total_revenue",
+        "period": "FY2026-Q1",
+        "displayed_text": "$1.24 billion",
+        "verdict": "traced",
+        "reason": "Matched the as-filed source within the rounding policy.",
+        "provenance": {
+          "source_type": "edgar_xbrl",
+          "ref": "0001047469-26-001234#us-gaap:Revenues",
+          "label": "Form 10-Q \u00b7 Statements of Operations \u00b7 p.4",
+          "excerpt": "Total revenue was $1,241.3 million for the three months ended March 31, 2026."
+        },
+        "source_value": "$1241300000",
+        "as_of": "2026-04-28"
+      },
+      {
+        "claim_id": "release-c3",
+        "document_id": "release",
+        "entity": "MRDN",
+        "metric": "unidentified",
+        "period": "FY2026-Q1",
+        "displayed_text": "18%",
+        "verdict": "untraced",
+        "reason": "No source bound for 'unidentified' in FY2026-Q1.",
+        "provenance": null,
+        "source_value": null,
+        "as_of": null
+      },
+      {
+        "claim_id": "release-c4",
+        "document_id": "release",
+        "entity": "MRDN",
+        "metric": "gaap_diluted_eps",
+        "period": "FY2026-Q1",
+        "displayed_text": "$0.87",
+        "verdict": "traced",
+        "reason": "Matched the as-filed source within the rounding policy.",
+        "provenance": {
+          "source_type": "edgar_xbrl",
+          "ref": "0001047469-26-001234#us-gaap:EarningsPerShareDiluted",
+          "label": "Form 10-Q \u00b7 Statements of Operations \u00b7 p.5",
+          "excerpt": "Diluted net income per share was $0.87 on 232.1M diluted shares."
+        },
+        "source_value": "$0.87",
+        "as_of": "2026-04-28"
+      },
+      {
+        "claim_id": "release-c5",
+        "document_id": "release",
+        "entity": "MRDN",
+        "metric": "non_gaap_diluted_eps",
+        "period": "FY2026-Q1",
+        "displayed_text": "$1.12",
+        "verdict": "traced",
+        "reason": "Matched the as-filed source within the rounding policy.",
+        "provenance": {
+          "source_type": "filing_line",
+          "ref": "0001047469-26-001200#exhibit-99.1#non-gaap-recon",
+          "label": "Form 8-K \u00b7 Exhibit 99.1 \u00b7 Non-GAAP reconciliation",
+          "excerpt": "Non-GAAP diluted EPS of $1.12, excluding stock-based comp and amortization."
+        },
+        "source_value": "$1.12",
+        "as_of": "2026-04-28"
+      },
+      {
+        "claim_id": "release-c6",
+        "document_id": "release",
+        "entity": "MRDN:Cloud",
+        "metric": "cloud_revenue",
+        "period": "FY2026-Q1",
+        "displayed_text": "$612 million",
+        "verdict": "traced",
+        "reason": "Matched the as-filed source within the rounding policy.",
+        "provenance": {
+          "source_type": "edgar_xbrl",
+          "ref": "0001047469-26-001234#mrdn:CloudSegmentRevenue",
+          "label": "Form 10-Q \u00b7 Note 14, Segment Information \u00b7 p.27",
+          "excerpt": "Cloud segment revenue was $611.8 million for the quarter."
+        },
+        "source_value": "$611800000",
+        "as_of": "2026-04-28"
+      },
+      {
+        "claim_id": "release-c7",
+        "document_id": "release",
+        "entity": "MRDN:Cloud",
+        "metric": "cloud_growth_yoy",
+        "period": "FY2026-Q1",
+        "displayed_text": "31%",
+        "verdict": "conflict",
+        "reason": "Matches a superseded value as of 2025-04-28; the figure was restated to 29% as of 2025-09-15.",
+        "provenance": {
+          "source_type": "edgar_xbrl",
+          "ref": "0001047469-25-004500#note-2-restatement",
+          "label": "FY2025 Form 10-K \u00b7 Note 2 (restated prior-year base $474.3M)",
+          "excerpt": "Restated prior-year cloud revenue of $474.3M yields 29% YoY growth."
+        },
+        "source_value": "29%",
+        "as_of": "2025-09-15"
+      },
+      {
+        "claim_id": "release-c8",
+        "document_id": "release",
+        "entity": "MRDN",
+        "metric": "operating_cash_flow",
+        "period": "FY2026-Q1",
+        "displayed_text": "$338 million",
+        "verdict": "traced",
+        "reason": "Matched the as-filed source within the rounding policy.",
+        "provenance": {
+          "source_type": "edgar_xbrl",
+          "ref": "0001047469-26-001234#us-gaap:NetCashProvidedByUsedInOperatingActivities",
+          "label": "Form 10-Q \u00b7 Statements of Cash Flows \u00b7 p.7",
+          "excerpt": "Net cash provided by operating activities was $338.2 million."
+        },
+        "source_value": "$338200000",
+        "as_of": "2026-04-28"
+      },
+      {
+        "claim_id": "release-c9",
+        "document_id": "release",
+        "entity": "MRDN",
+        "metric": "share_repurchases",
+        "period": "FY2026-Q1",
+        "displayed_text": "$250 million",
+        "verdict": "traced",
+        "reason": "Matched the as-filed source within the rounding policy.",
+        "provenance": {
+          "source_type": "edgar_xbrl",
+          "ref": "0001047469-26-001234#us-gaap:PaymentsForRepurchaseOfCommonStock",
+          "label": "Form 10-Q \u00b7 Note 11, Stockholders' Equity \u00b7 p.24",
+          "excerpt": "Repurchases of common stock of $250.0 million during the quarter."
+        },
+        "source_value": "$250000000",
+        "as_of": "2026-04-28"
+      },
+      {
+        "claim_id": "release-c1",
+        "document_id": "release",
+        "entity": "MRDN",
+        "metric": "q2_revenue_guidance",
+        "period": "FY2026-Q2",
+        "displayed_text": "$1.31 to $1.34 billion",
+        "verdict": "needs_review",
+        "reason": "Bound to a non-filed source (e.g. forward guidance); requires human sign-off and safe-harbor language.",
+        "provenance": {
+          "source_type": "management_input",
+          "ref": "none",
+          "label": "Internal \u2014 Q2 planning memo v3 (not a public document)",
+          "excerpt": "Planning range: $1.31B \u2013 $1.34B (midpoint ~16% YoY)."
+        },
+        "source_value": "$1325000000",
+        "as_of": "2026-04-21"
+      }
+    ],
+    "findings": [
+      {
+        "rule": "forward_looking.safe_harbor_required",
+        "severity": "block",
+        "document_id": "release",
+        "metric": null,
+        "message": "Forward-looking statements present without safe-harbor language.",
+        "detail": "Detected forward-looking language and guidance figures (q2_revenue_guidance). Attach safe-harbor language before this document can publish."
+      },
+      {
+        "rule": "derived.recomputation_mismatch",
+        "severity": "block",
+        "document_id": "release",
+        "metric": "cloud_growth_yoy",
+        "message": "'Cloud growth, YoY' is stated as 31% but recomputes to 29% from cloud_revenue.",
+        "detail": "Recomputed from FY2025-Q1 $474300000 (FY2025 Form 10-K \u00b7 Note 2 (restated prior-year cloud revenue)) to FY2026-Q1 $611800000 (Form 10-Q \u00b7 Note 14, Segment Information \u00b7 p.27)."
+      }
+    ],
+    "counts": {
+      "traced": 6,
+      "needs_review": 1,
+      "conflict": 1,
+      "untraced": 1
+    },
+    "publishable": false,
+    "title": "Pasted document",
+    "kind": "release",
+    "entity": "MRDN",
+    "period": "FY2026-Q1",
+    "text": "Meridian Systems Reports First Quarter Fiscal 2026 Results\n\nMeridian Systems reported total revenue of $1.24 billion, up 18% year over year. The company delivered GAAP diluted EPS of $0.87 and non-GAAP diluted EPS of $1.12. Cloud segment revenue reached $612 million, up 31% from the prior-year period. Operating cash flow was $338 million. Meridian repurchased $250 million of common stock. For the second quarter, the company expects total revenue in the range of $1.31 to $1.34 billion.",
+    "claims": [
+      {
+        "claim_id": "release-c2",
+        "document_id": "release",
+        "entity": "MRDN",
+        "metric": "total_revenue",
+        "period": "FY2026-Q1",
+        "displayed_text": "$1.24 billion",
+        "span": [
+          103,
+          116
+        ],
+        "detect_confidence": "high"
+      },
+      {
+        "claim_id": "release-c3",
+        "document_id": "release",
+        "entity": "MRDN",
+        "metric": "unidentified",
+        "period": "FY2026-Q1",
+        "displayed_text": "18%",
+        "span": [
+          121,
+          124
+        ],
+        "detect_confidence": "low"
+      },
+      {
+        "claim_id": "release-c4",
+        "document_id": "release",
+        "entity": "MRDN",
+        "metric": "gaap_diluted_eps",
+        "period": "FY2026-Q1",
+        "displayed_text": "$0.87",
+        "span": [
+          183,
+          189
+        ],
+        "detect_confidence": "high"
+      },
+      {
+        "claim_id": "release-c5",
+        "document_id": "release",
+        "entity": "MRDN",
+        "metric": "non_gaap_diluted_eps",
+        "period": "FY2026-Q1",
+        "displayed_text": "$1.12",
+        "span": [
+          217,
+          222
+        ],
+        "detect_confidence": "high"
+      },
+      {
+        "claim_id": "release-c6",
+        "document_id": "release",
+        "entity": "MRDN:Cloud",
+        "metric": "cloud_revenue",
+        "period": "FY2026-Q1",
+        "displayed_text": "$612 million",
+        "span": [
+          254,
+          266
+        ],
+        "detect_confidence": "high"
+      },
+      {
+        "claim_id": "release-c7",
+        "document_id": "release",
+        "entity": "MRDN:Cloud",
+        "metric": "cloud_growth_yoy",
+        "period": "FY2026-Q1",
+        "displayed_text": "31%",
+        "span": [
+          271,
+          274
+        ],
+        "detect_confidence": "high"
+      },
+      {
+        "claim_id": "release-c8",
+        "document_id": "release",
+        "entity": "MRDN",
+        "metric": "operating_cash_flow",
+        "period": "FY2026-Q1",
+        "displayed_text": "$338 million",
+        "span": [
+          327,
+          339
+        ],
+        "detect_confidence": "high"
+      },
+      {
+        "claim_id": "release-c9",
+        "document_id": "release",
+        "entity": "MRDN",
+        "metric": "share_repurchases",
+        "period": "FY2026-Q1",
+        "displayed_text": "$250 million",
+        "span": [
+          362,
+          374
+        ],
+        "detect_confidence": "high"
+      },
+      {
+        "claim_id": "release-c1",
+        "document_id": "release",
+        "entity": "MRDN",
+        "metric": "q2_revenue_guidance",
+        "period": "FY2026-Q2",
+        "displayed_text": "$1.31 to $1.34 billion",
+        "span": [
+          466,
+          488
+        ],
+        "detect_confidence": "high"
+      }
+    ],
+    "warnings": []
+  }
+}
