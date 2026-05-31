@@ -1,27 +1,19 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { Figure, Narrative } from "../types";
+import { useLayoutEffect, useRef, useState } from "react";
+import type { ApiClaim, ApiVerdict } from "../types";
+import { VERDICT_LABEL, VERDICT_STATE } from "../types";
 
-export type PopTarget =
-  | { type: "fig"; fig: Figure; rect: DOMRect }
-  | { type: "nar"; nar: Narrative; rect: DOMRect }
-  | null;
-
-const KIND_LABEL: Record<string, string> = {
-  wording: "WORDING",
-  narrative: "NARRATIVE",
-  forwardlooking: "FORWARD-LOOKING",
-  onmessage: "ON-MESSAGE",
-};
-const narStClass = (st: string) => (st === "ok" ? "v" : st === "conflict" ? "f" : "r");
-const narStText = (st: string) =>
-  st === "ok" ? "Consistent with approved messaging"
-    : st === "conflict" ? "Conflicts with the data" : "Needs your attention";
+export type PopTarget = { verdict: ApiVerdict; claim: ApiClaim; rect: DOMRect } | null;
 
 export function Popover({
-  target, onEnter, onLeave,
-}: { target: PopTarget; onEnter: () => void; onLeave: () => void }) {
+  target,
+  onEnter,
+  onLeave,
+}: {
+  target: PopTarget;
+  onEnter: () => void;
+  onLeave: () => void;
+}) {
   const ref = useRef<HTMLDivElement>(null);
-  const docRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
 
   useLayoutEffect(() => {
@@ -29,8 +21,8 @@ export function Popover({
       setPos(null);
       return;
     }
-    const pw = 332;
-    const ph = ref.current.offsetHeight || 220;
+    const pw = 320;
+    const ph = ref.current.offsetHeight || 180;
     const r = target.rect;
     const left = Math.max(12, Math.min(r.left + r.width / 2 - pw / 2, window.innerWidth - pw - 12));
     let top = r.top - ph - 10;
@@ -38,43 +30,37 @@ export function Popover({
     setPos({ left, top });
   }, [target]);
 
-  // Center the cropped source view on the highlighted mark, like the prototype.
-  useEffect(() => {
-    if (target?.type === "fig" && docRef.current) {
-      const hl = docRef.current.querySelector("mark.hl") as HTMLElement | null;
-      if (hl) docRef.current.scrollTop = Math.max(0, hl.offsetTop - docRef.current.clientHeight / 2 + hl.offsetHeight / 2);
-    }
-  }, [target]);
-
   if (!target) return <div className="pop" ref={ref} />;
 
-  const style = { width: 332, left: pos?.left ?? -9999, top: pos?.top ?? -9999 };
+  const v = target.verdict;
+  const st = VERDICT_STATE[v.verdict];
+  const style = { width: 320, left: pos?.left ?? -9999, top: pos?.top ?? -9999 };
 
-  if (target.type === "fig") {
-    const d = target.fig;
-    const bc = d.st === "f" ? "f" : d.st === "r" ? "r" : "";
-    const stTxt = d.st === "v" ? "Traced" : d.st === "r" ? "Needs review" : "Conflict";
-    return (
-      <div className={`pop show`} ref={ref} style={style} onMouseEnter={onEnter} onMouseLeave={onLeave}>
-        <div className="ph">
-          <span className={`badge ${bc}`}>{d.badge}</span>
-          <span className={`st ${d.st}`}>{stTxt}</span>
-        </div>
-        <div className="pop-doc" ref={docRef} dangerouslySetInnerHTML={{ __html: d.page }} />
-        <div className="pf"><span>{d.cite}</span><span className="go">Click to open ↗</span></div>
-      </div>
-    );
-  }
-
-  const n = target.nar;
   return (
-    <div className={`pop show`} ref={ref} style={style} onMouseEnter={onEnter} onMouseLeave={onLeave}>
+    <div className="pop show" ref={ref} style={style} onMouseEnter={onEnter} onMouseLeave={onLeave}>
       <div className="ph">
-        <span className={`nbadge ${n.st}`}>{KIND_LABEL[n.kind] || "CHECK"}</span>
-        <span className={`st ${narStClass(n.st)}`}>{narStText(n.st)}</span>
+        <span className={`badge ${st === "v" ? "" : st}`}>{v.metric}</span>
+        <span className={`st ${st}`}>{VERDICT_LABEL[v.verdict]}</span>
       </div>
-      <div className="nar-body" dangerouslySetInnerHTML={{ __html: n.compare }} />
-      <div className="pf"><span>vs {n.against}</span><span className="go">Click to review ↗</span></div>
+      <div className="pop-reason">{v.reason}</div>
+      <div className="pop-fields">
+        <div className="pf-row">
+          <span>As written</span>
+          <span className="mono">{v.displayed_text}</span>
+        </div>
+        <div className="pf-row">
+          <span>Filed source</span>
+          <span className="mono">{v.source_value ?? "—"}</span>
+        </div>
+        <div className="pf-row">
+          <span>Period</span>
+          <span className="mono">{v.period}</span>
+        </div>
+      </div>
+      <div className="pf">
+        <span>{v.provenance?.source ?? "no source bound"}</span>
+        <span className="go">Click to open ↗</span>
+      </div>
     </div>
   );
 }

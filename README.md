@@ -27,8 +27,11 @@ pytest               # run the suite, including the eval regression gate
 attest serve         # API + upload UI at http://127.0.0.1:8000  (API docs at /docs)
 ```
 
-A React + TypeScript front-end (the disclosure-drafting workspace from the design
-brief) lives in [`web/`](web/README.md) — run it standalone with `cd web && npm install && npm run dev`.
+A React + TypeScript front-end (the disclosure-drafting workspace) lives in
+[`web/`](web/README.md): upload your own release / script / Q&A, and every figure
+is tied out against your filed sources, with the documents you've uploaded
+toggled in the sidebar. `attest serve` builds and serves it at `/`; for the dev
+loop see [`web/README.md`](web/README.md).
 
 ## What it does
 
