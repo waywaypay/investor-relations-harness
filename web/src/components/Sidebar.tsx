@@ -1,114 +1,91 @@
 import { useStore } from "../store";
-import type { UploadedDoc } from "../types";
+import { DOCS } from "../data/documents";
+import type { Block, DocKind, Figure, VerdictState } from "../types";
 
-function counts(doc: UploadedDoc) {
-  let v = 0,
-    r = 0,
-    f = 0,
-    u = 0,
-    t = 0;
-  for (const vd of Object.values(doc.verdicts)) {
-    t++;
-    if (vd.verdict === "traced") v++;
-    else if (vd.verdict === "needs_review") r++;
-    else if (vd.verdict === "conflict") f++;
-    else u++;
+type View = DocKind | "consensus" | "calendar";
+
+function figureIds(blocks: Block[]): string[] {
+  const ids: string[] = [];
+  for (const b of blocks) {
+    if (b.kind === "p") b.parts.forEach((p) => p.kind === "fig" && ids.push(p.id));
+    if (b.kind === "qa") b.a.forEach((p) => p.kind === "fig" && ids.push(p.id));
   }
-  return { v, r, f, u, t };
+  return ids;
 }
 
-export function Sidebar({
-  onOpenUpload,
-  onOpenSources,
-}: {
-  onOpenUpload: () => void;
-  onOpenSources: () => void;
-}) {
+function counts(ids: string[], figs: Record<string, Figure>) {
+  let v = 0, r = 0, f = 0, t = 0;
+  ids.forEach((id) => {
+    const fig = figs[id];
+    if (!fig) return;
+    t++;
+    const st: VerdictState = fig.st;
+    if (st === "v") v++; else if (st === "r") r++; else f++;
+  });
+  return { v, r, f, t };
+}
+
+const ICON_CONSENSUS =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18"/><rect x="5" y="11" width="3" height="7"/><rect x="10.5" y="7" width="3" height="11"/><rect x="16" y="13" width="3" height="5"/></svg>';
+const ICON_CALENDAR =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></svg>';
+
+export function Sidebar({ view, setView }: { view: View; setView: (v: View) => void }) {
   const store = useStore();
   return (
     <aside className="sidebar">
-      <div className="sb-head">Disclosure workspace</div>
-      <div className="sb-sub">Upload · verify · trace</div>
-
-      <button className="upload-cta" onClick={onOpenUpload}>
-        + Upload document
-      </button>
-
-      <div className="sb-cap">Your documents</div>
+      <div className="sb-head">Q1 FY2026 close pack</div>
+      <div className="sb-sub">Meridian Systems</div>
+      <div className="sb-cap">Documents</div>
       <div className="doclist">
-        {store.documents.length === 0 && (
-          <div className="sb-empty">No documents yet. Upload a draft to begin.</div>
-        )}
-        {store.documents.map((d) => {
-          const c = counts(d);
+        {DOCS.map((d) => {
+          const c = counts(figureIds(d.blocks), store.figures);
           const tot = c.t || 1;
           return (
-            <button
-              key={d.localId}
-              className={`docitem ${store.activeId === d.localId ? "active" : ""}`}
-              onClick={() => store.setActive(d.localId)}
-            >
+            <button key={d.id} className={`docitem ${view === d.id ? "active" : ""}`}
+              onClick={() => setView(d.id)}>
               <div className="di-top">
-                <div className="di-main">
-                  <div className="di-name">{d.title}</div>
+                <span className="di-ic" dangerouslySetInnerHTML={{ __html: d.icon }} />
+                <div>
+                  <div className="di-name">{d.name}</div>
                   <div className="di-kind">{d.kind}</div>
                 </div>
-                <span
-                  className="di-remove"
-                  title="Remove"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    store.removeDocument(d.localId);
-                  }}
-                >
-                  ×
-                </span>
               </div>
               <div className="covbar">
                 <i className="cv" style={{ width: `${(c.v / tot) * 100}%` }} />
                 <i className="cr" style={{ width: `${(c.r / tot) * 100}%` }} />
-                <i className="cf" style={{ width: `${((c.f + c.u) / tot) * 100}%` }} />
+                <i className="cf" style={{ width: `${(c.f / tot) * 100}%` }} />
               </div>
               <div className="covnums">
-                <span className="d">
-                  <span className="sq" style={{ background: "var(--verified)" }} />
-                  {c.v} traced
-                </span>
-                {c.r > 0 && (
-                  <span className="d">
-                    <span className="sq" style={{ background: "var(--review)" }} />
-                    {c.r}
-                  </span>
-                )}
-                {c.f + c.u > 0 && (
-                  <span className="d">
-                    <span className="sq" style={{ background: "var(--flag)" }} />
-                    {c.f + c.u}
-                  </span>
-                )}
+                <span className="d"><span className="sq" style={{ background: "var(--verified)" }} />{c.v} traced</span>
+                {c.r > 0 && <span className="d"><span className="sq" style={{ background: "var(--review)" }} />{c.r}</span>}
+                {c.f > 0 && <span className="d"><span className="sq" style={{ background: "var(--flag)" }} />{c.f}</span>}
               </div>
             </button>
           );
         })}
       </div>
-
-      <div className="sb-cap">Sources</div>
-      <button className="docitem simple" onClick={onOpenSources}>
-        <div className="di-top">
-          <div className="di-main">
-            <div className="di-name">Filed sources</div>
-            <div className="di-kind">
-              {store.facts.length} fact{store.facts.length === 1 ? "" : "s"} in the store
-            </div>
-          </div>
-        </div>
-      </button>
-      {store.facts.length === 0 && (
-        <div className="sb-note">
-          No filed sources yet. <b>Load demo numbers</b> or ingest your own XBRL so uploaded figures
-          can trace.
-        </div>
-      )}
+      <div className="sb-cap">Workspace</div>
+      <div className="doclist">
+        <NavItem id="consensus" name="Street consensus" kind="Sell-side models" icon={ICON_CONSENSUS} view={view} setView={setView} />
+        <NavItem id="calendar" name="Calendar & tasks" kind="Q2 FY26 runbook" icon={ICON_CALENDAR} view={view} setView={setView} />
+      </div>
     </aside>
+  );
+}
+
+function NavItem({ id, name, kind, icon, view, setView }: {
+  id: View; name: string; kind: string; icon: string; view: View; setView: (v: View) => void;
+}) {
+  return (
+    <button className={`docitem simple ${view === id ? "active" : ""}`} onClick={() => setView(id)}>
+      <div className="di-top">
+        <span className="di-ic" dangerouslySetInnerHTML={{ __html: icon }} />
+        <div>
+          <div className="di-name">{name}</div>
+          <div className="di-kind">{kind}</div>
+        </div>
+      </div>
+    </button>
   );
 }
