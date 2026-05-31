@@ -30,7 +30,7 @@ attest = "attest.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-attest = ["ingestion/fixtures/*.json", "eval/golden/*.json", "api/static/*"]
+attest = ["ingestion/fixtures/*.json", "ingestion/fixtures/*.txt", "eval/golden/*.json", "api/static/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
