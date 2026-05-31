@@ -170,10 +170,14 @@ export function DocumentView(props: Props) {
       </div>
       {editing && (
         <div className="edithint">
-          ✎ Editing — click any <b>highlighted figure</b> to change its value, then click away to re-verify against the filed source.
+          ✎ Editing — type anywhere to rewrite the draft. Edit a <b>highlighted figure</b> and click away to re-verify it against the filed source.
         </div>
       )}
-      <article className={`doc ${editing ? "editing" : ""}`}>
+      <article
+        className={`doc ${editing ? "editing" : ""}`}
+        contentEditable={editing}
+        suppressContentEditableWarning
+      >
         {doc.blocks.map((b, i) => renderBlock(b, i))}
       </article>
     </>

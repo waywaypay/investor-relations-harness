@@ -44,6 +44,16 @@ describe("Attest workspace", () => {
     expect(screen.queryByText(/Apply corrected 29%/i)).not.toBeInTheDocument();
   });
 
+  it("in edit mode the whole draft is editable, so you can type new text anywhere", () => {
+    fireEvent.click(screen.getByText("Edit draft"));
+    // The document body itself is contentEditable — not just the figure tokens —
+    // so a user can rewrite the prose, not only change the highlighted numbers.
+    const article = document.querySelector("article.doc");
+    expect(article).toHaveAttribute("contenteditable", "true");
+    // And the editing hint tells the user they can type anywhere.
+    expect(screen.getByText(/type anywhere to rewrite the draft/i)).toBeInTheDocument();
+  });
+
   it("navigates to consensus and requires two models before building", () => {
     fireEvent.click(screen.getByText("Street consensus"));
     expect(screen.getByText(/Drop sell-side models/i)).toBeInTheDocument();
