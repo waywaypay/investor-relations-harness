@@ -14,7 +14,7 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 
-from attest.api.frontend import index_html
+from attest.api.frontend import spa_html
 from attest.api.schemas import (
     AuditVerifyResponse,
     ClosePackResponse,
@@ -76,7 +76,7 @@ def create_app(service: AttestService | None = None, *, seed_demo: bool = False)
 
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
     def index() -> str:
-        return index_html()
+        return spa_html()
 
     @app.get("/health")
     def health() -> dict:
