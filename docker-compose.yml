@@ -1,0 +1,39 @@
+# Local durable-storage backends for Attest.
+#
+#   docker compose up -d
+#   export ATTEST_DATABASE_URL=postgresql://attest:attest@localhost:5432/attest
+#   export ATTEST_REDIS_URL=redis://localhost:6379/0
+#   attest serve     # now backed by Postgres + Redis instead of in-memory
+#
+# The schema is created on first connect (idempotent bootstrap in ensure_schema),
+# so there is no separate migration step for this reference setup.
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: attest
+      POSTGRES_PASSWORD: attest
+      POSTGRES_DB: attest
+    ports:
+      - "5432:5432"
+    volumes:
+      - attest_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U attest"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  attest_pgdata:
