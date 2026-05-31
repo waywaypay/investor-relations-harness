@@ -19,6 +19,7 @@ from attest.extraction.claims import DEFAULT_ALIASES, AliasConfig, ClaimExtracto
 from attest.factstore.repository import FactStore, InMemoryFactStore
 from attest.ingestion.base import IngestionReport
 from attest.ingestion.edgar_xbrl import XBRLConnector
+from attest.ingestion.guidance import GuidanceConnector
 from attest.verification.engine import VerificationEngine, VerificationResult
 
 
@@ -49,6 +50,43 @@ class AttestService:
         self, instance: dict, tenant_id: str, actor: str = "system:ingestion"
     ) -> IngestionReport:
         facts, report = XBRLConnector(self.registry).fetch(instance, tenant_id)
+        self.store.add_many(facts)
+        self.audit_log.append(
+            actor=actor,
+            type=EventType.INGEST,
+            tenant_id=tenant_id,
+            payload=report.model_dump(),
+        )
+        return report
+
+    def ingest_guidance(
+        self,
+        *,
+        text: str,
+        tenant_id: str,
+        entity: str,
+        accession: str,
+        base_period: str | None = None,
+        as_of: str = "1970-01-01",
+        label: str | None = None,
+        actor: str = "system:ingestion",
+    ) -> IngestionReport:
+        """Ingest management's forward guidance from 8-K EX-99.1 press-release prose.
+
+        The prose analog of :meth:`ingest_xbrl`: it plugs the one hole XBRL leaves —
+        guidance never lands in a tagged fact — and lands each figure with the exact
+        sentence it came from, so a later draft's reaffirmed guidance ties out to the
+        published line. Like every ingestion, it writes an attributable audit event.
+        """
+        facts, report = GuidanceConnector(self.registry).fetch(
+            text=text,
+            tenant_id=tenant_id,
+            entity=entity,
+            accession=accession,
+            base_period=base_period,
+            as_of=as_of,
+            label=label,
+        )
         self.store.add_many(facts)
         self.audit_log.append(
             actor=actor,
