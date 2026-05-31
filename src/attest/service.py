@@ -10,9 +10,10 @@ from __future__ import annotations
 
 from attest.audit.events import EventType
 from attest.audit.log import AuditLog, InMemoryAuditLog
-from attest.domain.document import Document
+from attest.domain.document import Document, DocumentKind
 from attest.domain.metrics import DEFAULT_REGISTRY, MetricRegistry
 from attest.domain.money import DEFAULT_POLICY, RoundingPolicy
+from attest.extraction.claims import ClaimExtractor, infer_period
 from attest.factstore.repository import FactStore, InMemoryFactStore
 from attest.ingestion.base import IngestionReport
 from attest.ingestion.edgar_xbrl import XBRLConnector
@@ -58,6 +59,47 @@ class AttestService:
 
     def verify_close_pack(self, documents: list[Document]):
         return self.engine.verify_close_pack(documents)
+
+    # -- upload & analyze (the real-document entry point) ---------------------
+
+    def analyze_text(
+        self,
+        *,
+        tenant_id: str,
+        text: str,
+        title: str = "Uploaded document",
+        kind: DocumentKind = DocumentKind.OTHER,
+        entity: str | None = None,
+        period: str | None = None,
+        document_id: str | None = None,
+    ) -> tuple[Document, VerificationResult, str, str | None]:
+        """Run a real, uploaded draft end to end.
+
+        The probabilistic edge (:class:`ClaimExtractor`) proposes figure claims
+        from the prose; the deterministic core then disposes exactly as it does for
+        a hand-authored :class:`Document`. The verdict events the engine writes give
+        the upload an audit footprint without inventing a new event type.
+
+        Returns the constructed document, its verification result, and the resolved
+        primary entity / period the analysis ran under.
+        """
+        entity = entity or self.default_entity(tenant_id)
+        period = period or infer_period(title, text)
+        doc_id = document_id or kind.value
+        claims = ClaimExtractor(self.registry, self.store).extract(
+            text, document_id=doc_id, tenant_id=tenant_id, entity=entity, period=period
+        )
+        document = Document(
+            id=doc_id, tenant_id=tenant_id, title=title, kind=kind, text=text, claims=claims
+        )
+        return document, self.engine.verify_document(document), entity, period
+
+    def default_entity(self, tenant_id: str) -> str:
+        """Pick the most plausible issuer entity from what's been ingested."""
+        for fact in self.store.all(tenant_id):
+            if ":" not in fact.entity:  # a parent issuer, not a segment
+                return fact.entity
+        return tenant_id.upper()
 
     # -- human-in-the-loop accountability ------------------------------------
 

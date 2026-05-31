@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from attest.domain.verdicts import FigureVerdict, RuleFinding
+from attest.domain.verdicts import FigureClaim, FigureVerdict, RuleFinding
 
 
 class IngestResponse(BaseModel):
@@ -26,6 +26,23 @@ class ClosePackResponse(BaseModel):
     documents: list[VerifyResponse]
     consistency_findings: list[RuleFinding]
     publishable: bool
+
+
+class AnalyzeResponse(VerifyResponse):
+    """Verification of an uploaded/pasted draft, enriched for rendering.
+
+    Carries the recovered prose, the metadata the analysis ran under, the proposed
+    claims (with spans, so the figures can be highlighted in place), and any honest
+    warnings from text extraction.
+    """
+
+    title: str
+    kind: str
+    entity: str
+    period: str | None = None
+    text: str
+    claims: list[FigureClaim]
+    warnings: list[str] = Field(default_factory=list)
 
 
 class SignOffRequest(BaseModel):

@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Attest — upload &amp; verify a disclosure</title>
+<style>
+  :root {
+    --bg: #0b0f17; --panel: #121826; --panel2: #0e1421; --line: #24304a;
+    --ink: #e7ecf5; --muted: #93a0b8; --accent: #5b9dff;
+    --traced: #2ecc71; --review: #f5b13d; --conflict: #ff5c6c; --untraced: #7c8aa5;
+    --block: #ff5c6c; --warn: #f5b13d; --info: #5b9dff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  header { padding: 26px 32px 18px; border-bottom: 1px solid var(--line); }
+  header h1 { margin: 0; font-size: 22px; letter-spacing: .2px; }
+  header h1 span { color: var(--accent); }
+  header p { margin: 6px 0 0; color: var(--muted); max-width: 760px; }
+  main { display: grid; grid-template-columns: 380px 1fr; gap: 0; min-height: calc(100vh - 92px); }
+  .left { padding: 22px 24px; border-right: 1px solid var(--line); }
+  .right { padding: 22px 28px; overflow: auto; }
+  label { display: block; font-size: 12px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); margin: 14px 0 5px; }
+  input, select, textarea {
+    width: 100%; background: var(--panel2); color: var(--ink); border: 1px solid var(--line);
+    border-radius: 8px; padding: 9px 11px; font: inherit;
+  }
+  textarea { min-height: 150px; resize: vertical; font-size: 13.5px; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .drop {
+    margin-top: 14px; border: 1.5px dashed var(--line); border-radius: 12px; padding: 22px 16px;
+    text-align: center; color: var(--muted); cursor: pointer; transition: .15s;
+  }
+  .drop.hover { border-color: var(--accent); color: var(--ink); background: #0f1726; }
+  .drop b { color: var(--accent); }
+  .drop small { display: block; margin-top: 6px; font-size: 11.5px; }
+  .file { margin-top: 8px; font-size: 13px; color: var(--ink); }
+  .btns { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
+  button {
+    background: var(--accent); color: #05101f; border: 0; border-radius: 8px;
+    padding: 10px 16px; font: 600 14px/1 inherit; cursor: pointer;
+  }
+  button.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); font-weight: 500; }
+  button:disabled { opacity: .5; cursor: default; }
+  .hint { color: var(--muted); font-size: 12px; margin-top: 10px; }
+  .sep { height: 1px; background: var(--line); margin: 20px 0; }
+
+  .banner { border-radius: 10px; padding: 12px 16px; font-weight: 600; margin-bottom: 16px; }
+  .banner.ok { background: rgba(46,204,113,.12); border: 1px solid rgba(46,204,113,.4); color: #b9f2cf; }
+  .banner.no { background: rgba(255,92,108,.12); border: 1px solid rgba(255,92,108,.4); color: #ffc4ca; }
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
+  .chip { border: 1px solid var(--line); border-radius: 999px; padding: 4px 11px; font-size: 12.5px; color: var(--muted); }
+  .chip b { color: var(--ink); }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+  .traced { color: var(--traced); } .review { color: var(--review); }
+  .conflict { color: var(--conflict); } .untraced { color: var(--untraced); }
+  .bg-traced { background: var(--traced); } .bg-review { background: var(--review); }
+  .bg-conflict { background: var(--conflict); } .bg-untraced { background: var(--untraced); }
+
+  h2.sec { font-size: 13px; text-transform: uppercase; letter-spacing: .7px; color: var(--muted); margin: 22px 0 10px; }
+  .doc {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px;
+    white-space: pre-wrap; font-size: 14.5px; line-height: 1.8;
+  }
+  mark { border-radius: 4px; padding: 1px 3px; color: #06101e; font-weight: 600; cursor: help; }
+  mark.v-traced { background: var(--traced); }
+  mark.v-needs_review { background: var(--review); }
+  mark.v-conflict { background: var(--conflict); color: #fff; }
+  mark.v-untraced { background: var(--untraced); }
+
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); font-size: 13.5px; vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 11.5px; text-transform: uppercase; letter-spacing: .5px; }
+  td .reason { color: var(--muted); font-size: 12.5px; }
+  .pill { font-size: 11px; padding: 2px 8px; border-radius: 999px; font-weight: 700; }
+  .pill.traced { background: rgba(46,204,113,.16); color: var(--traced); }
+  .pill.needs_review { background: rgba(245,177,61,.16); color: var(--review); }
+  .pill.conflict { background: rgba(255,92,108,.16); color: var(--conflict); }
+  .pill.untraced { background: rgba(124,138,165,.18); color: var(--untraced); }
+  .finding { border-left: 3px solid var(--line); padding: 8px 12px; margin: 8px 0; background: var(--panel2); border-radius: 0 8px 8px 0; }
+  .finding.block { border-color: var(--block); }
+  .finding.warn { border-color: var(--warn); }
+  .finding.info { border-color: var(--info); }
+  .finding .sev { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; }
+  .finding.block .sev { color: var(--block); } .finding.warn .sev { color: var(--warn); } .finding.info .sev { color: var(--info); }
+  .finding .det { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+  .empty { color: var(--muted); padding: 40px 0; text-align: center; }
+  .warn-box { background: rgba(245,177,61,.1); border: 1px solid rgba(245,177,61,.35); color: #f6d79a; border-radius: 8px; padding: 10px 13px; margin-bottom: 14px; font-size: 13px; }
+  .toast { position: fixed; bottom: 20px; right: 20px; background: var(--panel); border: 1px solid var(--line); padding: 12px 16px; border-radius: 10px; max-width: 360px; box-shadow: 0 10px 30px rgba(0,0,0,.4); }
+  code { background: var(--panel2); padding: 1px 5px; border-radius: 4px; font-size: 12.5px; }
+</style>
+</head>
+<body>
+<header>
+  <h1><span>Attest</span> · upload &amp; verify a disclosure</h1>
+  <p>Drop a real press release, earnings script, or Q&amp;A draft. The engine detects every
+     figure, ties each one out against your filed sources, and runs the Reg&nbsp;G / safe-harbor /
+     consistency rules — deterministically, with no model deciding the verdict.</p>
+</header>
+
+<main>
+  <section class="left">
+    <label>Tenant</label>
+    <input id="tenant" value="meridian" />
+    <div class="row">
+      <div><label>Issuer / ticker</label><input id="entity" placeholder="MRDN" value="MRDN" /></div>
+      <div><label>Reporting period</label><input id="period" placeholder="FY2026-Q1" value="FY2026-Q1" /></div>
+    </div>
+    <label>Document type</label>
+    <select id="kind">
+      <option value="release">Earnings release / press release</option>
+      <option value="script">Prepared remarks / call script</option>
+      <option value="qa">Q&amp;A preparation</option>
+      <option value="other">Other</option>
+    </select>
+
+    <div class="drop" id="drop">
+      <b>Click to upload</b> or drop a file<br />
+      <small>.txt · .md · .html · .docx · .pdf · .rtf · .csv</small>
+      <div class="file" id="fileName"></div>
+    </div>
+    <input id="file" type="file" hidden
+      accept=".txt,.md,.markdown,.html,.htm,.docx,.pdf,.rtf,.csv,.json,.log,text/*" />
+
+    <label>…or paste the text</label>
+    <textarea id="text" placeholder="Paste the draft press release, script, or Q&amp;A here…"></textarea>
+
+    <div class="btns">
+      <button id="analyze">Analyze document</button>
+      <button class="ghost" id="sample">Use sample release</button>
+    </div>
+    <div class="sep"></div>
+    <button class="ghost" id="seed" style="width:100%">Load Meridian demo filing (filed sources)</button>
+    <p class="hint">Uploads tie out against facts already ingested for the tenant. Load the demo
+       filing to see <span class="traced">traced</span> figures and the restatement
+       <span class="conflict">conflict</span> against a real source set; without ingested facts
+       every figure is honestly <span class="untraced">untraced</span> (the rules still run).</p>
+  </section>
+
+  <section class="right" id="out">
+    <div class="empty">Upload or paste a document, then hit <b>Analyze</b>.</div>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let chosenFile = null;
+
+const SAMPLE = `Meridian Systems Reports First Quarter Fiscal 2026 Results
+
+Meridian Systems reported total revenue of $1.24 billion, up 18% year over year. The company delivered GAAP diluted EPS of $0.87 and non-GAAP diluted EPS of $1.12. Cloud segment revenue reached $612 million, up 31% from the prior-year period. Operating cash flow was $338 million. Meridian repurchased $250 million of common stock. For the second quarter, the company expects total revenue in the range of $1.31 to $1.34 billion.`;
+
+$('sample').onclick = () => { $('text').value = SAMPLE; chosenFile = null; $('file').value=''; $('fileName').textContent=''; $('kind').value='release'; };
+
+const drop = $('drop');
+drop.onclick = () => $('file').click();
+$('file').onchange = (e) => { chosenFile = e.target.files[0] || null; $('fileName').textContent = chosenFile ? '📄 ' + chosenFile.name : ''; };
+['dragover','dragenter'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('hover'); }));
+['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('hover'); }));
+drop.addEventListener('drop', e => { chosenFile = e.dataTransfer.files[0] || null; if (chosenFile) $('fileName').textContent = '📄 ' + chosenFile.name; });
+
+function toast(msg) { const t = document.createElement('div'); t.className='toast'; t.innerHTML=msg; document.body.appendChild(t); setTimeout(()=>t.remove(), 4200); }
+
+$('seed').onclick = async () => {
+  const tenant = $('tenant').value.trim() || 'meridian';
+  $('seed').disabled = true; $('seed').textContent = 'Loading…';
+  try {
+    const r = await fetch(`/tenants/${encodeURIComponent(tenant)}/ingest/demo`, { method: 'POST' });
+    const j = await r.json();
+    toast(`Ingested <b>${j.ingested}</b> filed facts for <code>${esc(tenant)}</code>. Now analyze a draft.`);
+  } catch (e) { toast('Could not load demo filing.'); }
+  $('seed').disabled = false; $('seed').textContent = 'Load Meridian demo filing (filed sources)';
+};
+
+$('analyze').onclick = async () => {
+  const tenant = $('tenant').value.trim() || 'meridian';
+  const fd = new FormData();
+  if (chosenFile) fd.append('file', chosenFile);
+  else if ($('text').value.trim()) fd.append('text', $('text').value);
+  else { toast('Add a file or paste some text first.'); return; }
+  fd.append('title', chosenFile ? chosenFile.name : 'Pasted document');
+  fd.append('kind', $('kind').value);
+  if ($('entity').value.trim()) fd.append('entity', $('entity').value.trim());
+  if ($('period').value.trim()) fd.append('period', $('period').value.trim());
+
+  $('analyze').disabled = true; $('analyze').textContent = 'Analyzing…';
+  try {
+    const r = await fetch(`/tenants/${encodeURIComponent(tenant)}/analyze`, { method: 'POST', body: fd });
+    if (!r.ok) { const e = await r.json().catch(()=>({detail:r.statusText})); $('out').innerHTML = `<div class="banner no">Error ${r.status}: ${esc(String(e.detail||''))}</div>`; }
+    else render(await r.json());
+  } catch (e) { $('out').innerHTML = `<div class="banner no">Request failed: ${esc(String(e))}</div>`; }
+  $('analyze').disabled = false; $('analyze').textContent = 'Analyze document';
+};
+
+function highlight(text, claims, verdictByClaim) {
+  const spans = claims.filter(c => Array.isArray(c.span)).slice().sort((a,b) => a.span[0]-b.span[0]);
+  let out = '', cursor = 0;
+  for (const c of spans) {
+    const [s, e] = c.span;
+    if (s < cursor) continue; // skip overlaps
+    out += esc(text.slice(cursor, s));
+    const v = verdictByClaim[c.claim_id];
+    const verdict = v ? v.verdict : 'untraced';
+    const tip = v ? `${v.metric} — ${v.verdict.toUpperCase()}: ${v.reason}` : c.metric;
+    out += `<mark class="v-${verdict}" title="${esc(tip)}">${esc(text.slice(s, e))}</mark>`;
+    cursor = e;
+  }
+  out += esc(text.slice(cursor));
+  return out;
+}
+
+function render(d) {
+  const v = d.verdicts, c = d.counts;
+  const byClaim = {}; v.forEach(x => byClaim[x.claim_id] = x);
+  const blocking = d.findings.filter(f => f.severity === 'block').length;
+  let h = '';
+
+  h += `<div class="banner ${d.publishable ? 'ok' : 'no'}">${d.publishable
+    ? '✓ Publishable — every figure traced and no blocking rule fired.'
+    : '✕ Not publishable — ' + ((c.conflict||0)+(c.untraced||0)) + ' figure(s) unresolved' + (blocking ? `, ${blocking} blocking rule finding(s)` : '') + '.'}</div>`;
+
+  h += `<div class="chips">
+    <span class="chip"><span class="dot bg-traced"></span><b>${c.traced||0}</b> traced</span>
+    <span class="chip"><span class="dot bg-review"></span><b>${c.needs_review||0}</b> needs review</span>
+    <span class="chip"><span class="dot bg-conflict"></span><b>${c.conflict||0}</b> conflict</span>
+    <span class="chip"><span class="dot bg-untraced"></span><b>${c.untraced||0}</b> untraced</span>
+    <span class="chip">${esc(d.title)} · <b>${esc(d.kind)}</b> · ${esc(d.entity||'')} · ${esc(d.period||'—')}</span>
+  </div>`;
+
+  if (d.warnings && d.warnings.length)
+    h += `<div class="warn-box">⚠ ${d.warnings.map(esc).join('<br>')}</div>`;
+
+  h += `<div class="doc">${highlight(d.text, d.claims, byClaim)}</div>`;
+
+  h += `<h2 class="sec">Figures (${v.length})</h2>`;
+  if (!v.length) h += `<p class="hint">No figures were detected in this document.</p>`;
+  else {
+    h += `<table><thead><tr><th>Figure</th><th>Metric</th><th>Verdict</th><th>Source</th></tr></thead><tbody>`;
+    for (const x of v) {
+      const src = x.source_value ? `${esc(x.source_value)}${x.as_of ? ' · '+esc(x.as_of) : ''}${x.provenance && x.provenance.label ? '<br><span class="reason">'+esc(x.provenance.label)+'</span>' : ''}` : '<span class="reason">—</span>';
+      h += `<tr>
+        <td><b>${esc(x.displayed_text)}</b></td>
+        <td>${esc(x.metric)}<br><span class="reason">${esc(x.entity)} · ${esc(x.period||'—')}</span></td>
+        <td><span class="pill ${x.verdict}">${esc(x.verdict.replace('_',' '))}</span><div class="reason">${esc(x.reason)}</div></td>
+        <td>${src}</td>
+      </tr>`;
+    }
+    h += `</tbody></table>`;
+  }
+
+  h += `<h2 class="sec">Rule findings (${d.findings.length})</h2>`;
+  if (!d.findings.length) h += `<p class="hint">No Reg G, safe-harbor, or consistency issues found.</p>`;
+  for (const f of d.findings) {
+    h += `<div class="finding ${f.severity}">
+      <span class="sev">${esc(f.severity)}</span> · <code>${esc(f.rule)}</code><br>
+      ${esc(f.message)}${f.detail ? `<div class="det">${esc(f.detail)}</div>` : ''}
+    </div>`;
+  }
+  $('out').innerHTML = h;
+}
+</script>
+</body>
+</html>

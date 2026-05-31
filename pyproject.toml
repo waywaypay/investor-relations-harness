@@ -14,6 +14,7 @@ dependencies = [
     "fastapi>=0.110",
     "uvicorn>=0.29",
     "pydantic>=2.6",
+    "python-multipart>=0.0.9",
 ]
 
 [project.optional-dependencies]
@@ -29,7 +30,7 @@ attest = "attest.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-attest = ["ingestion/fixtures/*.json", "eval/golden/*.json"]
+attest = ["ingestion/fixtures/*.json", "eval/golden/*.json", "api/static/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

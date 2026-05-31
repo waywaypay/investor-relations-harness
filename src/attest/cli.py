@@ -57,6 +57,7 @@ def _run_serve(host: str, port: int) -> int:
 
     from attest.api.app import create_app
 
+    print(f"Attest — upload & verify UI at http://{host}:{port}  (API docs at /docs)")
     uvicorn.run(create_app(), host=host, port=port)
     return 0
 
