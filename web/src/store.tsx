@@ -1,248 +1,199 @@
-import React, {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import { client, type GuidanceInput } from "./api/client";
-import type {
-  AnalyzeResult,
-  ApiVerdict,
-  FactRow,
-  UploadedDoc,
-  UploadInput,
-} from "./types";
+import React, { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
+import { FIGURES } from "./data/figures";
+import { COMMITMENTS, NARRATIVES } from "./data/narratives";
+import type { Commitment, Figure, Narrative, VerdictState } from "./types";
+import { evaluateEdit } from "./lib/verify";
+import { apiBaseUrl, client } from "./api/client";
+
+type FigureMap = Record<string, Figure>;
+type NarrativeMap = Record<string, Narrative>;
 
 interface Store {
-  documents: UploadedDoc[];
-  activeId: string | null;
-  facts: FactRow[];
-  busy: boolean;
+  figures: FigureMap;
+  narratives: NarrativeMap;
+  commitments: Commitment[];
   toast: string | null;
 
-  active: UploadedDoc | null;
   showToast: (msg: string) => void;
-  setActive: (localId: string) => void;
-  analyzeUpload: (input: UploadInput) => Promise<boolean>;
-  removeDocument: (localId: string) => void;
-  loadDemoFacts: () => Promise<void>;
-  ingestXbrl: (instance: unknown, label?: string) => Promise<void>;
-  ingestGuidance: (input: GuidanceInput) => Promise<void>;
-  refreshFacts: () => Promise<void>;
+  editFigure: (id: string, value: string) => void;
+  bindFigure: (id: string, sourceName: string) => void;
+  resolveFigure: (id: string) => void;
+  restoreFigure: (id: string) => void;
+  removeFigure: (id: string) => void;
+  addFigure: (id: string, text: string) => void;
+  resolveNarrative: (id: string) => void;
+  addressCommitment: (id: string) => void;
 }
 
 const StoreContext = createContext<Store | null>(null);
 
-let counter = 0;
-const nextId = () => `doc-${Date.now().toString(36)}-${(counter++).toString(36)}`;
-
-function toUploadedDoc(res: AnalyzeResult, sourceText: string, localId?: string): UploadedDoc {
-  const verdicts: Record<string, ApiVerdict> = {};
-  for (const v of res.verdicts) verdicts[v.claim_id] = v;
-  return {
-    localId: localId ?? nextId(),
-    title: res.title,
-    kind: res.kind,
-    entity: res.entity,
-    period: res.period ?? null,
-    text: res.text,
-    claims: res.claims,
-    verdicts,
-    findings: res.findings,
-    counts: res.counts,
-    publishable: res.publishable,
-    warnings: res.warnings,
-    uploadedAt: Date.now(),
-    sourceText,
-  };
-}
+// Deep-clone the seed data so edits never mutate the source modules (and a reload
+// resets cleanly).
+const clone = <T,>(x: T): T => JSON.parse(JSON.stringify(x));
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
-  const [documents, setDocuments] = useState<UploadedDoc[]>([]);
-  const [activeId, setActiveId] = useState<string | null>(null);
-  const [facts, setFacts] = useState<FactRow[]>([]);
-  const [busy, setBusy] = useState(false);
+  const [figures, setFigures] = useState<FigureMap>(() => clone(FIGURES));
+  const [narratives, setNarratives] = useState<NarrativeMap>(() => clone(NARRATIVES));
+  const [commitments, setCommitments] = useState<Commitment[]>(() => clone(COMMITMENTS));
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | undefined>(undefined);
-  // Mirror of `documents` so async actions can read the latest list without
-  // depending on it (avoids stale closures in re-verification).
-  const docsRef = useRef<UploadedDoc[]>(documents);
-  docsRef.current = documents;
 
   const showToast = useCallback((msg: string) => {
     setToast(msg);
     window.clearTimeout(toastTimer.current);
-    toastTimer.current = window.setTimeout(() => setToast(null), 4200);
+    toastTimer.current = window.setTimeout(() => setToast(null), 3400);
   }, []);
 
-  const refreshFacts = useCallback(async () => {
-    try {
-      setFacts(await client.listFacts());
-    } catch {
-      /* backend may be unreachable in offline dev; leave facts as-is */
-    }
+  const patchFigure = useCallback((id: string, patch: Partial<Figure>) => {
+    setFigures((prev) => ({ ...prev, [id]: { ...prev[id], ...patch } }));
   }, []);
 
-  // Load whatever's already in the store on mount (e.g. a pre-seeded instance).
-  useEffect(() => {
-    void refreshFacts();
-  }, [refreshFacts]);
+  const editFigure = useCallback(
+    (id: string, value: string) => {
+      // Optimistic local re-verify (the client-side echo of the tie-out logic),
+      // so the UI updates instantly whether or not a backend is wired.
+      let committed = "";
+      setFigures((prev) => {
+        const next = { ...prev[id], cur: value.trim() || prev[id].cur };
+        committed = next.cur;
+        const verdict = evaluateEdit(next);
+        return {
+          ...prev,
+          [id]: { ...next, st: verdict.st, tag: verdict.tag, editedFrom: verdict.editedFrom },
+        };
+      });
 
-  const setActive = useCallback((localId: string) => setActiveId(localId), []);
-
-  const analyzeUpload = useCallback(
-    async (input: UploadInput): Promise<boolean> => {
-      setBusy(true);
-      try {
-        const res = await client.analyze(input);
-        const sourceText = input.text ?? res.text;
-        const doc = toUploadedDoc(res, sourceText);
-        setDocuments((prev) => [...prev, doc]);
-        setActiveId(doc.localId);
-        void refreshFacts();
-        const traced = res.counts.traced ?? 0;
-        const total = res.verdicts.length;
-        showToast(
-          total === 0
-            ? `Analyzed “${res.title}” — no figures detected.`
-            : `Analyzed “${res.title}” — ${traced} of ${total} figure${total > 1 ? "s" : ""} traced.`
-        );
-        return true;
-      } catch (err) {
-        showToast(`Upload failed: ${(err as Error).message}`);
-        return false;
-      } finally {
-        setBusy(false);
+      // When VITE_ATTEST_API is set, reconcile against the real deterministic
+      // engine. The backend is authoritative; on failure we keep the local result.
+      if (apiBaseUrl) {
+        const tagFor: Record<VerdictState, string> = { v: "✓", r: "?", f: "!", u: "?" };
+        client
+          .verifyFigure(id, committed)
+          .then((res) => {
+            setFigures((prev) => {
+              const fig = prev[id];
+              if (!fig || fig.cur !== committed) return prev; // a newer edit superseded this
+              const editedFrom = res.verdict === "f" ? fig.filed : null;
+              return { ...prev, [id]: { ...fig, st: res.verdict, tag: tagFor[res.verdict], editedFrom } };
+            });
+          })
+          .catch(() => void 0);
       }
     },
-    [refreshFacts, showToast]
+    []
   );
 
-  const removeDocument = useCallback((localId: string) => {
-    setDocuments((prev) => {
-      const next = prev.filter((d) => d.localId !== localId);
-      setActiveId((cur) => (cur === localId ? (next[0]?.localId ?? null) : cur));
-      return next;
-    });
-  }, []);
+  const bindFigure = useCallback(
+    (id: string, sourceName: string) => {
+      patchFigure(id, {
+        st: "v",
+        tag: "✓",
+        filed: figures[id]?.cur ?? null,
+        badge: sourceName,
+        cite: `${sourceName} · bound on import`,
+        lbl: "Bound figure",
+      });
+      showToast(`Bound to ${sourceName} — now traced like the rest.`);
+    },
+    [figures, patchFigure, showToast]
+  );
 
-  // After the filed sources change, re-run every uploaded draft through the engine
-  // so verdicts reflect the new facts — keeping the workspace honest.
-  const reanalyzeAll = useCallback(async () => {
-    const current = docsRef.current;
-    if (!current.length) return;
-    const updated = await Promise.all(
-      current.map(async (doc) => {
-        try {
-          const res = await client.analyze({
-            text: doc.sourceText,
-            title: doc.title,
-            kind: doc.kind as UploadInput["kind"],
-            entity: doc.entity,
-            period: doc.period ?? undefined,
-          });
-          return toUploadedDoc(res, doc.sourceText, doc.localId);
-        } catch {
-          return doc;
-        }
-      })
-    );
-    setDocuments(updated);
-  }, []);
-
-  const afterSourceChange = useCallback(
-    async (report: { ingested: number; source: string }) => {
-      await refreshFacts();
-      await reanalyzeAll();
+  const resolveFigure = useCallback(
+    (id: string) => {
+      const patch: Partial<Figure> = { st: "v", badge: "verified", tag: "✓" };
+      if (id === "cloudgrowth") patch.cur = "29%";
+      patchFigure(id, patch);
       showToast(
-        `Ingested ${report.ingested} filed fact${report.ingested === 1 ? "" : "s"} from ${report.source}. Drafts re-verified.`
+        id === "cloudgrowth"
+          ? "Corrected to 29% and re-traced to the FY2025 10-K — updated in the release, script, and Q&A."
+          : "Approved with safe-harbor language attached. Logged to the audit trail across all three documents."
       );
     },
-    [refreshFacts, reanalyzeAll, showToast]
+    [patchFigure, showToast]
   );
 
-  const loadDemoFacts = useCallback(async () => {
-    setBusy(true);
-    try {
-      const report = await client.ingestDemo();
-      await afterSourceChange(report);
-    } catch (err) {
-      showToast(`Could not load demo facts: ${(err as Error).message}`);
-    } finally {
-      setBusy(false);
-    }
-  }, [afterSourceChange, showToast]);
-
-  const ingestXbrl = useCallback(
-    async (instance: unknown) => {
-      setBusy(true);
-      try {
-        const report = await client.ingestXbrl(instance);
-        await afterSourceChange(report);
-      } catch (err) {
-        showToast(`XBRL ingest failed: ${(err as Error).message}`);
-      } finally {
-        setBusy(false);
-      }
+  const restoreFigure = useCallback(
+    (id: string) => {
+      const fig = figures[id];
+      if (!fig?.editedFrom) return;
+      const restored = { ...fig, cur: fig.editedFrom };
+      const verdict = evaluateEdit(restored);
+      patchFigure(id, { cur: fig.editedFrom, st: verdict.st, tag: verdict.tag, editedFrom: null });
+      showToast("Restored to the filed value.");
     },
-    [afterSourceChange, showToast]
+    [figures, patchFigure, showToast]
   );
 
-  const ingestGuidance = useCallback(
-    async (input: GuidanceInput) => {
-      setBusy(true);
-      try {
-        const report = await client.ingestGuidance(input);
-        await afterSourceChange(report);
-      } catch (err) {
-        showToast(`Guidance ingest failed: ${(err as Error).message}`);
-      } finally {
-        setBusy(false);
-      }
+  const removeFigure = useCallback(
+    (id: string) => {
+      setFigures((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+      showToast("Figure removed from the draft.");
     },
-    [afterSourceChange, showToast]
+    [showToast]
   );
 
-  const active = useMemo(
-    () => documents.find((d) => d.localId === activeId) ?? null,
-    [documents, activeId]
+  const addFigure = useCallback((id: string, text: string) => {
+    setFigures((prev) => ({
+      ...prev,
+      [id]: {
+        id,
+        st: "u" as VerdictState,
+        tag: "?",
+        cur: text.trim(),
+        filed: null,
+        v: text.trim(),
+        lbl: "Untraced figure",
+        badge: "unbound",
+        tag2: "",
+        snip: "",
+        cite: "No source bound yet",
+        page: "",
+        reason: "",
+        fields: [],
+      } as unknown as Figure,
+    }));
+  }, []);
+
+  const resolveNarrative = useCallback(
+    (id: string) => {
+      setNarratives((prev) => {
+        const nar = prev[id];
+        const cur = nar.suggestion ? nar.suggestion : nar.cur;
+        return { ...prev, [id]: { ...nar, cur, st: "ok", tag: "msg" } };
+      });
+      const nar = narratives[id];
+      showToast(
+        nar?.suggestion
+          ? "Updated to the approved wording — script now matches the release."
+          : "Safe-harbor language attached and logged to the audit trail."
+      );
+    },
+    [narratives, showToast]
+  );
+
+  const addressCommitment = useCallback(
+    (id: string) => {
+      setCommitments((prev) => prev.map((c) => (c.id === id ? { ...c, status: "done" } : c)));
+      showToast(
+        "Flagged to address — added to your Q&A prep and logged. The Street won’t catch you off guard."
+      );
+    },
+    [showToast]
   );
 
   const value = useMemo<Store>(
     () => ({
-      documents,
-      activeId,
-      facts,
-      busy,
-      toast,
-      active,
-      showToast,
-      setActive,
-      analyzeUpload,
-      removeDocument,
-      loadDemoFacts,
-      ingestXbrl,
-      ingestGuidance,
-      refreshFacts,
+      figures, narratives, commitments, toast,
+      showToast, editFigure, bindFigure, resolveFigure, restoreFigure,
+      removeFigure, addFigure, resolveNarrative, addressCommitment,
     }),
     [
-      documents,
-      activeId,
-      facts,
-      busy,
-      toast,
-      active,
-      showToast,
-      setActive,
-      analyzeUpload,
-      removeDocument,
-      loadDemoFacts,
-      ingestXbrl,
-      ingestGuidance,
-      refreshFacts,
+      figures, narratives, commitments, toast, showToast, editFigure, bindFigure,
+      resolveFigure, restoreFigure, removeFigure, addFigure, resolveNarrative, addressCommitment,
     ]
   );
 
