@@ -99,7 +99,6 @@ export function DocumentView(props: Props) {
             onKeyDown={(e) => {
               if (e.key === "Enter") { e.preventDefault(); (e.currentTarget as HTMLElement).blur(); }
             }}
-            onClick={() => onFigureClick(part.id)}
           >
             {fig.cur}
           </span>

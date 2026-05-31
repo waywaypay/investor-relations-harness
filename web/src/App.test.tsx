@@ -32,6 +32,18 @@ describe("Attest workspace", () => {
     expect(screen.getByText(/Corrected to 29%/i)).toBeInTheDocument();
   });
 
+  it("in edit mode, clicking a figure lets you edit it instead of opening the modal", () => {
+    // Enter edit mode; figure tokens become contentEditable.
+    fireEvent.click(screen.getByText("Edit draft"));
+    const fig = screen.getByText("31%");
+    expect(fig).toHaveAttribute("contenteditable", "true");
+    // Clicking the figure while editing must NOT pop the inspection modal —
+    // otherwise the modal hijacks the click and inline editing is impossible.
+    fireEvent.click(fig);
+    expect(screen.queryByText(/Source as filed/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Apply corrected 29%/i)).not.toBeInTheDocument();
+  });
+
   it("navigates to consensus and requires two models before building", () => {
     fireEvent.click(screen.getByText("Street consensus"));
     expect(screen.getByText(/Drop sell-side models/i)).toBeInTheDocument();
