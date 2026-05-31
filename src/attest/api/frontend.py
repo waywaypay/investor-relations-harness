@@ -1,31 +1,48 @@
-"""A minimal, dependency-free web front-end for the Attest API.
+"""The web front-end Attest serves at ``GET /``.
 
-The v1 spine ships an API + CLI; there is no SPA build step and no Node
-toolchain. This module serves a single self-contained HTML page (vanilla JS,
-inline CSS, no external assets) that drives the existing JSON endpoints so a
-human can *see* the close-pack verification — verdicts, deterministic blocks,
-cross-document consistency, and the tamper-evident audit chain — in a browser
-rather than reading raw OpenAPI docs.
+Primary surface: the **React disclosure-drafting workspace** (source in ``web/``),
+built into a single self-contained ``index.html`` and shipped at
+``api/static/index.html``. ``attest serve`` serves it at ``/`` and the workspace
+reconciles each figure edit against the live deterministic engine via the
+same-origin ``/tenants/{tenant}/verify`` endpoint (baked in at build time with
+``VITE_ATTEST_API=/``).
 
-It is a thin client over the public API: everything it shows is obtained via
-the same ``/verify-close-pack``, ``/override``, ``/sign-off`` and ``/audit``
-calls any other consumer would use.
+Fallback: if that built bundle isn't present (e.g. a source checkout that hasn't
+run the web build), ``index_html`` returns a minimal, dependency-free page —
+vanilla JS, inline CSS — that drives the same public API
+(``/verify-close-pack``, ``/override``, ``/sign-off``, ``/audit``) so the server
+is still usable in a browser without the Node toolchain.
 """
 
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from attest.demo import TENANT, build_documents
 
-# The demo close pack is embedded into the page so the browser can POST it to
-# /verify-close-pack on load. The facts it ties out against are seeded into the
-# service at startup (see ``create_app(seed_demo=True)``).
+_SPA_PATH = Path(__file__).parent / "static" / "index.html"
+
+# The demo close pack is embedded into the fallback page so the browser can POST
+# it to /verify-close-pack on load. The facts it ties out against are seeded into
+# the service at startup (see ``create_app(seed_demo=True)``).
 _DOCUMENTS_JSON = "[" + ",".join(d.model_dump_json() for d in build_documents()) + "]"
 
 
+def has_spa() -> bool:
+    """True when the built React workspace bundle is available to serve."""
+    return _SPA_PATH.is_file()
+
+
+def spa_html() -> str:
+    """The built React workspace if shipped, else the minimal fallback page."""
+    if has_spa():
+        return _SPA_PATH.read_text(encoding="utf-8")
+    return index_html()
+
+
 def index_html() -> str:
-    """The full single-page front-end, with the demo payload injected."""
+    """The minimal fallback front-end, with the demo payload injected."""
     return _PAGE.replace("__TENANT__", json.dumps(TENANT)).replace(
         "__DOCUMENTS__", _DOCUMENTS_JSON
     )
