@@ -24,6 +24,14 @@ def test_health(client):
     assert r.json()["status"] == "ok"
 
 
+def test_ready_reports_audit_intact(client):
+    r = client.get("/ready")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["status"] == "ready"
+    assert body["audit_intact"] is True
+
+
 def test_ingest_and_list_facts(client):
     report = _seed(client)
     assert report["ingested"] == 15

@@ -9,7 +9,7 @@ those belong to the human-labeled core, not the synthetic bucket.
 
 from decimal import Decimal
 
-from attest.domain.facts import Confidence, Fact, SourceType
+from attest.domain.facts import Fact, SourceType
 from attest.domain.money import Unit
 from attest.domain.verdicts import Verdict
 from attest.eval.perturbation import SyntheticCase, perturb_fact

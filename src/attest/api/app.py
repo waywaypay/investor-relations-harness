@@ -10,12 +10,15 @@ from __future__ import annotations
 
 import os
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 
 from attest.api.frontend import spa_html
 from attest.api.schemas import (
+    AliasConfigRequest,
+    AliasConfigResponse,
+    AnalyzeResponse,
     AuditVerifyResponse,
     ClosePackResponse,
     EditRequest,
@@ -24,9 +27,13 @@ from attest.api.schemas import (
     SignOffRequest,
     VerifyResponse,
 )
-from attest.domain.document import Document
+from attest.domain.document import Document, DocumentKind
+from attest.extraction.text import extract_text
+from attest.ingestion.edgar_xbrl import load_fixture
 from attest.service import AttestService
 from attest.verification.engine import VerificationResult
+
+_DEMO_FIXTURE = "meridian_q1_fy2026"
 
 
 def _to_verify_response(result: VerificationResult) -> VerifyResponse:
@@ -81,7 +88,20 @@ def create_app(service: AttestService | None = None, *, seed_demo: bool = False)
 
     @app.get("/health")
     def health() -> dict:
-        return {"status": "ok", "audit_intact": app.state.service.audit_verify()}
+        """Liveness: cheap, no work. This is the probe a load balancer / App Runner
+        hits every few seconds, so it must not re-derive the audit chain."""
+        return {"status": "ok"}
+
+    @app.get("/ready", include_in_schema=False)
+    def ready() -> JSONResponse:
+        """Readiness + integrity: confirms the service is wired and the audit
+        hash-chain still re-derives. Returns 503 if the chain is broken so an
+        orchestrator pulls the instance out of rotation. When a persistent store
+        lands, add its connectivity check here."""
+        intact = app.state.service.audit_verify()
+        status = 200 if intact else 503
+        return JSONResponse({"status": "ready" if intact else "degraded",
+                             "audit_intact": intact}, status_code=status)
 
     @app.post("/tenants/{tenant_id}/ingest/xbrl", response_model=IngestResponse)
     def ingest_xbrl(
@@ -115,6 +135,100 @@ def create_app(service: AttestService | None = None, *, seed_demo: bool = False)
         except RuntimeError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         return _to_verify_response(result)
+
+    @app.post("/tenants/{tenant_id}/ingest/demo", response_model=IngestResponse)
+    def ingest_demo(tenant_id: str, svc: AttestService = Depends(get_service)) -> IngestResponse:
+        """Convenience: ingest the bundled Meridian filing so an upload has filed
+        sources to tie out against, straight from the UI."""
+        report = svc.ingest_xbrl(load_fixture(_DEMO_FIXTURE), tenant_id=tenant_id)
+        return IngestResponse(
+            source=report.source,
+            ingested=report.ingested,
+            skipped=report.skipped,
+            skipped_tags=list(report.skipped_tags),
+        )
+
+    @app.get("/tenants/{tenant_id}/extraction/aliases", response_model=AliasConfigResponse)
+    def get_aliases(tenant_id: str, svc: AttestService = Depends(get_service)) -> AliasConfigResponse:
+        """The extraction vocabulary (metric -> synonyms) in effect for the tenant."""
+        return AliasConfigResponse(tenant_id=tenant_id, aliases=svc.aliases_for(tenant_id).as_dict())
+
+    @app.put("/tenants/{tenant_id}/extraction/aliases", response_model=AliasConfigResponse)
+    def put_aliases(
+        tenant_id: str, req: AliasConfigRequest, svc: AttestService = Depends(get_service)
+    ) -> AliasConfigResponse:
+        """Configure the tenant's extraction synonyms (house style, segment names,
+        non-GAAP labels). Unknown metric ids are rejected."""
+        try:
+            config = svc.configure_aliases(tenant_id, req.aliases, replace=req.replace)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return AliasConfigResponse(tenant_id=tenant_id, aliases=config.as_dict())
+
+    @app.post("/tenants/{tenant_id}/analyze", response_model=AnalyzeResponse)
+    async def analyze(
+        tenant_id: str,
+        file: UploadFile | None = File(default=None),
+        text: str | None = Form(default=None),
+        title: str | None = Form(default=None),
+        kind: str = Form(default="other"),
+        entity: str | None = Form(default=None),
+        period: str | None = Form(default=None),
+        svc: AttestService = Depends(get_service),
+    ) -> AnalyzeResponse:
+        """Upload a press release / script / Q&A (or paste it) and analyze it.
+
+        Accepts a multipart ``file`` *or* a ``text`` field. Text is recovered from
+        the file, the edge proposes figure claims, and the deterministic engine
+        renders verdicts and runs every rule — the same spine the demo close pack
+        flows through, now driven by a real document.
+        """
+        warnings: list[str] = []
+        resolved_title = title
+        if file is not None and file.filename:
+            extracted = extract_text(file.filename, await file.read())
+            doc_text = extracted.text
+            warnings = list(extracted.warnings)
+            resolved_title = title or file.filename
+        elif text:
+            doc_text = text
+        else:
+            raise HTTPException(status_code=422, detail="provide a file upload or text")
+
+        if not doc_text.strip():
+            raise HTTPException(
+                status_code=422,
+                detail="no readable text could be recovered from the upload",
+            )
+
+        try:
+            doc_kind = DocumentKind(kind)
+        except ValueError:
+            doc_kind = DocumentKind.OTHER
+
+        document, result, resolved_entity, resolved_period = svc.analyze_text(
+            tenant_id=tenant_id,
+            text=doc_text,
+            title=resolved_title or "Uploaded document",
+            kind=doc_kind,
+            entity=entity or None,
+            period=period or None,
+        )
+        base = _to_verify_response(result)
+        return AnalyzeResponse(
+            document_id=base.document_id,
+            verdicts=base.verdicts,
+            findings=base.findings,
+            counts=base.counts,
+            publishable=base.publishable,
+            title=document.title,
+            kind=document.kind.value,
+            entity=resolved_entity,
+            period=resolved_period,
+            text=document.text,
+            claims=list(document.claims),
+            warnings=warnings,
+        )
 
     @app.post("/tenants/{tenant_id}/verify-close-pack", response_model=ClosePackResponse)
     def verify_close_pack(

@@ -67,6 +67,10 @@ class MetricRegistry:
     def get(self, metric_id: str) -> MetricSpec | None:
         return self._by_id.get(metric_id)
 
+    def metrics(self) -> list[MetricSpec]:
+        """Every registered spec, in registration order."""
+        return list(self._by_id.values())
+
     def by_xbrl_tag(self, tag: str) -> MetricSpec | None:
         return self._by_tag.get(tag)
 

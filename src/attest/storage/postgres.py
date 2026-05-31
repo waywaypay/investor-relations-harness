@@ -23,14 +23,11 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterable
+from typing import Iterable
 
 from attest.audit.events import AuditEvent, EventType
 from attest.audit.log import GENESIS_HASH, InMemoryAuditLog, compute_hash
 from attest.domain.facts import Fact
-
-if TYPE_CHECKING:  # pragma: no cover - typing only
-    import psycopg
 
 _SCHEMA = (Path(__file__).parent / "schema.sql").read_text()
 

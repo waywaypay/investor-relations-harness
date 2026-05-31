@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import csv
 from decimal import Decimal, InvalidOperation
-from typing import Iterable, TextIO
+from typing import TextIO
 
 from attest.domain.facts import Confidence, Fact, SourceType
 from attest.domain.money import Unit

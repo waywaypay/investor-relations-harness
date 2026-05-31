@@ -15,7 +15,7 @@ from attest.demo import build_documents, demo_edge_service, seeded_service
 from attest.domain.document import Document, DocumentKind
 from attest.domain.facts import Confidence
 from attest.domain.metrics import DEFAULT_REGISTRY
-from attest.domain.verdicts import RuleSeverity, Verdict
+from attest.domain.verdicts import RuleSeverity
 from attest.edge.client import AnthropicClient, FakeLLMClient, LLMResult
 from attest.edge.narrator import HistoricalConsistencyNarrator
 from attest.edge.proposer import ClaimProposer
