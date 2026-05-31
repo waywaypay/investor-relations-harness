@@ -91,7 +91,7 @@ export function DocumentView(props: Props) {
         return (
           <span
             key={key}
-            className={`fig ${fig.st}`}
+            className={`fig ${fig.st} editing`}
             data-tag={fig.tag}
             contentEditable
             suppressContentEditableWarning
@@ -168,6 +168,11 @@ export function DocumentView(props: Props) {
           </button>
         </div>
       </div>
+      {editing && (
+        <div className="edithint">
+          ✎ Editing — click any <b>highlighted figure</b> to change its value, then click away to re-verify against the filed source.
+        </div>
+      )}
       <article className={`doc ${editing ? "editing" : ""}`}>
         {doc.blocks.map((b, i) => renderBlock(b, i))}
       </article>

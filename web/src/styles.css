@@ -184,8 +184,15 @@ body{font-family:var(--ui);background:var(--paper);color:var(--ink);-webkit-font
 .fig.u{--ul:rgba(91,107,122,.55);--c:#516170;--bg:#EAEEF2}
 .fig.editing{background:#fff;box-shadow:0 0 0 2px var(--accent);border-radius:3px}
 .doc[contenteditable="true"]{outline:none;cursor:text}
-.doc.editing .fig{cursor:pointer;position:relative}
-.doc.editing .fig:hover{box-shadow:0 0 0 1px var(--accent)}
+.doc.editing .fig{position:relative}
+/* In edit mode the highlighted figures are editable fields: clear outline + text caret. */
+.doc.editing .fig.editing{cursor:text;background:#fff;box-shadow:0 0 0 2px var(--accent);outline:none}
+.doc.editing .fig.editing:focus{box-shadow:0 0 0 2px var(--accent),0 0 0 5px rgba(91,157,255,.25)}
+
+.edithint{width:100%;max-width:680px;display:flex;align-items:center;gap:6px;
+  background:var(--review-bg,#fdf3e0);border:1px solid var(--accent);color:var(--ink);
+  border-radius:9px;padding:9px 13px;font-family:var(--ui);font-size:12.5px;font-weight:500;margin-bottom:12px}
+.edithint b{font-weight:700}
 
 /* doc toolbar */
 .doctools{width:100%;max-width:680px;display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
