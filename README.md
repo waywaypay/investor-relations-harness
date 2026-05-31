@@ -104,6 +104,7 @@ POST /tenants/{tenant}/ingest/xbrl              ingest an XBRL instance
 GET  /tenants/{tenant}/facts                    list facts-with-provenance
 POST /tenants/{tenant}/verify                   verify one document
 POST /tenants/{tenant}/verify-close-pack        verify + cross-document consistency
+POST /tenants/{tenant}/documents/{id}/edit      record a draft edit (figure or wording)
 POST /tenants/{tenant}/documents/{id}/sign-off  record an attestation
 POST /tenants/{tenant}/override                 record a justified override
 GET  /tenants/{tenant}/audit                    export the audit trail (a projection)

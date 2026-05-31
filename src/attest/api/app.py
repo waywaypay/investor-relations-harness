@@ -13,6 +13,7 @@ from fastapi import Depends, FastAPI, HTTPException
 from attest.api.schemas import (
     AuditVerifyResponse,
     ClosePackResponse,
+    EditRequest,
     IngestResponse,
     OverrideRequest,
     SignOffRequest,
@@ -89,6 +90,17 @@ def create_app(service: AttestService | None = None) -> FastAPI:
             consistency_findings=list(consistency),
             publishable=publishable,
         )
+
+    @app.post("/tenants/{tenant_id}/documents/{document_id}/edit")
+    def edit_draft(
+        tenant_id: str, document_id: str, req: EditRequest,
+        svc: AttestService = Depends(get_service),
+    ) -> dict:
+        svc.edit_draft(
+            tenant_id=tenant_id, actor=req.actor, document_id=document_id,
+            before=req.before, after=req.after, claim_id=req.claim_id, note=req.note,
+        )
+        return {"status": "recorded"}
 
     @app.post("/tenants/{tenant_id}/documents/{document_id}/sign-off")
     def sign_off(

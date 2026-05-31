@@ -2,7 +2,7 @@
 
 Holds the wiring (fact store, registry, audit log, engine) and exposes the
 verbs that mutate state, each of which writes an attributable audit event:
-ingest, verify, override, sign-off. Human-in-the-loop with captured
+ingest, verify, edit, override, sign-off. Human-in-the-loop with captured
 accountability: Attest never silently changes a disclosure.
 """
 
@@ -60,6 +60,35 @@ class AttestService:
         return self.engine.verify_close_pack(documents)
 
     # -- human-in-the-loop accountability ------------------------------------
+
+    def edit_draft(
+        self,
+        *,
+        tenant_id: str,
+        actor: str,
+        document_id: str,
+        before: str,
+        after: str,
+        claim_id: str | None = None,
+        note: str = "",
+    ) -> None:
+        """Record that a drafter changed a figure or wording in a draft.
+
+        Captures the ``before``/``after`` so the edit is a self-describing,
+        tamper-evident link in the chain — not a silent mutation of the draft.
+        """
+        self.audit_log.append(
+            actor=actor,
+            type=EventType.EDIT,
+            tenant_id=tenant_id,
+            payload={
+                "document_id": document_id,
+                "claim_id": claim_id,
+                "before": before,
+                "after": after,
+                "note": note,
+            },
+        )
 
     def override(
         self, *, tenant_id: str, actor: str, claim_id: str, justification: str

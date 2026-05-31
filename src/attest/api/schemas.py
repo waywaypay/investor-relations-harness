@@ -28,6 +28,14 @@ class ClosePackResponse(BaseModel):
     publishable: bool
 
 
+class EditRequest(BaseModel):
+    actor: str
+    before: str
+    after: str
+    claim_id: str | None = None
+    note: str = ""
+
+
 class SignOffRequest(BaseModel):
     actor: str
     scope: str = "document"
