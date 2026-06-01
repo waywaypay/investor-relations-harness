@@ -36,7 +36,7 @@ export function TopBar({ activeDoc, filter, setFilter }: Props) {
   const chips = [
     { f: "all", label: "All", sw: null },
     { f: "v", label: "Traced", sw: "sw-v" },
-    { f: "r", label: "Review", sw: "sw-r" },
+    { f: "r", label: "Manual check", sw: "sw-r" },
     { f: "f", label: "Flagged", sw: "sw-f" },
   ];
 
