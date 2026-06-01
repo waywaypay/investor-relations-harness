@@ -4,12 +4,22 @@ const f = (id: string): Inline => ({ kind: "fig", id });
 const n = (id: string): Inline => ({ kind: "nar", id });
 const t = (html: string): Inline => ({ kind: "text", html });
 
-const ICON_RELEASE =
+export const ICON_RELEASE =
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h13l3 3v13H4z"/><path d="M8 9h8M8 13h8M8 17h5"/></svg>';
-const ICON_SCRIPT =
+export const ICON_SCRIPT =
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 00-3 3v6a3 3 0 006 0V5a3 3 0 00-3-3z"/><path d="M5 11a7 7 0 0014 0M12 18v3"/></svg>';
-const ICON_QA =
+export const ICON_QA =
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9.1 9a3 3 0 015.8 1c0 2-3 3-3 3"/><path d="M12 17h.01"/><circle cx="12" cy="12" r="9"/></svg>';
+export const ICON_OTHER =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M8 9h8M8 13h8M8 17h5"/></svg>';
+
+// Icon to use for a given document kind (uploads pick by kind).
+export const ICON_FOR_KIND: Record<string, string> = {
+  release: ICON_RELEASE,
+  script: ICON_SCRIPT,
+  qa: ICON_QA,
+  other: ICON_OTHER,
+};
 
 export const DOCS: DocMeta[] = [
   {

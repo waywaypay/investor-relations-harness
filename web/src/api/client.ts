@@ -5,7 +5,7 @@
 // in: components depend on the `AttestClient` interface, not on the transport, so
 // swapping the offline client for the live one is a one-line change in the store.
 
-import type { VerdictState } from "../types";
+import type { DocKind, VerdictState } from "../types";
 
 export interface VerifyResult {
   verdict: VerdictState;
@@ -13,17 +13,69 @@ export interface VerifyResult {
   sourceValue: string | null;
 }
 
+/** A figure claim the engine proposed for an uploaded draft. */
+export interface AnalyzeClaim {
+  claim_id: string;
+  metric: string;
+  period: string;
+  entity: string;
+  displayed_text: string;
+  span: [number, number] | null;
+}
+
+/** The deterministic disposition of one proposed claim. */
+export interface AnalyzeVerdict {
+  claim_id: string;
+  metric: string;
+  period: string;
+  displayed_text: string;
+  verdict: string; // backend vocabulary: traced | needs_review | conflict | untraced
+  reason: string;
+  source_value: string | null;
+}
+
+/** The full result of uploading/pasting a draft and running it through the spine. */
+export interface AnalyzeResult {
+  document_id: string;
+  title: string;
+  kind: string;
+  entity: string;
+  period: string | null;
+  text: string;
+  claims: AnalyzeClaim[];
+  verdicts: AnalyzeVerdict[];
+  warnings: string[];
+}
+
+/** Inputs for an upload: a picked file *or* pasted text, plus light metadata. */
+export interface AnalyzeInput {
+  file?: File;
+  text?: string;
+  title?: string;
+  kind: DocKind;
+  entity?: string;
+  period?: string;
+}
+
 export interface AttestClient {
   /** Verify a figure's displayed text against its bound source. */
   verifyFigure(figureId: string, text: string): Promise<VerifyResult>;
+  /** Upload/paste a draft, returning the engine's claims + verdicts for rendering. */
+  analyzeDocument(input: AnalyzeInput): Promise<AnalyzeResult>;
 }
 
-/** Offline default. The mock UI verifies locally (src/lib/verify.ts); this throws
- *  so a misconfigured live path fails loudly rather than silently. */
+/** Offline default. The mock UI verifies locally (src/lib/verify.ts); these throw
+ *  so a misconfigured live path fails loudly rather than silently — the store
+ *  catches the analyze failure and falls back to client-side figure detection. */
 export const offlineClient: AttestClient = {
   async verifyFigure() {
     throw new Error(
       "offlineClient: set VITE_ATTEST_API to the FastAPI backend to enable live verification"
+    );
+  },
+  async analyzeDocument() {
+    throw new Error(
+      "offlineClient: set VITE_ATTEST_API to the FastAPI backend to enable live analysis"
     );
   },
 };
@@ -104,6 +156,35 @@ export function createLiveClient(baseUrl: string): AttestClient {
         reason: v?.reason ?? "",
         sourceValue: v?.source_value ?? null,
       };
+    },
+
+    async analyzeDocument(input) {
+      // The /analyze endpoint accepts a multipart file *or* a pasted text field,
+      // recovers the prose, proposes claims, and runs the full deterministic
+      // engine — the same spine the demo close pack flows through.
+      const form = new FormData();
+      if (input.file) form.append("file", input.file, input.file.name);
+      if (input.text) form.append("text", input.text);
+      if (input.title) form.append("title", input.title);
+      form.append("kind", input.kind);
+      if (input.entity) form.append("entity", input.entity);
+      if (input.period) form.append("period", input.period);
+
+      const res = await fetch(`${base}/tenants/${TENANT}/analyze`, {
+        method: "POST",
+        body: form,
+      });
+      if (!res.ok) {
+        let detail = `HTTP ${res.status}`;
+        try {
+          const body = await res.json();
+          if (body?.detail) detail = body.detail;
+        } catch {
+          /* non-JSON error body; keep the status */
+        }
+        throw new Error(`analyze failed: ${detail}`);
+      }
+      return (await res.json()) as AnalyzeResult;
     },
   };
 }

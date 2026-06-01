@@ -78,3 +78,47 @@ describe("Attest workspace", () => {
     expect(screen.getByText("accelerating")).toBeInTheDocument();
   });
 });
+
+describe("document library & upload", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    render(<App />);
+  });
+
+  it("offers an upload button and opens the upload modal", () => {
+    fireEvent.click(screen.getByRole("button", { name: "+ Upload" }));
+    expect(screen.getByText("Add a document")).toBeInTheDocument();
+    expect(screen.getByText(/Analyze & add/i)).toBeInTheDocument();
+  });
+
+  it("uploads a pasted draft and renders it with detected figures", async () => {
+    fireEvent.click(screen.getByRole("button", { name: "+ Upload" }));
+    fireEvent.change(screen.getByPlaceholderText(/e\.g\./i), {
+      target: { value: "My Q2 script" },
+    });
+    fireEvent.change(screen.getByPlaceholderText(/Paste your draft/i), {
+      target: { value: "Revenue this quarter was $1.5 billion, up 12% year over year." },
+    });
+    fireEvent.click(screen.getByText(/Analyze & add/i));
+
+    // The new document renders (heading), the figure is detected and shown, and an
+    // honest warning notes there's no backend to tie it out against.
+    expect(await screen.findByRole("heading", { name: "My Q2 script" })).toBeInTheDocument();
+    expect(screen.getByText("$1.5 billion")).toBeInTheDocument();
+    expect(screen.getByText(/No verification backend connected/i)).toBeInTheDocument();
+  });
+
+  it("lets you remove an uploaded document from the workspace", async () => {
+    fireEvent.click(screen.getByRole("button", { name: "+ Upload" }));
+    fireEvent.change(screen.getByPlaceholderText(/Paste your draft/i), {
+      target: { value: "Operating cash flow was $42 million for the period." },
+    });
+    fireEvent.click(screen.getByText(/Analyze & add/i));
+    await screen.findByText("$42 million");
+
+    // The uploaded doc carries a remove control; clicking it drops the doc and
+    // falls back to another document.
+    fireEvent.click(screen.getByRole("button", { name: /Remove Uploaded document/i }));
+    expect(screen.queryByText("$42 million")).not.toBeInTheDocument();
+  });
+});

@@ -1,12 +1,11 @@
-import { useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useStore } from "../store";
-import { DOCS } from "../data/documents";
-import type { Block, DocKind, Figure, Inline, Narrative } from "../types";
+import type { Block, Figure, Inline, LibraryDoc, Narrative } from "../types";
 import { detectNewFigures } from "../lib/verify";
 import type { PopTarget } from "./Popover";
 
 interface Props {
-  docId: DocKind;
+  doc: LibraryDoc;
   filter: string; // "all" | "v" | "r" | "f"
   setPop: (t: PopTarget) => void;
   onFigureClick: (id: string) => void;
@@ -53,9 +52,8 @@ function NarToken({
 }
 
 export function DocumentView(props: Props) {
-  const { docId, filter, setPop, onFigureClick, onNarrativeClick, onCommitmentClick } = props;
+  const { doc, filter, setPop, onFigureClick, onNarrativeClick, onCommitmentClick } = props;
   const store = useStore();
-  const doc = useMemo(() => DOCS.find((d) => d.id === docId)!, [docId]);
   const [editing, setEditing] = useState(false);
   const hideTimer = useRef<number | undefined>(undefined);
 
@@ -160,7 +158,7 @@ export function DocumentView(props: Props) {
   return (
     <>
       <div className="doctools">
-        <div className="dt-crumb">Q1 FY2026 close pack · <b>{doc.name}</b></div>
+        <div className="dt-crumb">{doc.period} · <b>{doc.name}</b></div>
         <div className="dt-right">
           <span className={chipCls}><span className="dotp" />{chipTxt}</span>
           <button className={`editbtn ${editing ? "on" : ""}`} onClick={toggleEdit}>
@@ -171,6 +169,13 @@ export function DocumentView(props: Props) {
       {editing && (
         <div className="edithint">
           ✎ Editing — type anywhere to rewrite the draft. Edit a <b>highlighted figure</b> and click away to re-verify it against the filed source.
+        </div>
+      )}
+      {doc.warnings && doc.warnings.length > 0 && (
+        <div className="docwarn">
+          {doc.warnings.map((w, i) => (
+            <div key={i}>⚠ {w}</div>
+          ))}
         </div>
       )}
       <article
