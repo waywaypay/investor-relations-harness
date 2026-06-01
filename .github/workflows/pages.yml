@@ -1,19 +1,20 @@
-name: Deploy static demo to GitHub Pages
+name: Deploy web workspace to GitHub Pages
 
-# Publishes the self-contained static demo in docs/ to GitHub Pages. The demo
-# replays real verification-engine output, so the build regenerates demo-data.json
-# from the installed package before uploading — what ships is genuine engine output,
-# never a hand-edited mock.
+# Publishes the React disclosure-drafting workspace (web/) to GitHub Pages — the
+# real product: the document library, "+ Upload", and figure tie-outs. Pages is
+# static, so there's no backend: the bundled Meridian close pack ties out from
+# client-side data, and uploads fall back to client-side figure detection
+# (honestly marked untraced). The app is built with PAGES_BASE set so its hashed
+# assets resolve under the repo subpath.
 
 on:
   push:
     branches:
-      - claude/keen-gates-E6OdR   # default branch
-      - claude/dreamy-cori-3GcvU  # feature branch (so the demo can go live before merge)
+      - claude/keen-gates-E6OdR         # default branch
+      - claude/dreamy-cori-3GcvU        # feature branch (demo can go live before merge)
+      - claude/determined-wright-hATEA  # feature branch (this change)
     paths:
-      - "docs/**"
-      - "scripts/gen_static_demo.py"
-      - "src/**"
+      - "web/**"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -30,28 +31,38 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: Set up Node
+        uses: actions/setup-node@v4
         with:
-          python-version: "3.11"
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
 
-      - name: Install package
-        run: pip install -e .
+      - name: Install dependencies
+        run: npm ci
 
-      - name: Regenerate demo data from the real engine
-        run: python scripts/gen_static_demo.py
+      - name: Build the workspace for Pages
+        # PAGES_BASE makes Vite emit asset URLs under the repo subpath that
+        # project Pages serves from (https://<owner>.github.io/<repo>/).
+        env:
+          PAGES_BASE: /investor-relations-harness/
+        run: npm run build
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
         with:
           enablement: true
 
-      - name: Upload docs/ as the Pages artifact
+      - name: Upload web/dist as the Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: docs
+          path: web/dist
 
   deploy:
     needs: build
