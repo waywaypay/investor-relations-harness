@@ -1,9 +1,8 @@
 import { useStore } from "../store";
-import { DOCS } from "../data/documents";
-import type { Block, DocKind, Figure } from "../types";
+import type { Block, Figure } from "../types";
 
 interface Props {
-  activeDoc: DocKind | null; // null when on consensus/calendar (coverage hidden)
+  activeDoc: string | null; // library doc id; null when on consensus/calendar (coverage hidden)
   filter: string;
   setFilter: (f: string) => void;
 }
@@ -21,8 +20,8 @@ export function TopBar({ activeDoc, filter, setFilter }: Props) {
   const store = useStore();
 
   let v = 0, r = 0, f = 0, total = 0;
-  if (activeDoc) {
-    const doc = DOCS.find((d) => d.id === activeDoc)!;
+  const doc = activeDoc ? store.library.find((d) => d.id === activeDoc) : undefined;
+  if (doc) {
     figureIds(doc.blocks).forEach((id) => {
       const fig: Figure | undefined = store.figures[id];
       if (!fig) return;
@@ -46,7 +45,7 @@ export function TopBar({ activeDoc, filter, setFilter }: Props) {
         <span className="mark">Attest<span className="dot">.</span></span>
         <span className="tag">disclosure you can trace</span>
       </div>
-      {activeDoc && (
+      {doc && (
         <div className="coverage">
           <div className="ring">
             <svg width="38" height="38" viewBox="0 0 38 38">

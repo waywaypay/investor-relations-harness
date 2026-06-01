@@ -87,7 +87,7 @@ export type Block =
   | { kind: "p"; parts: Inline[] }
   | { kind: "qa"; tag: string; q: string; a: Inline[] };
 
-export type DocKind = "release" | "script" | "qa";
+export type DocKind = "release" | "script" | "qa" | "other";
 
 export interface DocMeta {
   id: DocKind;
@@ -95,6 +95,25 @@ export interface DocMeta {
   kind: string;
   icon: string; // svg markup
   blocks: Block[];
+}
+
+// Where a document in the workspace library came from.
+export type DocSource = "demo" | "upload";
+
+// A single document in the workspace library. The bundled Meridian close pack is
+// seeded as `demo` documents; anything a user uploads (or pastes) becomes an
+// `upload` document with the same shape, so the renderer treats them uniformly.
+export interface LibraryDoc {
+  id: string; // unique within the library; demo docs reuse their DocKind id
+  kind: DocKind;
+  name: string;
+  subtitle: string; // the small caption under the name (e.g. "Press release · 8-K Ex.99.1")
+  icon: string; // svg markup
+  source: DocSource;
+  period: string; // close-pack grouping, e.g. "Q1 FY2026"
+  addedAt: string; // ISO timestamp the document entered the library
+  blocks: Block[];
+  warnings?: string[]; // honest notes from ingestion (e.g. extraction caveats)
 }
 
 export interface TrendPoint {

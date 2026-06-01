@@ -111,11 +111,18 @@ export function FigureModal({ fig, onClose }: { fig: Figure; onClose: () => void
     );
   }
 
+  const conflictLabel =
+    fig.id === "cloudgrowth"
+      ? "Apply corrected 29%"
+      : fig.filed
+        ? `Apply source value (${fig.filed})`
+        : "Apply source value";
+
   const acts =
     fig.st === "f" ? (
       <>
         <button className="btn go" onClick={() => { store.resolveFigure(fig.id); onClose(); }}>
-          Apply corrected 29%
+          {conflictLabel}
         </button>
         <button className="btn">Keep &amp; add justification</button>
       </>
@@ -206,10 +213,18 @@ export function FigureModal({ fig, onClose }: { fig: Figure; onClose: () => void
   );
 }
 
-export function Scrim({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
+export function Scrim({
+  children,
+  onClose,
+  modalClass,
+}: {
+  children: React.ReactNode;
+  onClose: () => void;
+  modalClass?: string;
+}) {
   return (
     <div className="scrim show" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="modal">{children}</div>
+      <div className={`modal${modalClass ? ` ${modalClass}` : ""}`}>{children}</div>
     </div>
   );
 }
