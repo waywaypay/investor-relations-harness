@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useStore } from "../store";
 import { StatusIcon, Eye, Warn } from "../lib/icons";
 import { TrendChart } from "./TrendChart";
+import { SourceDocumentModal } from "./SourceDocumentModal";
 import type { Figure } from "../types";
 
 const STATUS_TEXT: Record<string, string> = {
@@ -24,6 +25,8 @@ export function FigureModal({ fig, onClose }: { fig: Figure; onClose: () => void
   const store = useStore();
   const [tab, setTab] = useState<"source" | "trend">("source");
   const [trendMode, setTrendMode] = useState<"q" | "y">("q");
+  // When set, the full source document opens scrolled to this figure's number.
+  const [srcDocOpen, setSrcDocOpen] = useState(false);
 
   // Untraced (newly typed) figure -> bind flow.
   if (fig.st === "u") {
@@ -131,6 +134,7 @@ export function FigureModal({ fig, onClose }: { fig: Figure; onClose: () => void
     );
 
   return (
+    <>
     <Scrim onClose={onClose}>
       <div className="mbar">
         <span className={`badge ${badgeClass(fig.st)}`}>{fig.badge}</span>
@@ -151,7 +155,14 @@ export function FigureModal({ fig, onClose }: { fig: Figure; onClose: () => void
             </button>
           </div>
           {tab === "source" ? (
-            <div dangerouslySetInnerHTML={{ __html: fig.page }} />
+            <>
+              <div dangerouslySetInnerHTML={{ __html: fig.page }} />
+              {fig.page && (
+                <button className="viewsource" onClick={() => setSrcDocOpen(true)}>
+                  🔍 Click to source — open the document at this exact number ↗
+                </button>
+              )}
+            </>
           ) : (
             <div>
               <div className="trendtoggle">
@@ -188,6 +199,10 @@ export function FigureModal({ fig, onClose }: { fig: Figure; onClose: () => void
         </div>
       </div>
     </Scrim>
+    {srcDocOpen && (
+      <SourceDocumentModal fig={fig} onClose={() => setSrcDocOpen(false)} />
+    )}
+    </>
   );
 }
 
