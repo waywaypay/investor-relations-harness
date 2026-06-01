@@ -53,7 +53,7 @@ export function Popover({
   if (target.type === "fig") {
     const d = target.fig;
     const bc = d.st === "f" ? "f" : d.st === "r" ? "r" : "";
-    const stTxt = d.st === "v" ? "Traced" : d.st === "r" ? "Needs review" : "Conflict";
+    const stTxt = d.st === "v" ? "Traced" : d.st === "r" ? "Manual check" : "Conflict";
     return (
       <div className={`pop show`} ref={ref} style={style} onMouseEnter={onEnter} onMouseLeave={onLeave}>
         <div className="ph">

@@ -7,7 +7,7 @@ import type { Figure } from "../types";
 
 const STATUS_TEXT: Record<string, string> = {
   v: "Traced to a filed source",
-  r: "Needs your review",
+  r: "Needs a manual check",
   f: "Flagged — conflict found",
 };
 

@@ -29,7 +29,7 @@ export function detectNewFigures(text: string): string[] {
 
 export const VERDICT_LABEL: Record<VerdictState, string> = {
   v: "Traced",
-  r: "Needs review",
+  r: "Manual check",
   f: "Conflict",
   u: "Untraced",
 };
