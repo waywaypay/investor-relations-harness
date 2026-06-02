@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { useStore } from "../store";
 import { Scrim } from "./FigureModal";
-import type { DocKind } from "../types";
+import type { DocKind, LibraryDoc } from "../types";
 
 const KIND_OPTIONS: { value: DocKind; label: string; hint: string }[] = [
   { value: "release", label: "Earnings release", hint: "Press release · 8-K Ex.99.1" },
@@ -15,13 +15,18 @@ const ACCEPT = ".txt,.md,.html,.htm,.pdf,.docx,text/plain";
 export function UploadModal({
   onClose,
   onUploaded,
+  target = null,
 }: {
   onClose: () => void;
   onUploaded: (docId: string) => void;
+  /** When set, the upload is filed as a new version of this document. */
+  target?: LibraryDoc | null;
 }) {
   const store = useStore();
-  const [kind, setKind] = useState<DocKind>("script");
-  const [title, setTitle] = useState("");
+  const isVersion = target != null;
+  const [kind, setKind] = useState<DocKind>(target?.kind ?? "script");
+  const [title, setTitle] = useState(target?.name ?? "");
+  const [note, setNote] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [text, setText] = useState("");
   const [drag, setDrag] = useState(false);
@@ -42,13 +47,17 @@ export function UploadModal({
     setBusy(true);
     setError(null);
     try {
-      const doc = await store.uploadDocument({
-        kind,
-        title: title.trim() || undefined,
-        file: file ?? undefined,
-        text: file ? undefined : text.trim() || undefined,
-      });
-      onUploaded(doc.id);
+      const docId = await store.uploadDocument(
+        {
+          kind,
+          title: title.trim() || undefined,
+          file: file ?? undefined,
+          text: file ? undefined : text.trim() || undefined,
+        },
+        target?.id,
+        note
+      );
+      onUploaded(docId);
       onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload failed.");
@@ -57,34 +66,42 @@ export function UploadModal({
     }
   };
 
+  const nextVersionLabel = target ? `Version ${target.versions.length + 1}` : null;
+
   return (
     <Scrim onClose={onClose} modalClass="upmodal">
       <div className="mbar">
-        <span className="badge">UPLOAD</span>
+        <span className="badge">{isVersion ? "NEW VERSION" : "UPLOAD"}</span>
         <div>
-          <div className="ttl">Add a document</div>
-          <div className="sub">Upload a release, script, or Q&amp;A — every figure ties out to your filed sources.</div>
+          <div className="ttl">{isVersion ? `New version of “${target!.name}”` : "Add a document"}</div>
+          <div className="sub">
+            {isVersion
+              ? `Files as ${nextVersionLabel} — your earlier drafts and their tie-outs are kept.`
+              : "Upload a release, script, or Q&A — every figure ties out to your filed sources."}
+          </div>
         </div>
         <button className="x" onClick={onClose} aria-label="Close">×</button>
       </div>
 
       <div className="upbody">
-        <label className="upfield">
-          <span className="upcap">Document type</span>
-          <div className="upkinds">
-            {KIND_OPTIONS.map((o) => (
-              <button
-                key={o.value}
-                type="button"
-                className={`upkind ${kind === o.value ? "active" : ""}`}
-                onClick={() => setKind(o.value)}
-              >
-                <span className="upk-l">{o.label}</span>
-                <span className="upk-h">{o.hint}</span>
-              </button>
-            ))}
-          </div>
-        </label>
+        {!isVersion && (
+          <label className="upfield">
+            <span className="upcap">Document type</span>
+            <div className="upkinds">
+              {KIND_OPTIONS.map((o) => (
+                <button
+                  key={o.value}
+                  type="button"
+                  className={`upkind ${kind === o.value ? "active" : ""}`}
+                  onClick={() => setKind(o.value)}
+                >
+                  <span className="upk-l">{o.label}</span>
+                  <span className="upk-h">{o.hint}</span>
+                </button>
+              ))}
+            </div>
+          </label>
+        )}
 
         <label className="upfield">
           <span className="upcap">Title <span className="upopt">(optional)</span></span>
@@ -96,6 +113,19 @@ export function UploadModal({
             onChange={(e) => setTitle(e.target.value)}
           />
         </label>
+
+        {isVersion && (
+          <label className="upfield">
+            <span className="upcap">What changed <span className="upopt">(optional)</span></span>
+            <input
+              className="upinput"
+              type="text"
+              placeholder="e.g. Updated guidance range after the board review"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+            />
+          </label>
+        )}
 
         <label className="upfield">
           <span className="upcap">Upload a file</span>
@@ -140,7 +170,7 @@ export function UploadModal({
         <div className="upacts">
           <button className="btn" onClick={onClose} disabled={busy}>Cancel</button>
           <button className="btn go" onClick={submit} disabled={!canSubmit}>
-            {busy ? "Analyzing…" : "Analyze & add"}
+            {busy ? "Analyzing…" : isVersion ? "Analyze & file version" : "Analyze & add"}
           </button>
         </div>
       </div>

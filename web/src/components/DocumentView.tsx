@@ -11,6 +11,8 @@ interface Props {
   onFigureClick: (id: string) => void;
   onNarrativeClick: (id: string) => void;
   onCommitmentClick: () => void;
+  onUploadVersion: () => void;
+  onManageVersions: () => void;
 }
 
 function FigToken({
@@ -52,7 +54,8 @@ function NarToken({
 }
 
 export function DocumentView(props: Props) {
-  const { doc, filter, setPop, onFigureClick, onNarrativeClick, onCommitmentClick } = props;
+  const { doc, filter, setPop, onFigureClick, onNarrativeClick, onCommitmentClick,
+    onUploadVersion, onManageVersions } = props;
   const store = useStore();
   const [editing, setEditing] = useState(false);
   const hideTimer = useRef<number | undefined>(undefined);
@@ -155,6 +158,9 @@ export function DocumentView(props: Props) {
     setEditing((e) => !e);
   };
 
+  const activeVersion = doc.versions.find((v) => v.id === doc.activeVersionId) ?? doc.versions[0];
+  const multiVersion = doc.versions.length > 1;
+
   return (
     <>
       <div className="doctools">
@@ -165,6 +171,30 @@ export function DocumentView(props: Props) {
             {editing ? "Done editing" : "Edit draft"}
           </button>
         </div>
+      </div>
+      <div className="versionbar">
+        <span className="vb-label">
+          <span className="vb-ic">⎘</span>
+          {multiVersion ? (
+            <select
+              className="vb-select"
+              value={doc.activeVersionId}
+              aria-label="Active version"
+              onChange={(e) => store.setActiveVersion(doc.id, e.target.value)}
+            >
+              {doc.versions.map((v) => (
+                <option key={v.id} value={v.id}>{v.label}</option>
+              ))}
+            </select>
+          ) : (
+            <b>{activeVersion?.label ?? "Version 1"}</b>
+          )}
+          <span className="vb-count">{doc.versions.length} version{doc.versions.length > 1 ? "s" : ""}</span>
+        </span>
+        <span className="vb-acts">
+          <button className="vb-btn" onClick={onUploadVersion}>+ Upload new version</button>
+          <button className="vb-btn ghost" onClick={onManageVersions}>History</button>
+        </span>
       </div>
       {editing && (
         <div className="edithint">

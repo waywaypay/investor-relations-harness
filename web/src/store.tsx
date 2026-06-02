@@ -4,7 +4,13 @@ import { COMMITMENTS, NARRATIVES } from "./data/narratives";
 import { DEMO_LIBRARY } from "./data/library";
 import type { Commitment, Figure, LibraryDoc, Narrative, VerdictState } from "./types";
 import { evaluateEdit } from "./lib/verify";
-import { buildDocFromAnalysis, buildDocLocally, type BuiltDoc } from "./lib/buildDoc";
+import {
+  buildVersionFromAnalysis,
+  buildVersionLocally,
+  newDocId,
+  newVersionId,
+  type BuiltVersion,
+} from "./lib/buildDoc";
 import { apiBaseUrl, client, type AnalyzeInput } from "./api/client";
 
 type FigureMap = Record<string, Figure>;
@@ -26,8 +32,17 @@ interface Store {
   addFigure: (id: string, text: string) => void;
   resolveNarrative: (id: string) => void;
   addressCommitment: (id: string) => void;
-  uploadDocument: (input: AnalyzeInput) => Promise<LibraryDoc>;
+  /** Upload/paste a draft. With `targetDocId`, the draft is filed as a new
+   *  version of that document; otherwise it becomes a new document. Returns the
+   *  id of the document to navigate to. */
+  uploadDocument: (input: AnalyzeInput, targetDocId?: string, note?: string) => Promise<string>;
   removeDoc: (id: string) => void;
+  /** Make a stored version the one the document renders. */
+  setActiveVersion: (docId: string, versionId: string) => void;
+  /** Remove one version; drops the document if it was the last. */
+  removeVersion: (docId: string, versionId: string) => void;
+  /** Rename a document in the library. */
+  renameDoc: (docId: string, name: string) => void;
 }
 
 const StoreContext = createContext<Store | null>(null);
@@ -80,11 +95,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | undefined>(undefined);
 
-  // Persist the uploaded documents (and only their figures) whenever they change.
+  // Persist the uploaded documents (with their version history) and only the
+  // figures those versions reference, whenever they change. Demo documents — and
+  // any session-only versions layered onto them — are always re-seeded fresh.
   useEffect(() => {
     const docs = library.filter((d) => d.source === "upload");
+    const keep = new Set<string>();
+    for (const d of docs) for (const v of d.versions) for (const id of v.figureIds) keep.add(id);
     const figs: FigureMap = {};
-    for (const id of Object.keys(figures)) if (isUploadFigureId(id)) figs[id] = figures[id];
+    for (const id of keep) if (figures[id]) figs[id] = figures[id];
     saveUploads({ docs, figures: figs });
   }, [library, figures]);
 
@@ -242,12 +261,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   );
 
   const uploadDocument = useCallback(
-    async (input: AnalyzeInput): Promise<LibraryDoc> => {
-      let built: BuiltDoc;
+    async (input: AnalyzeInput, targetDocId?: string, note?: string): Promise<string> => {
+      const versionId = newVersionId();
+      let built: BuiltVersion;
       try {
         // Preferred path: the deterministic engine analyzes the real document.
         const result = await client.analyzeDocument(input);
-        built = buildDocFromAnalysis(result);
+        built = buildVersionFromAnalysis(result, versionId);
       } catch {
         // No backend reachable (or it errored): degrade to client-side detection
         // so the document still enters the workspace, honestly marked untraced.
@@ -255,37 +275,146 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         if (!text.trim()) {
           throw new Error("Provide a file or paste text to analyze.");
         }
-        built = buildDocLocally({
-          text,
-          title: input.title || input.file?.name || "Uploaded document",
-          kind: input.kind,
-        });
+        built = buildVersionLocally(
+          {
+            text,
+            title: input.title || input.file?.name || "Uploaded document",
+            kind: input.kind,
+            fromFile: input.file != null,
+          },
+          versionId
+        );
       }
+      if (note?.trim()) built.version.note = note.trim();
+
       setFigures((prev) => ({ ...prev, ...built.figures }));
-      setLibrary((prev) => [...prev, built.libraryDoc]);
+
+      // The document id we'll navigate to: the target for a new version, or a
+      // freshly minted id for a new document. Minted outside the state updater so
+      // a double-invoked updater (React strict mode) can't fork two documents.
+      const docId = targetDocId ?? newDocId();
+      setLibrary((prev) => {
+        if (targetDocId) {
+          return prev.map((d) => {
+            if (d.id !== targetDocId) return d;
+            if (d.versions.some((v) => v.id === versionId)) return d; // idempotent guard
+            const version = { ...built.version, label: `Version ${d.versions.length + 1}` };
+            return {
+              ...d,
+              versions: [version, ...d.versions],
+              activeVersionId: version.id,
+              blocks: version.blocks,
+              warnings: version.warnings,
+            };
+          });
+        }
+        if (prev.some((d) => d.id === docId)) return prev; // idempotent guard
+        const version = { ...built.version, label: "Version 1" };
+        const doc: LibraryDoc = {
+          id: docId,
+          kind: built.meta.kind,
+          name: built.meta.name,
+          subtitle: built.meta.subtitle,
+          icon: built.meta.icon,
+          source: "upload",
+          period: built.meta.period,
+          addedAt: version.addedAt,
+          blocks: version.blocks,
+          warnings: version.warnings,
+          versions: [version],
+          activeVersionId: version.id,
+        };
+        return [...prev, doc];
+      });
+
       const traced = Object.values(built.figures).filter((f) => f.st === "v").length;
       const total = Object.keys(built.figures).length;
+      const what = targetDocId ? "Filed a new version" : `Added “${built.meta.name}”`;
       showToast(
         total
-          ? `Added “${built.libraryDoc.name}” — ${traced} of ${total} figure${total > 1 ? "s" : ""} traced.`
-          : `Added “${built.libraryDoc.name}” to the workspace.`
+          ? `${what} — ${traced} of ${total} figure${total > 1 ? "s" : ""} traced.`
+          : `${what} to the workspace.`
       );
-      return built.libraryDoc;
+      return docId;
     },
     [showToast]
   );
 
   const removeDoc = useCallback(
     (id: string) => {
+      const doc = library.find((d) => d.id === id);
       setLibrary((prev) => prev.filter((d) => d.id !== id));
-      setFigures((prev) => {
-        const next = { ...prev };
-        for (const k of Object.keys(next)) if (k.startsWith(`${id}::`)) delete next[k];
-        return next;
-      });
+      if (doc) {
+        // Drop only the document's own (namespaced) figures — shared demo figures
+        // stay so the rest of the close pack keeps tying out.
+        setFigures((prev) => {
+          const next = { ...prev };
+          for (const v of doc.versions)
+            for (const fid of v.figureIds) if (isUploadFigureId(fid)) delete next[fid];
+          return next;
+        });
+      }
       showToast("Document removed from the workspace.");
     },
+    [library, showToast]
+  );
+
+  const setActiveVersion = useCallback(
+    (docId: string, versionId: string) => {
+      let label = "";
+      setLibrary((prev) =>
+        prev.map((d) => {
+          if (d.id !== docId) return d;
+          const v = d.versions.find((x) => x.id === versionId);
+          if (!v) return d;
+          label = v.label;
+          return { ...d, activeVersionId: versionId, blocks: v.blocks, warnings: v.warnings };
+        })
+      );
+      showToast(label ? `Now viewing ${label}.` : "Switched version.");
+    },
     [showToast]
+  );
+
+  const removeVersion = useCallback(
+    (docId: string, versionId: string) => {
+      const doc = library.find((d) => d.id === docId);
+      const version = doc?.versions.find((v) => v.id === versionId);
+      setLibrary((prev) => {
+        const d = prev.find((x) => x.id === docId);
+        if (!d) return prev;
+        const versions = d.versions.filter((v) => v.id !== versionId);
+        if (versions.length === 0) return prev.filter((x) => x.id !== docId); // last one -> drop doc
+        const active =
+          d.activeVersionId === versionId
+            ? versions[0]
+            : versions.find((v) => v.id === d.activeVersionId) ?? versions[0];
+        return prev.map((x) =>
+          x.id !== docId
+            ? x
+            : { ...x, versions, activeVersionId: active.id, blocks: active.blocks, warnings: active.warnings }
+        );
+      });
+      if (version) {
+        setFigures((prev) => {
+          const next = { ...prev };
+          for (const fid of version.figureIds) if (isUploadFigureId(fid)) delete next[fid];
+          return next;
+        });
+      }
+      const dropped = doc && doc.versions.length <= 1;
+      showToast(dropped ? "Document removed from the workspace." : "Version removed.");
+    },
+    [library, showToast]
+  );
+
+  const renameDoc = useCallback(
+    (docId: string, name: string) => {
+      const clean = name.trim();
+      if (!clean) return;
+      setLibrary((prev) => prev.map((d) => (d.id === docId ? { ...d, name: clean } : d)));
+    },
+    []
   );
 
   const value = useMemo<Store>(
@@ -293,12 +422,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       figures, narratives, commitments, library, toast,
       showToast, editFigure, bindFigure, resolveFigure, restoreFigure,
       removeFigure, addFigure, resolveNarrative, addressCommitment,
-      uploadDocument, removeDoc,
+      uploadDocument, removeDoc, setActiveVersion, removeVersion, renameDoc,
     }),
     [
       figures, narratives, commitments, library, toast, showToast, editFigure, bindFigure,
       resolveFigure, restoreFigure, removeFigure, addFigure, resolveNarrative, addressCommitment,
-      uploadDocument, removeDoc,
+      uploadDocument, removeDoc, setActiveVersion, removeVersion, renameDoc,
     ]
   );
 

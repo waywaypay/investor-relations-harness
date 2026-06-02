@@ -16,7 +16,15 @@ import type {
 } from "../api/client";
 import { detectNewFigures } from "./verify";
 import { ICON_FOR_KIND } from "../data/documents";
-import type { Block, DocKind, Figure, Inline, LibraryDoc, VerdictState } from "../types";
+import type {
+  Block,
+  DocKind,
+  DocVersion,
+  Figure,
+  Inline,
+  VerdictState,
+  VersionOrigin,
+} from "../types";
 
 const VERDICT_STATE: Record<string, VerdictState> = {
   traced: "v",
@@ -127,8 +135,9 @@ function makeFigure(
 
 // Resolve each verdict to a span in the prose (the claim's span if present, else
 // the first occurrence of its text), drop overlaps, and keep document order.
+// `scope` namespaces the figure ids so each version owns its own figures.
 function placeFigures(
-  docId: string,
+  scope: string,
   text: string,
   claims: AnalyzeClaim[],
   verdicts: AnalyzeVerdict[]
@@ -144,7 +153,7 @@ function placeFigures(
       if (idx >= 0) span = [idx, idx + needle.length];
     }
     if (!span) continue; // can't anchor it in the prose; skip the inline token
-    const figureId = `${docId}::${v.claim_id}`;
+    const figureId = `${scope}::${v.claim_id}`;
     placed.push({ figureId, span, figure: makeFigure(figureId, claim, v) });
   }
   placed.sort((a, b) => a.span[0] - b.span[0]);
@@ -200,51 +209,98 @@ function buildBlocks(
   return blocks;
 }
 
-function newDocId(): string {
+export function newDocId(): string {
   return `u_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
 }
 
-export interface BuiltDoc {
-  libraryDoc: LibraryDoc;
-  figures: Record<string, Figure>;
+export function newVersionId(): string {
+  return `v_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
 }
 
-/** Assemble a library document from a real backend analysis. */
-export function buildDocFromAnalysis(result: AnalyzeResult): BuiltDoc {
-  const docId = newDocId();
-  const kind = (["release", "script", "qa", "other"].includes(result.kind)
-    ? result.kind
-    : "other") as DocKind;
-  const title = result.title || "Uploaded document";
-  const subtitle = SUBTITLE[kind];
-  const placed = placeFigures(docId, result.text, result.claims, result.verdicts);
+const asDocKind = (k: string): DocKind =>
+  (["release", "script", "qa", "other"].includes(k) ? k : "other") as DocKind;
+
+/** Metadata a freshly built version contributes to its (possibly new) document. */
+export interface VersionMeta {
+  name: string;
+  kind: DocKind;
+  subtitle: string;
+  icon: string;
+  period: string;
+}
+
+/** One built version: the renderable version record, its figures (namespaced by
+ *  the version id), and the document-level metadata it implies. The store decides
+ *  whether to wrap this in a new document or append it to an existing one. */
+export interface BuiltVersion {
+  version: DocVersion;
+  figures: Record<string, Figure>;
+  meta: VersionMeta;
+}
+
+function assembleVersion(args: {
+  versionId: string;
+  origin: VersionOrigin;
+  kind: DocKind;
+  title: string;
+  subtitle: string;
+  text: string;
+  claims: AnalyzeClaim[];
+  verdicts: AnalyzeVerdict[];
+  warnings?: string[];
+  period: string;
+}): BuiltVersion {
+  const placed = placeFigures(args.versionId, args.text, args.claims, args.verdicts);
   const figures: Record<string, Figure> = {};
   for (const p of placed) figures[p.figureId] = p.figure;
   return {
-    libraryDoc: {
-      id: docId,
-      kind,
-      name: title,
-      subtitle,
-      icon: ICON_FOR_KIND[kind] ?? ICON_FOR_KIND.other,
-      source: "upload",
-      period: result.period || "Uploaded",
+    version: {
+      id: args.versionId,
+      label: "", // the store assigns the human label (it knows the version count)
       addedAt: new Date().toISOString(),
-      blocks: buildBlocks(title, subtitle, result.text, placed),
-      warnings: result.warnings,
+      origin: args.origin,
+      blocks: buildBlocks(args.title, args.subtitle, args.text, placed),
+      figureIds: placed.map((p) => p.figureId),
+      warnings: args.warnings,
     },
     figures,
+    meta: {
+      name: args.title,
+      kind: args.kind,
+      subtitle: args.subtitle,
+      icon: ICON_FOR_KIND[args.kind] ?? ICON_FOR_KIND.other,
+      period: args.period,
+    },
   };
+}
+
+/** Build a version from a real backend analysis. */
+export function buildVersionFromAnalysis(
+  result: AnalyzeResult,
+  versionId: string
+): BuiltVersion {
+  const kind = asDocKind(result.kind);
+  const title = result.title || "Uploaded document";
+  return assembleVersion({
+    versionId,
+    origin: "upload",
+    kind,
+    title,
+    subtitle: SUBTITLE[kind],
+    text: result.text,
+    claims: result.claims,
+    verdicts: result.verdicts,
+    warnings: result.warnings,
+    period: result.period || "Uploaded",
+  });
 }
 
 /** Offline fallback: detect numeric spans client-side, mark them untraced, and
  *  attach an honest warning that no verification backend was reached. */
-export function buildDocLocally(input: {
-  text: string;
-  title: string;
-  kind: DocKind;
-}): BuiltDoc {
-  const docId = newDocId();
+export function buildVersionLocally(
+  input: { text: string; title: string; kind: DocKind; fromFile?: boolean },
+  versionId: string
+): BuiltVersion {
   const subtitle = SUBTITLE[input.kind] ?? SUBTITLE.other;
   const claims: AnalyzeClaim[] = [];
   const verdicts: AnalyzeVerdict[] = [];
@@ -270,24 +326,18 @@ export function buildDocLocally(input: {
       source_value: null,
     });
   }
-  const placed = placeFigures(docId, input.text, claims, verdicts);
-  const figures: Record<string, Figure> = {};
-  for (const p of placed) figures[p.figureId] = p.figure;
-  return {
-    libraryDoc: {
-      id: docId,
-      kind: input.kind,
-      name: input.title || "Uploaded document",
-      subtitle,
-      icon: ICON_FOR_KIND[input.kind] ?? ICON_FOR_KIND.other,
-      source: "upload",
-      period: "Uploaded",
-      addedAt: new Date().toISOString(),
-      blocks: buildBlocks(input.title || "Uploaded document", subtitle, input.text, placed),
-      warnings: [
-        "No verification backend connected — figures were detected but not tied out to a filed source.",
-      ],
-    },
-    figures,
-  };
+  return assembleVersion({
+    versionId,
+    origin: input.fromFile ? "upload" : "paste",
+    kind: input.kind,
+    title: input.title || "Uploaded document",
+    subtitle,
+    text: input.text,
+    claims,
+    verdicts,
+    warnings: [
+      "No verification backend connected — figures were detected but not tied out to a filed source.",
+    ],
+    period: "Uploaded",
+  });
 }

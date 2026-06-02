@@ -121,4 +121,42 @@ describe("document library & upload", () => {
     fireEvent.click(screen.getByRole("button", { name: /Remove Uploaded document/i }));
     expect(screen.queryByText("$42 million")).not.toBeInTheDocument();
   });
+
+  it("files a new version of a document and lets you switch back to the prior one", async () => {
+    // Upload an initial document.
+    fireEvent.click(screen.getByRole("button", { name: "+ Upload" }));
+    fireEvent.change(screen.getByPlaceholderText(/e\.g\./i), { target: { value: "My draft" } });
+    fireEvent.change(screen.getByPlaceholderText(/Paste your draft/i), {
+      target: { value: "Revenue was $1.0 billion this quarter." },
+    });
+    fireEvent.click(screen.getByText(/Analyze & add/i));
+    await screen.findByText("$1.0 billion");
+
+    // The version bar shows the active version; file a new version of this doc.
+    fireEvent.click(screen.getByRole("button", { name: /Upload new version/i }));
+    expect(await screen.findByText(/New version of/i)).toBeInTheDocument();
+    fireEvent.change(screen.getByPlaceholderText(/Paste your draft/i), {
+      target: { value: "Revenue was $1.2 billion this quarter." },
+    });
+    fireEvent.click(screen.getByText(/Analyze & file version/i));
+
+    // The new version renders; a version selector now offers both.
+    expect(await screen.findByText("$1.2 billion")).toBeInTheDocument();
+    const select = screen.getByLabelText("Active version") as HTMLSelectElement;
+    expect(select.options.length).toBe(2);
+
+    // Switch back to Version 1 — the earlier figure returns.
+    fireEvent.change(select, { target: { value: select.options[1].value } });
+    expect(await screen.findByText("$1.0 billion")).toBeInTheDocument();
+  });
+
+  it("opens the documents manager and lets you rename a document", () => {
+    fireEvent.click(screen.getByRole("button", { name: "Manage" }));
+    expect(screen.getByText("Manage documents")).toBeInTheDocument();
+    // The bundled samples are listed and can be renamed.
+    const rename = screen.getByLabelText(/Rename Earnings release/i) as HTMLInputElement;
+    fireEvent.change(rename, { target: { value: "Q1 release (renamed)" } });
+    fireEvent.blur(rename);
+    expect(screen.getAllByDisplayValue("Q1 release (renamed)").length).toBeGreaterThan(0);
+  });
 });

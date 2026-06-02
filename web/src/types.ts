@@ -100,9 +100,35 @@ export interface DocMeta {
 // Where a document in the workspace library came from.
 export type DocSource = "demo" | "upload";
 
+// How a particular version's content arrived.
+export type VersionOrigin = "demo" | "upload" | "paste";
+
+// A single saved version of a library document.
+//
+// Version control lets a user re-upload a draft and keep the prior tie-outs
+// intact: each version owns its own rendered blocks, its ingestion warnings, and
+// the ids of the figures it renders (figures themselves live in the store's flat
+// map, namespaced by version id so versions never collide). The document renders
+// whichever version is currently active.
+export interface DocVersion {
+  id: string; // unique within the library; figures are keyed `${id}::${claim}`
+  label: string; // human label, e.g. "Version 3" or "As filed"
+  addedAt: string; // ISO timestamp this version was created
+  origin: VersionOrigin;
+  blocks: Block[];
+  figureIds: string[]; // ids into the store's figure map that this version renders
+  warnings?: string[]; // honest notes from ingestion (e.g. extraction caveats)
+  note?: string; // optional free-text note the user attaches to the version
+}
+
 // A single document in the workspace library. The bundled Meridian close pack is
 // seeded as `demo` documents; anything a user uploads (or pastes) becomes an
 // `upload` document with the same shape, so the renderer treats them uniformly.
+//
+// Every document carries a version history (`versions`, newest first) and an
+// `activeVersionId`. The top-level `blocks`/`warnings` always mirror the active
+// version so the renderer (and coverage counts) read a document uniformly without
+// knowing about versions.
 export interface LibraryDoc {
   id: string; // unique within the library; demo docs reuse their DocKind id
   kind: DocKind;
@@ -112,8 +138,10 @@ export interface LibraryDoc {
   source: DocSource;
   period: string; // close-pack grouping, e.g. "Q1 FY2026"
   addedAt: string; // ISO timestamp the document entered the library
-  blocks: Block[];
-  warnings?: string[]; // honest notes from ingestion (e.g. extraction caveats)
+  blocks: Block[]; // mirror of the active version's blocks
+  warnings?: string[]; // mirror of the active version's warnings
+  versions: DocVersion[]; // version history, newest first
+  activeVersionId: string;
 }
 
 export interface TrendPoint {

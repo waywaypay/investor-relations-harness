@@ -9,7 +9,9 @@ import { FigureModal } from "./components/FigureModal";
 import { NarrativeModal } from "./components/NarrativeModal";
 import { CommitmentModal } from "./components/CommitmentModal";
 import { UploadModal } from "./components/UploadModal";
+import { DocumentsManager } from "./components/DocumentsManager";
 import { Popover, type PopTarget } from "./components/Popover";
+import type { LibraryDoc } from "./types";
 
 type View = string; // a library doc id, or "consensus" | "calendar"
 
@@ -22,6 +24,11 @@ function Workspace() {
   const [narModal, setNarModal] = useState<string | null>(null);
   const [commitModal, setCommitModal] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
+  // When set, the upload modal files a new version of this document instead of
+  // creating a fresh one.
+  const [uploadTarget, setUploadTarget] = useState<LibraryDoc | null>(null);
+  const [managerOpen, setManagerOpen] = useState(false);
+  const [managerFocus, setManagerFocus] = useState<string | null>(null);
   const popHideTimer = useRef<number | undefined>(undefined);
 
   const isDoc = view !== "consensus" && view !== "calendar";
@@ -35,7 +42,10 @@ function Workspace() {
   // Escape closes any modal.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") { setFigModal(null); setNarModal(null); setCommitModal(false); setUploadOpen(false); }
+      if (e.key === "Escape") {
+        setFigModal(null); setNarModal(null); setCommitModal(false);
+        setUploadOpen(false); setManagerOpen(false);
+      }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
@@ -45,11 +55,16 @@ function Workspace() {
   const openFig = (id: string) => { setPop(null); setFigModal(id); };
   const openNar = (id: string) => { setPop(null); setNarModal(id); };
 
+  // Upload entry points: a fresh document, or a new version of an existing one.
+  const openUploadNew = () => { setUploadTarget(null); setUploadOpen(true); };
+  const openUploadVersion = (doc: LibraryDoc) => { setUploadTarget(doc); setUploadOpen(true); };
+  const openManager = (focus?: string) => { setManagerFocus(focus ?? null); setManagerOpen(true); };
+
   return (
     <>
       <TopBar activeDoc={activeDoc?.id ?? null} filter={filter} setFilter={setFilter} />
       <div className="layout">
-        <Sidebar view={view} setView={setView} onUpload={() => setUploadOpen(true)} />
+        <Sidebar view={view} setView={setView} onUpload={openUploadNew} onManage={() => openManager()} />
         <div className="stage">
           {activeDoc && (
             <div style={{ width: "100%", maxWidth: 680 }}>
@@ -61,6 +76,8 @@ function Workspace() {
                 onFigureClick={openFig}
                 onNarrativeClick={openNar}
                 onCommitmentClick={() => setCommitModal(true)}
+                onUploadVersion={() => openUploadVersion(activeDoc)}
+                onManageVersions={() => openManager(activeDoc.id)}
               />
             </div>
           )}
@@ -75,8 +92,22 @@ function Workspace() {
         onLeave={() => { popHideTimer.current = window.setTimeout(() => setPop(null), 120); }}
       />
 
+      {managerOpen && (
+        <DocumentsManager
+          focusDocId={managerFocus}
+          onClose={() => setManagerOpen(false)}
+          onOpen={(id) => setView(id)}
+          onUploadNew={openUploadNew}
+          onUploadVersion={openUploadVersion}
+        />
+      )}
+
       {uploadOpen && (
-        <UploadModal onClose={() => setUploadOpen(false)} onUploaded={(id) => setView(id)} />
+        <UploadModal
+          target={uploadTarget}
+          onClose={() => { setUploadOpen(false); setUploadTarget(null); }}
+          onUploaded={(id) => setView(id)}
+        />
       )}
 
       {figModal && store.figures[figModal] && (

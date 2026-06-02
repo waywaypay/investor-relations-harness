@@ -40,10 +40,12 @@ export function Sidebar({
   view,
   setView,
   onUpload,
+  onManage,
 }: {
   view: View;
   setView: (v: View) => void;
   onUpload: () => void;
+  onManage: () => void;
 }) {
   const store = useStore();
 
@@ -65,7 +67,10 @@ export function Sidebar({
 
       <div className="sb-cap-row">
         <span className="sb-cap">Documents</span>
-        <button className="sb-upload" onClick={onUpload}>+ Upload</button>
+        <span className="sb-cap-acts">
+          <button className="sb-manage" onClick={onManage}>Manage</button>
+          <button className="sb-upload" onClick={onUpload}>+ Upload</button>
+        </span>
       </div>
 
       {periods.map((period) => (
@@ -88,6 +93,11 @@ export function Sidebar({
                           {d.subtitle}
                           {d.source === "upload" && (
                             <span className="di-when"> · {fmtDate(d.addedAt)}</span>
+                          )}
+                          {d.versions.length > 1 && (
+                            <span className="di-vers" title={`${d.versions.length} versions`}>
+                              · v{d.versions.length}
+                            </span>
                           )}
                         </div>
                       </div>
