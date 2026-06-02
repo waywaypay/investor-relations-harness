@@ -256,3 +256,6 @@ def create_app(service: AttestService | None = None) -> FastAPI:
         )
 
     return app
+
+
+app = create_app()
