@@ -318,3 +318,6 @@ def create_app(service: AttestService | None = None, *, seed_demo: bool = False)
         )
 
     return app
+
+
+app = create_app()
