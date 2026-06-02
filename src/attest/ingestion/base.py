@@ -28,4 +28,6 @@ class IngestionReport(BaseModel):
 class Connector(Protocol):
     """Pull from a source and yield normalized facts."""
 
-    def fetch(self, *args, **kwargs) -> tuple[list[Fact], IngestionReport]: ...
+    def fetch(
+        self, *args: object, **kwargs: object
+    ) -> tuple[list[Fact], IngestionReport]: ...

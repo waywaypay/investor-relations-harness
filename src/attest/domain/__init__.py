@@ -13,6 +13,7 @@ from attest.domain.money import (
     Unit,
     parse_quantity,
 )
+from attest.domain.period import Period
 from attest.domain.verdicts import (
     FigureClaim,
     FigureVerdict,
@@ -30,6 +31,7 @@ __all__ = [
     "RoundingPolicy",
     "Unit",
     "parse_quantity",
+    "Period",
     "FigureClaim",
     "FigureVerdict",
     "RuleFinding",

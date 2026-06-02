@@ -116,18 +116,19 @@ class RoundingPolicy:
     The primary rule is precision-based ("round the source to the draft's
     quantum"). ``relative_tolerance`` is an optional secondary allowance (e.g.
     ``0.0005`` for 5bps) for buyers whose policy permits it; it defaults to zero,
-    keeping tie-outs strict unless a tenant opts in.
+    keeping tie-outs strict unless a tenant opts in. ``rounding`` selects the
+    decimal rounding mode and defaults to half-up, the disclosure norm; a tenant
+    can override it (e.g. ``ROUND_HALF_EVEN``) and the tie-out math honours it.
     """
 
     relative_tolerance: Decimal = Decimal(0)
-    rounding = ROUND_HALF_UP
+    rounding: str = ROUND_HALF_UP
 
-    @staticmethod
-    def round_to(value: Decimal, quantum: Decimal) -> Decimal:
-        """Round ``value`` to the given ``quantum`` using half-up (disclosure norm)."""
+    def round_to(self, value: Decimal, quantum: Decimal) -> Decimal:
+        """Round ``value`` to the given ``quantum`` using the policy's mode."""
         if quantum <= 0:
             return value
-        return (value / quantum).quantize(Decimal(1), rounding=ROUND_HALF_UP) * quantum
+        return (value / quantum).quantize(Decimal(1), rounding=self.rounding) * quantum
 
 
 # A sensible default: strict, precision-only matching.

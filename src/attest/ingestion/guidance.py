@@ -28,12 +28,13 @@ it emits.
 from __future__ import annotations
 
 import re
-from decimal import Decimal
+from collections.abc import Iterator
 from pathlib import Path
 
 from attest.domain.facts import Confidence, Fact, SourceType
 from attest.domain.metrics import DEFAULT_REGISTRY, MetricRegistry
 from attest.domain.money import Quantity, QuantityParseError, Unit, parse_quantity
+from attest.domain.period import Period
 from attest.ingestion.base import IngestionReport
 from attest.verification.rules.ranges import parse_range
 
@@ -84,7 +85,7 @@ def load_press_release(name: str) -> str:
     return (_FIXTURE_DIR / f"{name}.txt").read_text(encoding="utf-8")
 
 
-def _iter_sentences(text: str):
+def _iter_sentences(text: str) -> Iterator[str]:
     """Yield each sentence as stripped prose, preserving its internal text."""
     pos = 0
     for m in _SENTENCE_BREAK.finditer(text):
@@ -98,16 +99,14 @@ def _iter_sentences(text: str):
 
 
 def _base_year(base_period: str | None) -> int | None:
-    m = re.match(r"FY(\d{4})", base_period or "", re.IGNORECASE)
-    return int(m.group(1)) if m else None
+    p = Period.parse(base_period)
+    return p.year if p else None
 
 
 def _next_quarter_period(base_period: str | None) -> str | None:
-    m = re.match(r"FY(\d{4})-Q([1-4])", base_period or "", re.IGNORECASE)
-    if not m:
-        return None
-    year, q = int(m.group(1)), int(m.group(2))
-    return f"FY{year + 1}-Q1" if q == 4 else f"FY{year}-Q{q + 1}"
+    p = Period.parse(base_period)
+    nxt = p.next_quarter() if p else None
+    return str(nxt) if nxt else None
 
 
 def _guidance_period(sentence: str, base_period: str | None) -> str | None:
@@ -122,10 +121,10 @@ def _guidance_period(sentence: str, base_period: str | None) -> str | None:
     year = int(year_m.group(1)) if year_m else _base_year(base_period)
 
     if _FULL_YEAR.search(sentence):
-        return f"FY{year}-FY" if year else None
+        return str(Period(year=year, part="FY")) if year else None
     qm = _QUARTER.search(sentence)
     if qm and year:
-        return f"FY{year}-Q{_QUARTER_WORDS[qm.group(1).lower()]}"
+        return str(Period(year=year, part=f"Q{_QUARTER_WORDS[qm.group(1).lower()]}"))
     return _next_quarter_period(base_period)
 
 

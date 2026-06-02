@@ -17,6 +17,8 @@ from attest.extraction.claims import (
     DEFAULT_ALIASES,
     AliasConfig,
     ClaimExtractor,
+    ClaimProposer,
+    ProposerFactory,
     infer_period,
 )
 from attest.extraction.text import ExtractedText, extract_text
@@ -25,6 +27,8 @@ __all__ = [
     "AliasConfig",
     "DEFAULT_ALIASES",
     "ClaimExtractor",
+    "ClaimProposer",
+    "ProposerFactory",
     "infer_period",
     "ExtractedText",
     "extract_text",

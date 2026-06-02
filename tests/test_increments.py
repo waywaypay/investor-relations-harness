@@ -215,7 +215,6 @@ def test_unit_mismatch_ok_when_units_align():
 # -- Increment 7: intra-document figure consistency ------------------------
 
 def test_intradoc_flags_same_metric_two_values():
-    reg = MetricRegistry([MetricSpec(id="total_revenue", label="Total revenue", unit=Unit.CURRENCY)])
     doc = Document(id="d", tenant_id=T, title="d", kind=DocumentKind.OTHER,
                    text="Revenue was $1.24 billion ... revenue of $1.25 billion.",
                    claims=(

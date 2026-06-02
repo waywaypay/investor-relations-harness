@@ -17,15 +17,40 @@ under-detection is the failure mode, exactly as for the eventual LLM.
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
+from typing import Protocol, runtime_checkable
 
 from attest.domain.facts import Confidence
 from attest.domain.metrics import MetricRegistry
 from attest.domain.money import Unit
+from attest.domain.period import Period
 from attest.domain.verdicts import FigureClaim
 from attest.factstore.repository import FactStore
 from attest.verification.candidates import detect_candidates
+
+
+@runtime_checkable
+class ClaimProposer(Protocol):
+    """The probabilistic edge's contract: propose figure claims from prose.
+
+    This is the swap point the architecture promises. ``ClaimExtractor`` is the
+    model-free reference implementation; an LLM-backed proposer satisfies the same
+    Protocol and drops in with no change to the deterministic core, because the
+    core only ever consumes :class:`FigureClaim` *proposals* and disposes of them
+    itself. Like :class:`~attest.factstore.repository.FactStore` and
+    :class:`~attest.audit.log.AuditLog`, the seam is a Protocol, not a prose promise.
+    """
+
+    def extract(
+        self,
+        text: str,
+        *,
+        document_id: str,
+        tenant_id: str,
+        entity: str,
+        period: str | None,
+    ) -> tuple[FigureClaim, ...]: ...
 
 # Curated aliases per canonical metric — the *default* vocabulary. Labels from the
 # registry are folded in at runtime; this table adds the natural-language synonyms
@@ -68,7 +93,6 @@ _QUARTER_WORDS = {
     "third": 3, "3rd": 3, "q3": 3, "fourth": 4, "4th": 4, "q4": 4,
 }
 _NEXT_Q_WORDS = re.compile(r"\b(first|second|third|fourth)\s+quarter\b", re.IGNORECASE)
-_PERIOD_RE = re.compile(r"FY\d{4}-Q[1-4]", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -113,6 +137,11 @@ class AliasConfig:
 # The default vocabulary every tenant starts from.
 DEFAULT_ALIASES = AliasConfig(aliases={k: v for k, v in _ALIASES.items()})
 
+# How the service builds a proposer for a given tenant's analysis. The default is
+# ``ClaimExtractor``; an LLM-backed edge is injected by passing any callable with
+# this shape to :class:`~attest.service.AttestService`.
+ProposerFactory = Callable[[MetricRegistry, FactStore, AliasConfig], ClaimProposer]
+
 
 @dataclass(frozen=True)
 class _MetricView:
@@ -139,10 +168,8 @@ def infer_period(*texts: str) -> str | None:
     period unset and the engine honestly reports those figures as untraced.
     """
     for text in texts:
-        if not text:
-            continue
-        if (m := _PERIOD_RE.search(text)) is not None:
-            return m.group(0).upper()
+        if (found := Period.find(text)) is not None:
+            return str(found)
     blob = " ".join(t for t in texts if t).lower()
     year_m = re.search(r"(?:fiscal|fy)\s*(20\d\d)", blob) or re.search(r"\b(20\d\d)\b", blob)
     q = None
@@ -151,18 +178,14 @@ def infer_period(*texts: str) -> str | None:
             q = num
             break
     if year_m and q:
-        return f"FY{year_m.group(1)}-Q{q}"
+        return str(Period(year=int(year_m.group(1)), part=f"Q{q}"))
     return None
 
 
 def _next_period(period: str | None) -> str | None:
-    if not period:
-        return None
-    m = re.match(r"FY(\d{4})-Q([1-4])", period, re.IGNORECASE)
-    if not m:
-        return None
-    year, q = int(m.group(1)), int(m.group(2))
-    return f"FY{year + 1}-Q1" if q == 4 else f"FY{year}-Q{q + 1}"
+    p = Period.parse(period)
+    nxt = p.next_quarter() if p else None
+    return str(nxt) if nxt else None
 
 
 class ClaimExtractor:
@@ -222,8 +245,26 @@ class ClaimExtractor:
                 if best is None or score > best:
                     best = score
         metric_id = best[2] if best else None
-        is_growth = bool(metric_id and self.registry.get(metric_id) and self.registry.get(metric_id).derived_kind)
+        spec = self.registry.get(metric_id) if metric_id else None
+        is_growth = bool(spec and spec.derived_kind)
         return metric_id, is_growth
+
+    def _guidance_metric(self, window: str) -> str | None:
+        """Pick the currency *guidance* metric a range asserts, from its context.
+
+        Attributes from the tenant's own vocabulary near the range (so a configured
+        synonym wins), but only ever resolves to a guidance metric — never to a
+        same-period actual like ``total_revenue``. Falls back to the registry's
+        generic revenue-guidance metric, and returns ``None`` (caller marks the
+        span low-confidence) when the registry defines no guidance metric at all.
+        """
+        metric, _ = self._match_metric(window, Unit.CURRENCY)
+        if metric is not None and metric.endswith("_guidance"):
+            return metric
+        for spec in self.registry.metrics():
+            if spec.unit is Unit.CURRENCY and spec.id.endswith("_guidance"):
+                return spec.id
+        return None
 
     def extract(
         self,
@@ -246,7 +287,13 @@ class ClaimExtractor:
             window = text[max(0, span[0] - 90) : span[0]].lower()
             if not _GUIDANCE_NEAR.search(window):
                 continue
-            metric = "q2_revenue_guidance" if "q2_revenue_guidance" in self.registry else "revenue_guidance"
+            # Attribute the range from the tenant's vocabulary near it, rather than
+            # hard-coding a demo metric id; an unattributable range is surfaced as
+            # low-confidence, never asserted.
+            metric = self._guidance_metric(window)
+            confidence = Confidence.HIGH
+            if metric is None:
+                metric, confidence = "unidentified", Confidence.LOW
             seq += 1
             claims.append(
                 FigureClaim(
@@ -257,7 +304,7 @@ class ClaimExtractor:
                     period=guidance_period or period or "",
                     displayed_text=m.group(0).strip(),
                     span=span,
-                    detect_confidence=Confidence.HIGH,
+                    detect_confidence=confidence,
                 )
             )
             consumed.append(span)

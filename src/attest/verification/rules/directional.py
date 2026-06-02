@@ -17,20 +17,17 @@ import re
 
 from attest.domain.document import Document
 from attest.domain.metrics import MetricRegistry
+from attest.domain.period import Period
 from attest.domain.verdicts import RuleFinding, RuleSeverity
 from attest.factstore.repository import FactStore
 
 _UP_WORDS = {"expanded", "increased", "grew", "rose", "improved", "higher", "up"}
 _DOWN_WORDS = {"declined", "decreased", "fell", "contracted", "dropped", "lower", "down"}
 
-_PRIOR_YEAR_RE = re.compile(r"^FY(\d{4})(-.*)?$")
-
 
 def _prior_year(period: str) -> str | None:
-    m = _PRIOR_YEAR_RE.match(period)
-    if not m:
-        return None
-    return f"FY{int(m.group(1)) - 1}{m.group(2) or ''}"
+    p = Period.parse(period)
+    return str(p.prior_year()) if p else None
 
 
 def _direction_word_near(text: str, label: str) -> str | None:

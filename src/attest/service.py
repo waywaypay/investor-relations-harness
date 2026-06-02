@@ -15,7 +15,14 @@ from collections.abc import Iterable, Mapping
 from attest.domain.document import Document, DocumentKind
 from attest.domain.metrics import DEFAULT_REGISTRY, MetricRegistry
 from attest.domain.money import DEFAULT_POLICY, RoundingPolicy
-from attest.extraction.claims import DEFAULT_ALIASES, AliasConfig, ClaimExtractor, infer_period
+from attest.domain.verdicts import RuleFinding
+from attest.extraction.claims import (
+    DEFAULT_ALIASES,
+    AliasConfig,
+    ClaimExtractor,
+    ProposerFactory,
+    infer_period,
+)
 from attest.factstore.repository import FactStore, InMemoryFactStore
 from attest.ingestion.base import IngestionReport
 from attest.ingestion.edgar_xbrl import XBRLConnector
@@ -33,6 +40,7 @@ class AttestService:
         audit_log: AuditLog | None = None,
         policy: RoundingPolicy = DEFAULT_POLICY,
         aliases: AliasConfig | None = None,
+        proposer_factory: ProposerFactory | None = None,
     ) -> None:
         self.store = store or InMemoryFactStore()
         self.registry = registry or DEFAULT_REGISTRY
@@ -43,6 +51,10 @@ class AttestService:
         # The extraction edge's metric vocabulary, per tenant, over a default.
         self._default_aliases = aliases or DEFAULT_ALIASES
         self._aliases_by_tenant: dict[str, AliasConfig] = {}
+        # The probabilistic edge. Defaults to the model-free reference extractor;
+        # an LLM-backed proposer satisfying ``ClaimProposer`` drops in here with no
+        # change to the deterministic core downstream.
+        self._proposer_factory: ProposerFactory = proposer_factory or ClaimExtractor
 
     # -- ingestion -----------------------------------------------------------
 
@@ -101,7 +113,9 @@ class AttestService:
     def verify_document(self, document: Document) -> VerificationResult:
         return self.engine.verify_document(document)
 
-    def verify_close_pack(self, documents: list[Document]):
+    def verify_close_pack(
+        self, documents: list[Document]
+    ) -> tuple[list[VerificationResult], list[RuleFinding]]:
         return self.engine.verify_close_pack(documents)
 
     # -- upload & analyze (the real-document entry point) ---------------------
@@ -130,8 +144,8 @@ class AttestService:
         entity = entity or self.default_entity(tenant_id)
         period = period or infer_period(title, text)
         doc_id = document_id or kind.value
-        extractor = ClaimExtractor(self.registry, self.store, self.aliases_for(tenant_id))
-        claims = extractor.extract(
+        proposer = self._proposer_factory(self.registry, self.store, self.aliases_for(tenant_id))
+        claims = proposer.extract(
             text, document_id=doc_id, tenant_id=tenant_id, entity=entity, period=period
         )
         document = Document(

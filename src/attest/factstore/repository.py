@@ -9,6 +9,7 @@ cross-filing conflict a single-document chatbot structurally cannot catch.
 
 from __future__ import annotations
 
+import threading
 from typing import Iterable, Protocol, runtime_checkable
 
 from attest.domain.facts import Fact
@@ -42,33 +43,40 @@ class InMemoryFactStore:
         # scope_key -> list[Fact] (insertion order preserved, sorted on read)
         self._by_scope: dict[tuple[str, str, str, str], list[Fact]] = {}
         self._by_id: dict[str, Fact] = {}
+        # Guards the two dicts. Sync API endpoints run in a threadpool, so a
+        # concurrent ingest must not interleave with a read mid-mutation.
+        self._lock = threading.Lock()
 
     def add(self, fact: Fact) -> None:
-        if fact.id in self._by_id:
-            raise ValueError(f"duplicate fact id: {fact.id}")
-        self._by_id[fact.id] = fact
-        self._by_scope.setdefault(fact.scope_key(), []).append(fact)
+        with self._lock:
+            if fact.id in self._by_id:
+                raise ValueError(f"duplicate fact id: {fact.id}")
+            self._by_id[fact.id] = fact
+            self._by_scope.setdefault(fact.scope_key(), []).append(fact)
 
     def add_many(self, facts: Iterable[Fact]) -> int:
         count = 0
         for fact in facts:
-            self.add(fact)
+            self.add(fact)  # each add is individually atomic
             count += 1
         return count
 
     def versions(self, tenant_id: str, entity: str, metric: str, period: str) -> list[Fact]:
         key = (tenant_id, entity, metric, period)
-        return sorted(self._by_scope.get(key, []), key=lambda f: f.as_of)
+        with self._lock:
+            return sorted(self._by_scope.get(key, []), key=lambda f: f.as_of)
 
     def latest(self, tenant_id: str, entity: str, metric: str, period: str) -> Fact | None:
         versions = self.versions(tenant_id, entity, metric, period)
         return versions[-1] if versions else None
 
     def all(self, tenant_id: str | None = None) -> list[Fact]:
-        facts = list(self._by_id.values())
+        with self._lock:
+            facts = list(self._by_id.values())
         if tenant_id is not None:
             facts = [f for f in facts if f.tenant_id == tenant_id]
         return facts
 
     def get(self, fact_id: str) -> Fact | None:
-        return self._by_id.get(fact_id)
+        with self._lock:
+            return self._by_id.get(fact_id)

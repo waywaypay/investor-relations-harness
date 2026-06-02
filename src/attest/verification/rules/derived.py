@@ -24,11 +24,10 @@ Supported formulas (``MetricSpec.derived_kind``):
 
 from __future__ import annotations
 
-import re
 from decimal import Decimal
 
 from attest.domain.document import Document
-from attest.domain.metrics import MetricRegistry
+from attest.domain.metrics import MetricRegistry, MetricSpec
 from attest.domain.money import (
     DEFAULT_POLICY,
     Quantity,
@@ -36,33 +35,24 @@ from attest.domain.money import (
     Unit,
     parse_quantity,
 )
-from attest.domain.verdicts import RuleFinding, RuleSeverity
+from attest.domain.period import Period
+from attest.domain.verdicts import FigureClaim, RuleFinding, RuleSeverity
 from attest.factstore.repository import FactStore
-
-_PERIOD_RE = re.compile(r"^FY(\d{4})(-.*)?$")
-_QUARTER_RE = re.compile(r"^FY(\d{4})-Q([1-4])$")
 
 _SUPPORTED = {"yoy_growth", "delta_bps", "qoq_growth"}
 
 
-def _prior_year_period(period: str) -> str | None:
+def _prior_year_period(period: str | None) -> str | None:
     """'FY2026-Q1' -> 'FY2025-Q1'. Returns None if the period isn't recognised."""
-    m = _PERIOD_RE.match(period)
-    if not m:
-        return None
-    year = int(m.group(1)) - 1
-    return f"FY{year}{m.group(2) or ''}"
+    p = Period.parse(period)
+    return str(p.prior_year()) if p else None
 
 
-def _prior_quarter_period(period: str) -> str | None:
+def _prior_quarter_period(period: str | None) -> str | None:
     """'FY2026-Q1' -> 'FY2025-Q4'; 'FY2026-Q2' -> 'FY2026-Q1'. Quarterly only."""
-    m = _QUARTER_RE.match(period)
-    if not m:
-        return None
-    year, q = int(m.group(1)), int(m.group(2))
-    if q == 1:
-        return f"FY{year - 1}-Q4"
-    return f"FY{year}-Q{q - 1}"
+    p = Period.parse(period)
+    prior = p.prior_quarter() if p else None
+    return str(prior) if prior else None
 
 
 def _expected(kind: str, current: Decimal, prior: Decimal) -> tuple[Decimal, Unit, str] | None:
@@ -148,23 +138,26 @@ def check_derived_consistency(
     return findings
 
 
-def _check_ttm(document, claim, spec, store) -> list[RuleFinding]:
+def _check_ttm(
+    document: Document, claim: FigureClaim, spec: MetricSpec, store: FactStore
+) -> list[RuleFinding]:
     """Verify a trailing-twelve-month sum: base over the current + prior 3 quarters."""
     if spec.derived_base is None:
         return []
     periods = [claim.period]
-    p = claim.period
+    p: str | None = claim.period
     for _ in range(3):
         p = _prior_quarter_period(p)
         if p is None:
             return []  # not a quarterly period — cannot build a TTM window
         periods.append(p)
 
-    facts = [
+    found = [
         store.latest(document.tenant_id, claim.entity, spec.derived_base, per)
         for per in periods
     ]
-    if any(f is None for f in facts):
+    facts = [f for f in found if f is not None]
+    if len(facts) != len(periods):
         return []  # an interior quarter is missing — never guess
 
     try:
@@ -190,15 +183,18 @@ def _check_ttm(document, claim, spec, store) -> list[RuleFinding]:
     ]
 
 
-def _check_sum(document, claim, spec, store) -> list[RuleFinding]:
+def _check_sum(
+    document: Document, claim: FigureClaim, spec: MetricSpec, store: FactStore
+) -> list[RuleFinding]:
     """Verify a sum identity: claimed total == sum of its components."""
     if not spec.derived_components:
         return []
-    parts = [
+    found = [
         store.latest(document.tenant_id, claim.entity, cid, claim.period)
         for cid in spec.derived_components
     ]
-    if any(p is None for p in parts):
+    parts = [p for p in found if p is not None]
+    if len(parts) != len(spec.derived_components):
         return []  # a component is missing — never guess
 
     try:
@@ -225,7 +221,9 @@ def _check_sum(document, claim, spec, store) -> list[RuleFinding]:
     ]
 
 
-def _check_ratio(document, claim, spec, store) -> list[RuleFinding]:
+def _check_ratio(
+    document: Document, claim: FigureClaim, spec: MetricSpec, store: FactStore
+) -> list[RuleFinding]:
     """Verify a ratio identity: claimed value == numerator / denominator."""
     num_id, den_id = spec.derived_numerator, spec.derived_denominator
     if num_id is None or den_id is None:

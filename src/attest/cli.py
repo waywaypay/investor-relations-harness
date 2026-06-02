@@ -53,12 +53,19 @@ def _run_demo() -> int:
 
 
 def _run_serve(host: str, port: int) -> int:
+    import os
+
     import uvicorn
 
     from attest.api.app import create_app
+    from attest.api.auth import StaticTokenAuthorizer
 
-    print(f"Attest — upload & verify UI at http://{host}:{port}  (API docs at /docs)")
-    uvicorn.run(create_app(), host=host, port=port)
+    # Open by default; set ATTEST_API_TOKENS="tok=meridian|acme,admin=*" to lock down.
+    tokens = os.environ.get("ATTEST_API_TOKENS", "").strip()
+    authorizer = StaticTokenAuthorizer.from_env(tokens) if tokens else None
+    auth_note = "token auth ON" if authorizer else "OPEN access (set ATTEST_API_TOKENS to lock down)"
+    print(f"Attest — upload & verify UI at http://{host}:{port}  (API docs at /docs) · {auth_note}")
+    uvicorn.run(create_app(authorizer=authorizer), host=host, port=port)
     return 0
 
 

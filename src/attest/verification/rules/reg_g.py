@@ -22,6 +22,11 @@ from attest.domain.verdicts import RuleFinding, RuleSeverity
 from attest.factstore.repository import FactStore
 
 
+def _metric_label(registry: MetricRegistry, metric_id: str) -> str:
+    spec = registry.get(metric_id)
+    return spec.label if spec else metric_id
+
+
 def check_reg_g(
     document: Document, registry: MetricRegistry, store: FactStore
 ) -> list[RuleFinding]:
@@ -75,19 +80,18 @@ def check_reg_g(
         # or any adjustment fact is missing — we never guess at the bridge.
         adjustment_ids = spec.reconciliation_adjustments
         if adjustment_ids:
-            adj_facts = [
+            found = [
                 store.latest(document.tenant_id, claim.entity, adj_id, claim.period)
                 for adj_id in adjustment_ids
             ]
-            if all(f is not None for f in adj_facts):
-                bridged = gaap_fact.value + sum(
-                    (f.value for f in adj_facts), Decimal(0)
-                )
+            adj_facts = [f for f in found if f is not None]
+            if len(adj_facts) == len(adjustment_ids):
+                bridged = gaap_fact.value + sum((f.value for f in adj_facts), Decimal(0))
                 quantum = non_gaap_fact.quantum or Decimal("0.01")
                 expected = DEFAULT_POLICY.round_to(bridged, quantum)
                 if expected != non_gaap_fact.value:
                     parts = " + ".join(
-                        f"{f.value} ({registry.get(aid).label if registry.get(aid) else aid})"
+                        f"{f.value} ({_metric_label(registry, aid)})"
                         for aid, f in zip(adjustment_ids, adj_facts)
                     )
                     findings.append(

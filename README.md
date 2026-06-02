@@ -64,6 +64,7 @@ src/attest/
     metrics.py       canonical metric registry (incl. Reg G relationships)
     verdicts.py      FigureClaim (edge proposes) / FigureVerdict (core disposes)
     document.py      the unit submitted for verification
+    period.py        fiscal-period value object — all period arithmetic, one place
   factstore/       the normalized, restatement-aware store of facts-with-provenance
   verification/
     candidates.py    greedy figure detection (over-detect, never under-detect)
@@ -82,7 +83,9 @@ src/attest/
   ingestion/       connectors (EDGAR/XBRL adapter, 8-K EX-99.1 guidance adapter,
                                 sample filing + press-release fixtures)
   eval/            the golden-set harness + CI gate (figure FN rate must be 0)
-  api/             stateless FastAPI surface over the service
+  extraction/      the replaceable probabilistic edge: ClaimProposer Protocol +
+                     a model-free reference extractor + file-to-prose recovery
+  api/             stateless FastAPI surface over the service (+ pluggable tenant auth)
   service.py       composition root shared by the API and CLI
   cli.py           `attest demo` / `attest serve`
 ```
@@ -102,7 +105,14 @@ src/attest/
   *consumers* of the store; restatements are new `Fact` versions, not mutations.
 - **Eval is non-negotiable infrastructure.** `attest/eval` scores the engine
   against a labeled golden set with the right asymmetry (a missed wrong number is
-  catastrophic); `tests/test_eval.py` is the CI gate.
+  catastrophic); `tests/test_eval.py` is the CI gate. It is wired into GitHub
+  Actions (`.github/workflows/ci.yml`), which runs the suite, the eval gate,
+  `ruff`, and `mypy` on every push and PR — the gate is enforced, not aspirational.
+- **The edge is a swappable Protocol, not a prose promise.** `ClaimProposer`
+  (`attest/extraction`) is the seam the model plugs into, exactly like `FactStore`
+  and `AuditLog` are seams for persistence. The model-free `ClaimExtractor` is the
+  default; an LLM proposer is injected via `AttestService(proposer_factory=…)` and
+  nothing downstream changes, because the core only ever disposes of proposals.
 
 ## API surface
 
@@ -126,7 +136,16 @@ GET  /audit/verify                              re-derive the hash chain
 `POST /analyze` accepts a multipart `file` **or** a `text` field (plus optional
 `title`, `kind`, `entity`, `period`). It recovers the prose, lets the edge
 propose figure claims, and runs the full engine — the same spine the demo close
-pack flows through, now driven by a real document.
+pack flows through, now driven by a real document. Uploads are size-capped so a
+single request can't exhaust memory.
+
+**Tenant access.** The reference build runs open, so the demo, UI, and tests need
+no credentials. Set `ATTEST_API_TOKENS="tok=meridian|acme,admin=*"` before `attest
+serve` to require an `Authorization: Bearer <token>` header on every
+`/tenants/{tenant}/…` route, scoped to the tenants each token may touch.
+Authorization is a `Protocol` (`attest.api.auth.Authorizer`) with an
+allow-all default; a JWT/SSO authorizer drops in the same way the in-memory stores
+swap for Postgres.
 
 ### Uploading real documents — and where the "edge" lives
 
@@ -138,8 +157,10 @@ implementation of that edge — greedy figure detection plus keyword/alias mappi
 segment-entity resolution grounded in the tenant's own ingested facts, and light
 period inference. It deliberately *over*-detects and labels anything it cannot
 confidently attribute as low-confidence, so the deterministic core still disposes
-and a guessed binding is never asserted as `traced`. Swap in an LLM here and
-nothing downstream changes.
+and a guessed binding is never asserted as `traced`. The swap point is concrete:
+any object satisfying the `ClaimProposer` Protocol can be passed as
+`AttestService(proposer_factory=…)`, so swapping in an LLM changes nothing
+downstream.
 
 The metric vocabulary is **tenant-configurable** — every issuer's house style
 differs ("topline" vs "net revenue", segment names, non-GAAP labels). Each tenant

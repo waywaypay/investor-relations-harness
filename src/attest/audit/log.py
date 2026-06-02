@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
 from datetime import datetime, timezone
 from typing import Iterable, Protocol, runtime_checkable
 
@@ -67,30 +68,39 @@ class InMemoryAuditLog:
 
     def __init__(self) -> None:
         self._events: list[AuditEvent] = []
+        # The chain is a read-modify-write on the tail: seq and prev_hash are read,
+        # then a new event is appended. Concurrent appends (sync endpoints run in a
+        # threadpool) would otherwise fork the chain and break its own verification,
+        # so appends are serialised. A production event-sourced store gets the same
+        # guarantee from a serial sequence / single-writer partition.
+        self._lock = threading.Lock()
 
     def append(
         self, *, actor: str, type: EventType, tenant_id: str, payload: dict | None = None,
         timestamp: str | None = None,
     ) -> AuditEvent:
         payload = payload or {}
-        seq = len(self._events)
-        prev_hash = self._events[-1].hash if self._events else GENESIS_HASH
-        ts = timestamp or datetime.now(timezone.utc).isoformat()
-        digest = compute_hash(
-            seq=seq, timestamp=ts, actor=actor, type=type, tenant_id=tenant_id,
-            payload=payload, prev_hash=prev_hash,
-        )
-        event = AuditEvent(
-            seq=seq, timestamp=ts, actor=actor, type=type, tenant_id=tenant_id,
-            payload=payload, prev_hash=prev_hash, hash=digest,
-        )
-        self._events.append(event)
-        return event
+        with self._lock:
+            seq = len(self._events)
+            prev_hash = self._events[-1].hash if self._events else GENESIS_HASH
+            ts = timestamp or datetime.now(timezone.utc).isoformat()
+            digest = compute_hash(
+                seq=seq, timestamp=ts, actor=actor, type=type, tenant_id=tenant_id,
+                payload=payload, prev_hash=prev_hash,
+            )
+            event = AuditEvent(
+                seq=seq, timestamp=ts, actor=actor, type=type, tenant_id=tenant_id,
+                payload=payload, prev_hash=prev_hash, hash=digest,
+            )
+            self._events.append(event)
+            return event
 
     def events(self, tenant_id: str | None = None) -> list[AuditEvent]:
+        with self._lock:
+            snapshot = list(self._events)
         if tenant_id is None:
-            return list(self._events)
-        return [e for e in self._events if e.tenant_id == tenant_id]
+            return snapshot
+        return [e for e in snapshot if e.tenant_id == tenant_id]
 
     def verify(self) -> bool:
         """Recompute the chain; return True iff every link is intact.
@@ -98,8 +108,10 @@ class InMemoryAuditLog:
         This is the function the "export audit trail" feature stands on: a buyer's
         auditor can independently re-run it against the exported events.
         """
+        with self._lock:
+            snapshot = list(self._events)
         prev_hash = GENESIS_HASH
-        for idx, event in enumerate(self._events):
+        for idx, event in enumerate(snapshot):
             if event.seq != idx:
                 raise ChainIntegrityError(f"seq gap at position {idx}: got {event.seq}")
             if event.prev_hash != prev_hash:

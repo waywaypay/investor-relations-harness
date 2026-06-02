@@ -10,9 +10,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import HTMLResponse
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import HTMLResponse, JSONResponse
+from starlette.middleware.base import RequestResponseEndpoint
+from starlette.responses import Response
 
+from attest.api.auth import AllowAllAuthorizer, Authorizer
 from attest.api.schemas import (
     AliasConfigRequest,
     AliasConfigResponse,
@@ -33,6 +36,25 @@ from attest.verification.engine import VerificationResult
 
 _STATIC_DIR = Path(__file__).parent / "static"
 _DEMO_FIXTURE = "meridian_q1_fy2026"
+_MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MiB cap on an uploaded draft
+
+
+def _bearer_token(authorization: str | None) -> str | None:
+    if authorization and authorization.lower().startswith("bearer "):
+        return authorization[len("bearer ") :].strip()
+    return None
+
+
+async def _read_capped(file: UploadFile, limit: int) -> bytes:
+    """Read an upload, refusing (413) anything past ``limit`` without buffering it all."""
+    chunks: list[bytes] = []
+    total = 0
+    while chunk := await file.read(1 << 16):
+        total += len(chunk)
+        if total > limit:
+            raise HTTPException(status_code=413, detail=f"upload exceeds {limit} bytes")
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 
 def _to_verify_response(result: VerificationResult) -> VerifyResponse:
@@ -45,13 +67,36 @@ def _to_verify_response(result: VerificationResult) -> VerifyResponse:
     )
 
 
-def create_app(service: AttestService | None = None) -> FastAPI:
+def create_app(
+    service: AttestService | None = None, authorizer: Authorizer | None = None
+) -> FastAPI:
     app = FastAPI(
         title="Attest API",
         version="0.1.0",
         description="Deterministic disclosure-verification spine for investor relations.",
     )
     app.state.service = service or AttestService()
+    # Open by default (demo/tests); inject a real authorizer for a deployment.
+    app.state.authorizer = authorizer or AllowAllAuthorizer()
+
+    @app.middleware("http")
+    async def _enforce_tenant_access(
+        request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:
+        """Gate every ``/tenants/{tenant_id}/...`` route through the authorizer.
+
+        One choke point rather than a dependency on a dozen routes: a route that is
+        added later is protected automatically. Non-tenant routes (``/``,
+        ``/health``, ``/audit/verify``) are unaffected.
+        """
+        parts = request.url.path.split("/", 3)
+        if len(parts) >= 3 and parts[1] == "tenants":
+            token = _bearer_token(request.headers.get("authorization"))
+            if not app.state.authorizer.authorize(parts[2], token):
+                return JSONResponse(
+                    {"detail": "not authorized for this tenant"}, status_code=403
+                )
+        return await call_next(request)
 
     def get_service() -> AttestService:
         return app.state.service
@@ -165,7 +210,7 @@ def create_app(service: AttestService | None = None) -> FastAPI:
         warnings: list[str] = []
         resolved_title = title
         if file is not None and file.filename:
-            extracted = extract_text(file.filename, await file.read())
+            extracted = extract_text(file.filename, await _read_capped(file, _MAX_UPLOAD_BYTES))
             doc_text = extracted.text
             warnings = list(extracted.warnings)
             resolved_title = title or file.filename
