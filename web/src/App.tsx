@@ -64,7 +64,7 @@ function Workspace() {
     <>
       <TopBar activeDoc={activeDoc?.id ?? null} filter={filter} setFilter={setFilter} />
       <div className="layout">
-        <Sidebar view={view} setView={setView} onUpload={openUploadNew} onManage={() => openManager()} />
+        <Sidebar view={view} setView={setView} onUpload={openUploadNew} onManage={openManager} />
         <div className="stage">
           {activeDoc && (
             <div style={{ width: "100%", maxWidth: 680 }}>

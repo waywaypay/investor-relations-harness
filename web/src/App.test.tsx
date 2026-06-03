@@ -116,9 +116,10 @@ describe("document library & upload", () => {
     fireEvent.click(screen.getByText(/Analyze & add/i));
     await screen.findByText("$42 million");
 
-    // The uploaded doc carries a remove control; clicking it drops the doc and
-    // falls back to another document.
-    fireEvent.click(screen.getByRole("button", { name: /Remove Uploaded document/i }));
+    // The uploaded doc's row menu carries a Delete action; using it drops the doc
+    // and falls back to another document.
+    fireEvent.click(screen.getByRole("button", { name: /Actions for Uploaded document/i }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Delete" }));
     expect(screen.queryByText("$42 million")).not.toBeInTheDocument();
   });
 
@@ -150,13 +151,25 @@ describe("document library & upload", () => {
     expect(await screen.findByText("$1.0 billion")).toBeInTheDocument();
   });
 
-  it("opens the documents manager and lets you rename a document", () => {
-    fireEvent.click(screen.getByRole("button", { name: "Manage" }));
+  it("opens the documents manager from the 'Manage all' link and lets you rename a document", () => {
+    fireEvent.click(screen.getByRole("button", { name: /Manage all/i }));
     expect(screen.getByText("Manage documents")).toBeInTheDocument();
     // The bundled samples are listed and can be renamed.
     const rename = screen.getByLabelText(/Rename Earnings release/i) as HTMLInputElement;
     fireEvent.change(rename, { target: { value: "Q1 release (renamed)" } });
     fireEvent.blur(rename);
     expect(screen.getAllByDisplayValue("Q1 release (renamed)").length).toBeGreaterThan(0);
+  });
+
+  it("renames a document inline from the sidebar row menu", () => {
+    // Open the row's actions menu and choose Rename — the row name becomes an
+    // editable field in place, no modal required.
+    fireEvent.click(screen.getByRole("button", { name: /Actions for Earnings release/i }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Rename" }));
+    const input = screen.getByLabelText(/Rename Earnings release/i) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "Q1 release v2" } });
+    fireEvent.blur(input);
+    // The renamed document shows its new name (in the sidebar, and the open doc's crumb).
+    expect(screen.getAllByText("Q1 release v2").length).toBeGreaterThan(0);
   });
 });
