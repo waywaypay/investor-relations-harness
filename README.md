@@ -22,6 +22,7 @@ python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 
 attest demo          # ingest the Meridian filing, verify the close pack, print a report
+attest eval          # run the golden-set deploy gates and print a scored report
 pytest               # run the suite, including the eval regression gate
 attest serve         # API + upload UI at http://127.0.0.1:8000  (API docs at /docs)
 ```
@@ -81,7 +82,10 @@ src/attest/
   audit/           append-only, event-sourced, sha256 hash-chained log
   ingestion/       connectors (EDGAR/XBRL adapter, 8-K EX-99.1 guidance adapter,
                                 sample filing + press-release fixtures)
-  eval/            the golden-set harness + CI gate (figure FN rate must be 0)
+  eval/            golden-set harness + deploy gates over three surfaces:
+                     figure tie-outs (figure FN rate must be 0), the extraction
+                     edge (no under-detection; a mis-attribution is never traced),
+                     and the rule engines (no missed flag, no spurious flag)
   api/             stateless FastAPI surface over the service
   service.py       composition root shared by the API and CLI
   cli.py           `attest demo` / `attest serve`
@@ -100,9 +104,11 @@ src/attest/
   log. `audit_verify()` re-derives the chain; any retroactive edit breaks it.
 - **The fact store is the spine.** Verification, Reg G, and consistency are all
   *consumers* of the store; restatements are new `Fact` versions, not mutations.
-- **Eval is non-negotiable infrastructure.** `attest/eval` scores the engine
-  against a labeled golden set with the right asymmetry (a missed wrong number is
-  catastrophic); `tests/test_eval.py` is the CI gate.
+- **Eval is non-negotiable infrastructure.** `attest/eval` scores three surfaces
+  against labeled golden sets, each with the right asymmetry. `attest eval` runs
+  the gates and exits non-zero on a breach; `tests/test_eval.py` asserts the same
+  gates; `.github/workflows/ci.yml` runs lint + the suite + the gates on every push
+  and PR. See **Evals & CI** below.
 
 ## API surface
 
@@ -185,6 +191,36 @@ in a filed 8-K exhibit is a real, citable disclosure, these facts are `filing_li
 (traceable), distinct from the internal pre-filing planning guidance that ingests
 as non-filed `management_input`. A later draft that reaffirms prior guidance then
 ties out to the exact published sentence.
+
+## Evals & CI
+
+For a trust product the eval pipeline is the asset that lets you say "trustworthy"
+without lying, so it is wired as a gate, not a dashboard. `attest/eval` scores three
+surfaces against labeled golden sets (`src/attest/eval/golden/*.json`), each with the
+asymmetry that matters for that surface:
+
+| Surface | Golden set | What it measures | Gate |
+| --- | --- | --- | --- |
+| **Figure tie-outs** | `figure_tieouts` | the engine's verdict per labeled figure | a wrong number called `traced` is catastrophic → figure FN rate **= 0** |
+| **Extraction edge** | `extraction_attribution` | the replaceable (eventually-LLM) edge mapping prose → claims | never under-detect (recall **= 1.0**); a mis-attributed figure is **never** `traced` (unsafe traces **= 0**); attribution accuracy held to a regression floor |
+| **Rule engines** | `rule_findings` | Reg G / FLS / consistency / derived findings | never miss a compliance flag (recall **= 1.0**); never raise a spurious one (precision **= 1.0**) |
+
+The extraction gate encodes the architecture's load-bearing claim directly: the edge
+is *allowed* to be imperfect — attribution accuracy is a regression floor, not a demand
+for perfection — **because the deterministic core is the safety net.** The harness runs
+each labeled figure end to end and proves that every figure the edge mis-attributes
+comes back `untraced` / `conflict` / `needs_review`, never `traced`. That is what lets
+you swap a model into the edge without re-earning trust downstream.
+
+```bash
+attest eval     # run all three gates, print the scored report, exit non-zero on a breach
+pytest tests/test_eval.py   # the same gates, asserted as the CI regression test
+```
+
+`.github/workflows/ci.yml` runs `ruff` + the full `pytest` suite (which includes the
+gates) + `attest eval` + the demo smoke test on every push and pull request, across
+Python 3.11 and 3.12. A model, rule, or prompt change that regresses any surface fails
+CI before it can merge.
 
 ## Scope of this v1
 
