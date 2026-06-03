@@ -10,9 +10,10 @@ name: Deploy web workspace to GitHub Pages
 on:
   push:
     branches:
-      - claude/keen-gates-E6OdR         # default branch
-      - claude/dreamy-cori-3GcvU        # feature branch (demo can go live before merge)
-      - claude/determined-wright-hATEA  # feature branch (this change)
+      - main
+      - claude/keen-gates-E6OdR
+      - claude/dreamy-cori-3GcvU
+      - claude/determined-wright-hATEA
     paths:
       - "web/**"
       - ".github/workflows/pages.yml"
