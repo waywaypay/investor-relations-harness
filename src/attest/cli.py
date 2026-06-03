@@ -1,6 +1,7 @@
 """Command-line entry point.
 
     attest demo     # ingest the Meridian filing, verify the close pack, print a report
+    attest eval     # run the golden-set gates and print a scored report
     attest serve    # run the API with uvicorn
 """
 
@@ -52,6 +53,34 @@ def _run_demo() -> int:
     return 0
 
 
+def _run_eval() -> int:
+    """Run every golden-set gate and print a scored report. Non-zero on a breach.
+
+    This is the same gate ``tests/test_eval.py`` asserts, exposed as a command so
+    eval is a usable QA tool — run it locally before a model/rule/prompt change, or
+    as an explicit step in CI — not only a pytest assertion.
+    """
+    from attest.eval import run_gates
+
+    gates = run_gates()
+    print("Attest — eval gates\n" + "=" * 56)
+    for gate in gates:
+        status = "PASS" if gate.passed else "FAIL"
+        print(f"\n[{status}] {gate.name}")
+        for key, value in gate.metrics.items():
+            if isinstance(value, list):
+                print(f"   {key}: {len(value)}")
+                for item in value:
+                    print(f"      - {item}")
+            else:
+                print(f"   {key}: {value}")
+
+    passed = all(gate.passed for gate in gates)
+    print("\n" + "=" * 56)
+    print(f"-> {'all gates passed' if passed else 'GATE FAILURE — see above'}")
+    return 0 if passed else 1
+
+
 def _run_serve(host: str, port: int) -> int:
     import uvicorn
 
@@ -66,6 +95,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="attest", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("demo", help="verify the bundled Meridian close pack")
+    sub.add_parser("eval", help="run the golden-set gates and print a scored report")
     serve = sub.add_parser("serve", help="run the API server")
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument("--port", type=int, default=8000)
@@ -73,6 +103,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command == "demo":
         return _run_demo()
+    if args.command == "eval":
+        return _run_eval()
     if args.command == "serve":
         return _run_serve(args.host, args.port)
     return 1

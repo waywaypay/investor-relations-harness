@@ -1,0 +1,186 @@
+{
+  "name": "rule_findings",
+  "description": "Labeled documents -> the deterministic rule findings they should (and should not) raise, scored against the Meridian Q1 FY2026 fixture. 'should_flag' is the compliance ground truth: a missed flag is catastrophic, so rule recall must be 1.0. 'should_not_flag' is the trust ground truth: a spurious flag erodes trust, so rule precision must be 1.0 on the curated set. Documents are run through verify_close_pack so both per-document and cross-document rules are exercised.",
+  "filing_fixture": "meridian_q1_fy2026",
+  "tenant": "meridian",
+  "cases": [
+    {
+      "id": "reg_g_missing_equal_prominence",
+      "documents": [
+        {"id": "d", "kind": "release", "entity": "MRDN", "period": "FY2026-Q1",
+         "text": "Non-GAAP diluted EPS of $1.12 was a record for the quarter.",
+         "claims": [{"metric": "non_gaap_diluted_eps", "text": "$1.12"}]}
+      ],
+      "should_flag": ["reg_g.equal_prominence"],
+      "should_not_flag": ["forward_looking.safe_harbor_required", "units.unit_mismatch",
+                          "consistency.cross_document_mismatch"]
+    },
+    {
+      "id": "reg_g_clean_with_gaap_and_reconciliation",
+      "documents": [
+        {"id": "d", "kind": "release", "entity": "MRDN", "period": "FY2026-Q1",
+         "text": "GAAP diluted EPS was $0.87 and non-GAAP diluted EPS was $1.12.",
+         "claims": [{"metric": "gaap_diluted_eps", "text": "$0.87", "span": [21, 26]},
+                    {"metric": "non_gaap_diluted_eps", "text": "$1.12", "span": [52, 57]}]}
+      ],
+      "should_flag": [],
+      "should_not_flag": ["reg_g.equal_prominence", "reg_g.reconciliation_required",
+                          "reg_g.reconciliation_arithmetic", "reg_g.equal_prominence_ordering",
+                          "forward_looking.safe_harbor_required"]
+    },
+    {
+      "id": "reg_g_non_gaap_before_gaap",
+      "documents": [
+        {"id": "d", "kind": "release", "entity": "MRDN", "period": "FY2026-Q1",
+         "text": "Non-GAAP diluted EPS of $1.12 ... GAAP diluted EPS of $0.87",
+         "claims": [{"metric": "non_gaap_diluted_eps", "text": "$1.12", "span": [24, 29]},
+                    {"metric": "gaap_diluted_eps", "text": "$0.87", "span": [55, 60]}]}
+      ],
+      "should_flag": ["reg_g.equal_prominence_ordering"],
+      "should_not_flag": ["reg_g.equal_prominence", "reg_g.reconciliation_required"]
+    },
+    {
+      "id": "reg_g_reconciliation_source_missing",
+      "documents": [
+        {"id": "d", "kind": "release", "entity": "MRDN", "period": "FY2099-Q1",
+         "text": "GAAP diluted EPS of $0.50 and non-GAAP diluted EPS of $0.60.",
+         "claims": [{"metric": "gaap_diluted_eps", "text": "$0.50"},
+                    {"metric": "non_gaap_diluted_eps", "text": "$0.60"}]}
+      ],
+      "should_flag": ["reg_g.reconciliation_required"],
+      "should_not_flag": ["reg_g.equal_prominence", "reg_g.equal_prominence_ordering"]
+    },
+    {
+      "id": "forward_looking_missing_safe_harbor",
+      "documents": [
+        {"id": "d", "kind": "release", "entity": "MRDN", "period": "FY2026-Q1",
+         "text": "For the second quarter we expect total revenue to keep growing.",
+         "claims": [{"metric": "q2_revenue_guidance", "text": "$1.31 to $1.34 billion",
+                     "period": "FY2026-Q2"}]}
+      ],
+      "should_flag": ["forward_looking.safe_harbor_required"],
+      "should_not_flag": ["reg_g.equal_prominence", "ranges.inverted_range"]
+    },
+    {
+      "id": "forward_looking_satisfied_with_safe_harbor",
+      "documents": [
+        {"id": "d", "kind": "release", "entity": "MRDN", "period": "FY2026-Q1",
+         "text": "We expect continued growth. Please refer to our safe-harbor statement.",
+         "claims": [{"metric": "q2_revenue_guidance", "text": "$1.31 to $1.34 billion",
+                     "period": "FY2026-Q2"}]}
+      ],
+      "should_flag": [],
+      "should_not_flag": ["forward_looking.safe_harbor_required"]
+    },
+    {
+      "id": "derived_stale_growth_from_restated_base",
+      "documents": [
+        {"id": "d", "kind": "release", "entity": "MRDN:Cloud", "period": "FY2026-Q1",
+         "text": "Cloud segment revenue grew 31% year over year.",
+         "claims": [{"metric": "cloud_growth_yoy", "text": "31%", "entity": "MRDN:Cloud"}]}
+      ],
+      "should_flag": ["derived.recomputation_mismatch"],
+      "should_not_flag": ["units.unit_mismatch"]
+    },
+    {
+      "id": "derived_corrected_growth_ties_out",
+      "documents": [
+        {"id": "d", "kind": "release", "entity": "MRDN:Cloud", "period": "FY2026-Q1",
+         "text": "Cloud segment revenue grew 29% year over year.",
+         "claims": [{"metric": "cloud_growth_yoy", "text": "29%", "entity": "MRDN:Cloud"}]}
+      ],
+      "should_flag": [],
+      "should_not_flag": ["derived.recomputation_mismatch"]
+    },
+    {
+      "id": "derived_overstated_margin_bps",
+      "documents": [
+        {"id": "d", "kind": "release", "entity": "MRDN", "period": "FY2026-Q1",
+         "text": "Operating margin change of 200 bps versus the prior year.",
+         "claims": [{"metric": "operating_margin_change_bps", "text": "200 bps"}]}
+      ],
+      "should_flag": ["derived.recomputation_mismatch"],
+      "should_not_flag": ["units.unit_mismatch", "directional.sign_mismatch"]
+    },
+    {
+      "id": "directional_sign_contradicts_change",
+      "documents": [
+        {"id": "d", "kind": "release", "entity": "MRDN", "period": "FY2026-Q1",
+         "text": "Operating margin declined to 22.4% for the quarter.",
+         "claims": [{"metric": "operating_margin", "text": "22.4%"}]}
+      ],
+      "should_flag": ["directional.sign_mismatch"],
+      "should_not_flag": ["units.unit_mismatch"]
+    },
+    {
+      "id": "units_percent_where_currency_belongs",
+      "documents": [
+        {"id": "d", "kind": "release", "entity": "MRDN", "period": "FY2026-Q1",
+         "text": "Total revenue was 25% for the quarter.",
+         "claims": [{"metric": "total_revenue", "text": "25%"}]}
+      ],
+      "should_flag": ["units.unit_mismatch"],
+      "should_not_flag": ["derived.recomputation_mismatch"]
+    },
+    {
+      "id": "ranges_inverted_low_exceeds_high",
+      "documents": [
+        {"id": "d", "kind": "release", "entity": "MRDN", "period": "FY2026-Q1",
+         "text": "We expect revenue in the range of $1.34 to $1.31 billion. Refer to our safe-harbor statement.",
+         "claims": [{"metric": "q2_revenue_guidance", "text": "$1.34 to $1.31 billion",
+                     "period": "FY2026-Q2"}]}
+      ],
+      "should_flag": ["ranges.inverted_range"],
+      "should_not_flag": ["forward_looking.safe_harbor_required", "ranges.midpoint_mismatch"]
+    },
+    {
+      "id": "ranges_stated_midpoint_wrong",
+      "documents": [
+        {"id": "d", "kind": "release", "entity": "MRDN", "period": "FY2026-Q1",
+         "text": "We expect revenue in the range of $1.31 to $1.34 billion, a midpoint of $1.40 billion. Refer to our safe-harbor statement.",
+         "claims": [{"metric": "q2_revenue_guidance", "text": "$1.31 to $1.34 billion",
+                     "period": "FY2026-Q2"}]}
+      ],
+      "should_flag": ["ranges.midpoint_mismatch"],
+      "should_not_flag": ["ranges.inverted_range", "forward_looking.safe_harbor_required"]
+    },
+    {
+      "id": "intra_document_same_metric_diverges",
+      "documents": [
+        {"id": "d", "kind": "release", "entity": "MRDN", "period": "FY2026-Q1",
+         "text": "Total revenue was $1.24 billion. Elsewhere, total revenue was $1.25 billion.",
+         "claims": [{"metric": "total_revenue", "text": "$1.24 billion"},
+                    {"metric": "total_revenue", "text": "$1.25 billion"}]}
+      ],
+      "should_flag": ["consistency.intra_document_mismatch"],
+      "should_not_flag": ["units.unit_mismatch", "reg_g.equal_prominence"]
+    },
+    {
+      "id": "cross_document_release_vs_script_diverge",
+      "documents": [
+        {"id": "release", "kind": "release", "entity": "MRDN", "period": "FY2026-Q1",
+         "text": "Total revenue was $1.24 billion.",
+         "claims": [{"metric": "total_revenue", "text": "$1.24 billion"}]},
+        {"id": "script", "kind": "script", "entity": "MRDN", "period": "FY2026-Q1",
+         "text": "Total revenue was $1.25 billion.",
+         "claims": [{"metric": "total_revenue", "text": "$1.25 billion"}]}
+      ],
+      "should_flag": ["consistency.cross_document_mismatch"],
+      "should_not_flag": ["consistency.intra_document_mismatch"]
+    },
+    {
+      "id": "clean_document_raises_nothing",
+      "documents": [
+        {"id": "d", "kind": "release", "entity": "MRDN", "period": "FY2026-Q1",
+         "text": "GAAP diluted EPS was $0.87 and non-GAAP diluted EPS was $1.12. Refer to our safe-harbor statement regarding forward-looking statements.",
+         "claims": [{"metric": "gaap_diluted_eps", "text": "$0.87"},
+                    {"metric": "non_gaap_diluted_eps", "text": "$1.12"}]}
+      ],
+      "should_flag": [],
+      "should_not_flag": ["reg_g.equal_prominence", "reg_g.reconciliation_required",
+                          "reg_g.reconciliation_arithmetic", "forward_looking.safe_harbor_required",
+                          "directional.sign_mismatch", "units.unit_mismatch",
+                          "consistency.intra_document_mismatch"]
+    }
+  ]
+}

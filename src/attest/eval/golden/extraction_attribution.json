@@ -1,0 +1,52 @@
+{
+  "name": "extraction_attribution",
+  "description": "Labeled prose -> figure-claim attribution cases for the model-free extraction edge, spanning clean release prose and the harder script / Q&A prose where the edge is allowed to err. Each expected entry is the CORRECT (metric, entity) for a stated figure; 'unidentified' means the edge should decline to attribute. Detection recall must be perfect (under-detection is the failure mode); attribution may be imperfect on hard prose, but a mis-attributed figure must never resolve to 'traced' (the deterministic core is the safety net).",
+  "filing_fixture": "meridian_q1_fy2026",
+  "tenant": "meridian",
+  "entity": "MRDN",
+  "cases": [
+    {
+      "id": "release_paragraph",
+      "period": "FY2026-Q1",
+      "text": "Meridian Systems reported total revenue of $1.24 billion, up 18% year over year. The company delivered GAAP diluted EPS of $0.87 and non-GAAP diluted EPS of $1.12. Cloud segment revenue reached $612 million, up 31% from the prior-year period. Operating cash flow was $338 million. Meridian repurchased $250 million of common stock. For the second quarter, the company expects total revenue in the range of $1.31 to $1.34 billion.",
+      "expected": [
+        {"text": "$1.24 billion", "metric": "total_revenue", "entity": "MRDN"},
+        {"text": "18%", "metric": "unidentified", "entity": "MRDN"},
+        {"text": "$0.87", "metric": "gaap_diluted_eps", "entity": "MRDN"},
+        {"text": "$1.12", "metric": "non_gaap_diluted_eps", "entity": "MRDN"},
+        {"text": "$612 million", "metric": "cloud_revenue", "entity": "MRDN:Cloud"},
+        {"text": "31%", "metric": "cloud_growth_yoy", "entity": "MRDN:Cloud"},
+        {"text": "$338 million", "metric": "operating_cash_flow", "entity": "MRDN"},
+        {"text": "$250 million", "metric": "share_repurchases", "entity": "MRDN"},
+        {"text": "$1.31 to $1.34 billion", "metric": "q2_revenue_guidance", "entity": "MRDN"}
+      ]
+    },
+    {
+      "id": "script_prepared_remarks",
+      "period": "FY2026-Q1",
+      "text": "We delivered a strong start to fiscal 2026. Total revenue was $1.24 billion, and our cloud business continued to lead, with segment revenue of $612 million, up 31% year over year. Non-GAAP diluted EPS were $1.12, and we generated $338 million of operating cash flow. We repurchased $250 million of common stock. Looking ahead, for the second quarter we expect total revenue in the range of $1.31 to $1.34 billion. Please refer to the safe-harbor statement regarding forward-looking statements.",
+      "expected": [
+        {"text": "$1.24 billion", "metric": "total_revenue", "entity": "MRDN"},
+        {"text": "$612 million", "metric": "cloud_revenue", "entity": "MRDN:Cloud"},
+        {"text": "31%", "metric": "cloud_growth_yoy", "entity": "MRDN:Cloud"},
+        {"text": "$1.12", "metric": "non_gaap_diluted_eps", "entity": "MRDN"},
+        {"text": "$338 million", "metric": "operating_cash_flow", "entity": "MRDN"},
+        {"text": "$250 million", "metric": "share_repurchases", "entity": "MRDN"},
+        {"text": "$1.31 to $1.34 billion", "metric": "q2_revenue_guidance", "entity": "MRDN"}
+      ]
+    },
+    {
+      "id": "qa_preparation",
+      "period": "FY2026-Q1",
+      "text": "Cloud remains our fastest-growing segment, reaching $612 million this quarter, up 31% year over year. Our guidance of $1.31 to $1.34 billion assumes continued momentum off this quarter's $1.24 billion in revenue. GAAP diluted EPS was $0.87; non-GAAP diluted EPS was $1.12. These statements are forward-looking; refer to our safe-harbor statement.",
+      "expected": [
+        {"text": "$612 million", "metric": "cloud_revenue", "entity": "MRDN:Cloud"},
+        {"text": "31%", "metric": "cloud_growth_yoy", "entity": "MRDN:Cloud"},
+        {"text": "$1.31 to $1.34 billion", "metric": "q2_revenue_guidance", "entity": "MRDN"},
+        {"text": "$1.24 billion", "metric": "total_revenue", "entity": "MRDN"},
+        {"text": "$0.87", "metric": "gaap_diluted_eps", "entity": "MRDN"},
+        {"text": "$1.12", "metric": "non_gaap_diluted_eps", "entity": "MRDN"}
+      ]
+    }
+  ]
+}
