@@ -1,8 +1,8 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { FIGURES } from "./data/figures";
 import { COMMITMENTS, NARRATIVES } from "./data/narratives";
-import { DEMO_LIBRARY } from "./data/library";
-import type { Commitment, Figure, LibraryDoc, Narrative, VerdictState } from "./types";
+import { DEMO_LIBRARY, collectFigureIds } from "./data/library";
+import type { Commitment, DocVersion, Figure, LibraryDoc, Narrative, VerdictState } from "./types";
 import { evaluateEdit } from "./lib/verify";
 import {
   buildVersionFromAnalysis,
@@ -61,12 +61,35 @@ interface PersistedUploads {
   figures: FigureMap;
 }
 
+// Bring a persisted document up to the current schema. Bundles before version
+// control stored uploads with top-level `blocks` but no `versions` /
+// `activeVersionId`; the renderer now assumes every doc owns a version history,
+// so a returning user's old data would read `undefined.versions` and blank the
+// page. Synthesize a single version from what the doc already carries — keeping
+// the user's upload intact — and leave already-migrated docs untouched.
+function migratePersistedDoc(raw: LibraryDoc): LibraryDoc {
+  if (Array.isArray(raw.versions) && raw.activeVersionId) return raw;
+  const blocks = raw.blocks ?? [];
+  const versionId = `${raw.id}__v1`;
+  const version: DocVersion = {
+    id: versionId,
+    label: "Version 1",
+    addedAt: raw.addedAt ?? new Date().toISOString(),
+    origin: "upload",
+    blocks,
+    figureIds: collectFigureIds(blocks),
+    warnings: raw.warnings,
+  };
+  return { ...raw, blocks, versions: [version], activeVersionId: versionId };
+}
+
 function loadUploads(): PersistedUploads {
   try {
     const raw = window.localStorage.getItem(UPLOADS_KEY);
     if (!raw) return { docs: [], figures: {} };
     const parsed = JSON.parse(raw) as Partial<PersistedUploads>;
-    return { docs: parsed.docs ?? [], figures: parsed.figures ?? {} };
+    const docs = (parsed.docs ?? []).map(migratePersistedDoc);
+    return { docs, figures: parsed.figures ?? {} };
   } catch {
     return { docs: [], figures: {} };
   }

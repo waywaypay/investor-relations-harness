@@ -471,3 +471,12 @@ mark.hl{background:#FBE7A6;color:#5a4410;padding:0 2px;border-radius:2px;font-we
 
 @media (max-width:820px){.sidebar{display:none}}
 @media (max-width:720px){.mbody{flex-direction:column}.source{border-right:none;border-bottom:1px solid var(--line)}.detail{width:100%}.doc{padding:32px 24px}.cov-txt{display:none}.qa-a{padding-left:0}}
+
+/* Last-resort fallback rendered by the top-level error boundary (main.tsx) when
+   the workspace fails to render — readable, on-brand, never a blank page. */
+.app-crash{max-width:520px;margin:14vh auto;padding:0 24px;text-align:center;font-family:var(--ui);color:var(--ink)}
+.app-crash h1{font-family:var(--display);font-weight:600;font-size:24px;color:var(--accent);margin:0 0 10px}
+.app-crash p{color:var(--muted);font-size:14px;line-height:1.5;margin:0 0 18px}
+.app-crash button{font-family:var(--ui);font-size:13px;font-weight:700;color:#fff;background:var(--accent);
+  border:1px solid var(--accent);border-radius:8px;padding:9px 16px;cursor:pointer;transition:.15s}
+.app-crash button:hover{filter:brightness(1.08)}
