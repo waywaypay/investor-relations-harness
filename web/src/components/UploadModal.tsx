@@ -26,6 +26,7 @@ export function UploadModal({
   const isVersion = target != null;
   const [kind, setKind] = useState<DocKind>(target?.kind ?? "script");
   const [title, setTitle] = useState(target?.name ?? "");
+  const [ticker, setTicker] = useState("");
   const [note, setNote] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [text, setText] = useState("");
@@ -51,6 +52,7 @@ export function UploadModal({
         {
           kind,
           title: title.trim() || undefined,
+          entity: ticker.trim().toUpperCase() || undefined,
           file: file ?? undefined,
           text: file ? undefined : text.trim() || undefined,
         },
@@ -111,6 +113,19 @@ export function UploadModal({
             placeholder="e.g. Q2 FY2026 prepared remarks — draft 3"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
+          />
+        </label>
+
+        <label className="upfield">
+          <span className="upcap">Issuer ticker <span className="upopt">(optional)</span></span>
+          <input
+            className="upinput"
+            type="text"
+            placeholder="PANW — ties figures out to this issuer's SEC filings"
+            value={ticker}
+            onChange={(e) => setTicker(e.target.value)}
+            autoCapitalize="characters"
+            spellCheck={false}
           />
         </label>
 

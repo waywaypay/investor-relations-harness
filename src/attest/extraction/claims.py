@@ -40,6 +40,13 @@ _ALIASES: dict[str, tuple[str, ...]] = {
     "gaap_diluted_eps": ("gaap diluted eps", "gaap eps", "gaap diluted earnings per share", "diluted eps", "diluted earnings per share", "earnings per share"),
     "non_gaap_diluted_eps": ("non-gaap diluted eps", "non gaap diluted eps", "adjusted diluted eps", "non-gaap eps", "adjusted eps", "non-gaap diluted earnings per share"),
     "operating_cash_flow": ("operating cash flow", "cash flow from operations", "cash provided by operating activities", "cash from operations"),
+    "net_income": ("net income", "net earnings"),
+    "operating_income": ("operating income", "income from operations", "operating profit"),
+    "gross_profit": ("gross profit",),
+    # Total RPO only — bound to the full phrase so the call's "current RPO" (a
+    # different, smaller figure) isn't misattributed to the total.
+    "total_rpo": ("remaining performance obligation", "remaining performance obligations"),
+    "cash_and_equivalents": ("cash and cash equivalents", "cash and equivalents"),
     "share_repurchases": ("share repurchases", "repurchases of common stock", "repurchase of common stock", "repurchased", "stock buyback", "buyback"),
     "operating_margin": ("operating margin", "margin from operations"),
     "operating_margin_change_bps": ("operating margin expanded", "operating margin improved", "margin expansion", "basis points"),
@@ -67,8 +74,28 @@ _QUARTER_WORDS = {
     "first": 1, "1st": 1, "q1": 1, "second": 2, "2nd": 2, "q2": 2,
     "third": 3, "3rd": 3, "q3": 3, "fourth": 4, "4th": 4, "q4": 4,
 }
+_ORD_TO_Q = {
+    "first": 1, "1st": 1, "second": 2, "2nd": 2,
+    "third": 3, "3rd": 3, "fourth": 4, "4th": 4,
+}
 _NEXT_Q_WORDS = re.compile(r"\b(first|second|third|fourth)\s+quarter\b", re.IGNORECASE)
 _PERIOD_RE = re.compile(r"FY\d{4}-Q[1-4]", re.IGNORECASE)
+
+# A quarter bound to its year, the phrasing earnings materials actually use:
+# "Second Quarter 2026", "First Quarter Fiscal 2026", "second quarter of fiscal
+# 2026", "Q2 2026", "Q2 FY2026". The year may sit right after "quarter" or behind
+# an intervening "fiscal"/"of fiscal".
+_QY_RE = re.compile(
+    r"\b(?:(first|second|third|fourth|1st|2nd|3rd|4th)\s+quarter|q\s*([1-4]))"
+    r"(?:\s+of)?(?:\s+fiscal)?(?:\s+fy)?[\s,'-]+(?:fy\s*)?(20\d\d)\b",
+    re.IGNORECASE,
+)
+# The reverse order: "fiscal 2026 second quarter", "2026 Q2".
+_YQ_RE = re.compile(
+    r"\b(?:fiscal\s+|fy\s*)?(20\d\d)[\s,'-]+(?:fiscal\s+)?"
+    r"(?:(first|second|third|fourth|1st|2nd|3rd|4th)\s+quarter|q\s*([1-4]))\b",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -131,18 +158,45 @@ def _unit_of_candidate(text: str, qty_unit: Unit | None) -> Unit:
     return Unit.CURRENCY
 
 
+def _scan_quarter_year(text: str) -> str | None:
+    """The earliest "<quarter> <year>" (or "<year> <quarter>") phrase in ``text``.
+
+    Earliest wins because the title / first line of an earnings transcript states
+    the period under report ("Fiscal Second Quarter 2026"), while later mentions
+    are usually guidance or comparatives for *other* periods.
+    """
+    best: tuple[int, int, int] | None = None  # (position, year, quarter)
+    for regex, year_first in ((_QY_RE, False), (_YQ_RE, True)):
+        for m in regex.finditer(text):
+            if year_first:
+                year, ord_word, qnum = m.group(1), m.group(2), m.group(3)
+            else:
+                ord_word, qnum, year = m.group(1), m.group(2), m.group(3)
+            quarter = _ORD_TO_Q[ord_word.lower()] if ord_word else int(qnum)
+            cand = (m.start(), int(year), quarter)
+            if best is None or cand[0] < best[0]:
+                best = cand
+    return f"FY{best[1]}-Q{best[2]}" if best else None
+
+
 def infer_period(*texts: str) -> str | None:
     """Best-effort fiscal period like ``FY2026-Q1`` from a title/body.
 
-    Prefers an explicit ``FY2026-Q1`` token, else a "<quarter> ... fiscal <year>"
-    phrasing. Returns ``None`` when it cannot tell — the caller then leaves the
-    period unset and the engine honestly reports those figures as untraced.
+    In order of confidence: an explicit ``FY2026-Q1`` token; a quarter bound to a
+    year ("Fiscal Second Quarter 2026"); finally a loose "any quarter word + any
+    year" scan. Returns ``None`` when it cannot tell — the caller leaves the period
+    unset and the engine honestly reports those figures as untraced.
     """
     for text in texts:
         if not text:
             continue
         if (m := _PERIOD_RE.search(text)) is not None:
             return m.group(0).upper()
+    for text in texts:
+        if not text:
+            continue
+        if (period := _scan_quarter_year(text)) is not None:
+            return period
     blob = " ".join(t for t in texts if t).lower()
     year_m = re.search(r"(?:fiscal|fy)\s*(20\d\d)", blob) or re.search(r"\b(20\d\d)\b", blob)
     q = None

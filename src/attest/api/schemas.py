@@ -27,6 +27,15 @@ class GuidanceIngestRequest(BaseModel):
     label: str | None = Field(default=None, description="human-readable citation label")
 
 
+class EdgarIngestRequest(BaseModel):
+    """Pull an issuer's real filed facts from SEC EDGAR by ticker."""
+
+    ticker: str = Field(min_length=1, description="issuer ticker symbol, e.g. 'PANW'")
+    max_years: int = Field(
+        default=3, ge=1, le=10, description="how many recent fiscal years to load"
+    )
+
+
 class VerifyResponse(BaseModel):
     document_id: str
     verdicts: list[FigureVerdict]

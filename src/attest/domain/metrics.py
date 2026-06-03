@@ -93,7 +93,14 @@ DEFAULT_REGISTRY = MetricRegistry(
             id="total_revenue",
             label="Total revenue",
             unit=Unit.CURRENCY,
-            xbrl_tags=("us-gaap:Revenues", "us-gaap:RevenueFromContractWithCustomer"),
+            # The current standard tag is listed first so it wins for issuers that
+            # report under ASC 606; ``Revenues`` is the legacy fallback (and what
+            # the Meridian fixture uses).
+            xbrl_tags=(
+                "us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax",
+                "us-gaap:Revenues",
+                "us-gaap:RevenueFromContractWithCustomer",
+            ),
         ),
         MetricSpec(
             id="cloud_revenue",
@@ -140,6 +147,40 @@ DEFAULT_REGISTRY = MetricRegistry(
             label="Operating cash flow",
             unit=Unit.CURRENCY,
             xbrl_tags=("us-gaap:NetCashProvidedByUsedInOperatingActivities",),
+        ),
+        # General income-statement / balance-sheet metrics, so a draft analyzed
+        # against a real EDGAR filing (see attest.ingestion.edgar) ties out beyond
+        # the Meridian demo's vocabulary. Each carries the us-gaap tag the connector
+        # fetches; the unit is what the engine compares in.
+        MetricSpec(
+            id="net_income",
+            label="Net income",
+            unit=Unit.CURRENCY,
+            xbrl_tags=("us-gaap:NetIncomeLoss",),
+        ),
+        MetricSpec(
+            id="operating_income",
+            label="Operating income",
+            unit=Unit.CURRENCY,
+            xbrl_tags=("us-gaap:OperatingIncomeLoss",),
+        ),
+        MetricSpec(
+            id="gross_profit",
+            label="Gross profit",
+            unit=Unit.CURRENCY,
+            xbrl_tags=("us-gaap:GrossProfit",),
+        ),
+        MetricSpec(
+            id="total_rpo",
+            label="Remaining performance obligations",
+            unit=Unit.CURRENCY,
+            xbrl_tags=("us-gaap:RevenueRemainingPerformanceObligation",),
+        ),
+        MetricSpec(
+            id="cash_and_equivalents",
+            label="Cash and cash equivalents",
+            unit=Unit.CURRENCY,
+            xbrl_tags=("us-gaap:CashAndCashEquivalentsAtCarryingValue",),
         ),
         MetricSpec(
             id="share_repurchases",

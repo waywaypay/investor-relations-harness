@@ -73,6 +73,13 @@ numeric detection — the document still enters the library, honestly marked
 untraced. When `attest serve` ships the built bundle it talks to the same origin,
 so upload-and-tie-out works out of the box.
 
+The upload dialog has an optional **Issuer ticker** field. Fill it in (e.g.
+`PANW`) and — when the backend has live EDGAR enabled (`attest serve` does by
+default) — the upload first loads that issuer's real filed facts from SEC, so the
+draft's figures tie out against the as-filed numbers instead of all coming back
+untraced. The static GitHub Pages build has no backend, so it can't reach SEC;
+run `attest serve` (or point `VITE_ATTEST_API` at a backend) for live tie-out.
+
 ### Live verification against the backend
 
 ```bash

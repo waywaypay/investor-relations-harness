@@ -13,7 +13,27 @@ import os
 
 from attest.audit.log import AuditLog, InMemoryAuditLog
 from attest.factstore.repository import FactStore, InMemoryFactStore
+from attest.ingestion.edgar import EdgarClient
 from attest.service import AttestService
+
+_TRUTHY = {"1", "on", "true", "yes"}
+
+
+def edgar_client_from_env(*, default_enabled: bool) -> EdgarClient | None:
+    """The live EDGAR client to wire in, honouring ``ATTEST_EDGAR``.
+
+    ``ATTEST_EDGAR`` overrides the default (``on``/``1``/``true`` enable, anything
+    else disables); when it is unset, ``default_enabled`` decides. This is the one
+    place the real transport is chosen, so a deployment can turn live SEC tie-out
+    on or off without touching engine, API, or service code.
+    """
+    setting = os.environ.get("ATTEST_EDGAR")
+    enabled = setting.strip().lower() in _TRUTHY if setting is not None else default_enabled
+    if not enabled:
+        return None
+    from attest.ingestion.edgar import HttpEdgarClient
+
+    return HttpEdgarClient()
 
 
 def build_storage(
@@ -53,4 +73,8 @@ def service_from_env() -> AttestService:
         database_url=os.environ.get("ATTEST_DATABASE_URL"),
         redis_url=os.environ.get("ATTEST_REDIS_URL"),
     )
-    return AttestService(store=store, audit_log=audit)
+    # `attest serve` is the interactive path where tie-out matters, so live EDGAR
+    # is on unless ATTEST_EDGAR explicitly disables it.
+    return AttestService(
+        store=store, audit_log=audit, edgar=edgar_client_from_env(default_enabled=True)
+    )

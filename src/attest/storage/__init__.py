@@ -7,6 +7,6 @@ API change. All third-party drivers are imported lazily and live in the optional
 ``[storage]`` extra.
 """
 
-from attest.storage.factory import build_storage, service_from_env
+from attest.storage.factory import build_storage, edgar_client_from_env, service_from_env
 
-__all__ = ["build_storage", "service_from_env"]
+__all__ = ["build_storage", "edgar_client_from_env", "service_from_env"]

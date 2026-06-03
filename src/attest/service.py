@@ -19,6 +19,7 @@ from attest.extraction.claims import DEFAULT_ALIASES, AliasConfig, ClaimExtracto
 from attest.edge.service import EdgeService
 from attest.factstore.repository import FactStore, InMemoryFactStore
 from attest.ingestion.base import IngestionReport
+from attest.ingestion.edgar import EdgarClient, EdgarConnector, EdgarUnavailable
 from attest.ingestion.edgar_xbrl import XBRLConnector
 from attest.ingestion.guidance import GuidanceConnector
 from attest.verification.engine import VerificationEngine, VerificationResult
@@ -36,6 +37,7 @@ class AttestService:
         policy: RoundingPolicy = DEFAULT_POLICY,
         aliases: AliasConfig | None = None,
         edge: EdgeService | None = None,
+        edgar: EdgarClient | None = None,
     ) -> None:
         self.store = store or InMemoryFactStore()
         self.registry = registry or DEFAULT_REGISTRY
@@ -43,6 +45,10 @@ class AttestService:
         # The probabilistic edge is optional. When absent, the service behaves
         # exactly as the deterministic-only v1 — the core never depends on it.
         self.edge = edge
+        # Optional live EDGAR transport. When set, an uploaded draft can tie out
+        # against the issuer's *real* filed facts (see ingest_edgar /
+        # ensure_issuer_facts); when None the service is unchanged.
+        self.edgar = edgar
         self.engine = VerificationEngine(
             self.store, self.registry, policy=policy, audit_log=self.audit_log
         )
@@ -101,6 +107,67 @@ class AttestService:
             payload=report.model_dump(),
         )
         return report
+
+    def ingest_edgar(
+        self,
+        ticker: str,
+        tenant_id: str,
+        *,
+        max_years: int = 3,
+        actor: str = "system:ingestion",
+    ) -> IngestionReport:
+        """Pull an issuer's real filed facts from SEC EDGAR into the fact store.
+
+        The live sibling of :meth:`ingest_xbrl`: instead of a hand-shaped instance
+        it fetches the company's machine-tagged ``us-gaap`` facts by ticker, scopes
+        them to ``entity=<TICKER>``, and lands them with full provenance — so a draft
+        analyzed under that issuer ties out against its as-filed numbers. Requires
+        the service to have been constructed with an ``edgar`` client.
+        """
+        if self.edgar is None:
+            raise RuntimeError(
+                "ingest_edgar requires an EDGAR client. Construct AttestService with "
+                "edgar=HttpEdgarClient() (see attest.ingestion.edgar)."
+            )
+        facts, report = EdgarConnector(self.registry, self.edgar).fetch(
+            ticker, tenant_id, max_years=max_years
+        )
+        self.store.add_many(facts)
+        self.audit_log.append(
+            actor=actor,
+            type=EventType.INGEST,
+            tenant_id=tenant_id,
+            payload=report.model_dump(),
+        )
+        return report
+
+    def ensure_issuer_facts(self, tenant_id: str, ticker: str) -> list[str]:
+        """Best-effort: make sure ``ticker``'s filed facts are loaded for tie-out.
+
+        Called on the upload path so an uploaded transcript "just ties out" to the
+        issuer's filings without a separate ingest step. Returns human-readable
+        warnings (never raises): a no-op when EDGAR isn't configured or the issuer
+        is already loaded, and an honest note rather than a failure when EDGAR is
+        unreachable — the draft still analyzes, its figures simply stay untraced.
+        """
+        if self.edgar is None or not ticker.strip():
+            return []
+        entity = ticker.strip().upper()
+        if any(f.entity == entity and f.is_filed for f in self.store.all(tenant_id)):
+            return []  # already loaded — don't refetch
+        try:
+            report = self.ingest_edgar(ticker, tenant_id)
+        except EdgarUnavailable as exc:
+            return [
+                f"Could not reach SEC EDGAR to load {entity}'s filings ({exc}); "
+                "figures could not be tied out to a filed source."
+            ]
+        if report.ingested == 0:
+            return [
+                f"No EDGAR filings found for '{ticker}'. Check the ticker symbol; "
+                "without a filed source these figures can't be traced."
+            ]
+        return [f"Loaded {report.ingested} filed facts for {entity} from SEC EDGAR."]
 
     # -- verification --------------------------------------------------------
 

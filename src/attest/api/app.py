@@ -22,6 +22,7 @@ from attest.api.schemas import (
     AuditVerifyResponse,
     ClosePackResponse,
     EditRequest,
+    EdgarIngestRequest,
     GuidanceIngestRequest,
     IngestResponse,
     OverrideRequest,
@@ -30,6 +31,7 @@ from attest.api.schemas import (
 )
 from attest.domain.document import Document, DocumentKind
 from attest.extraction.text import extract_text
+from attest.ingestion.edgar import EdgarUnavailable
 from attest.ingestion.edgar_xbrl import load_fixture
 from attest.service import AttestService
 from attest.verification.engine import VerificationResult
@@ -61,7 +63,12 @@ def create_app(service: AttestService | None = None, *, seed_demo: bool = False)
 
             service = seeded_service()
         else:
-            service = AttestService()
+            # The container/App Runner entry point (uvicorn --factory). Live EDGAR
+            # tie-out is opt-in here via ATTEST_EDGAR, so importing this module in
+            # tests never reaches for the network.
+            from attest.storage.factory import edgar_client_from_env
+
+            service = AttestService(edgar=edgar_client_from_env(default_enabled=False))
     app.state.service = service
 
     # CORS so the web workspace (Vite dev server on :5173) can call the API
@@ -133,6 +140,25 @@ def create_app(service: AttestService | None = None, *, seed_demo: bool = False)
             as_of=req.as_of,
             label=req.label,
         )
+        return IngestResponse(
+            source=report.source,
+            ingested=report.ingested,
+            skipped=report.skipped,
+            skipped_tags=list(report.skipped_tags),
+        )
+
+    @app.post("/tenants/{tenant_id}/ingest/edgar", response_model=IngestResponse)
+    def ingest_edgar(
+        tenant_id: str, req: EdgarIngestRequest, svc: AttestService = Depends(get_service)
+    ) -> IngestResponse:
+        """Pull an issuer's real filed facts from SEC EDGAR by ticker, so an uploaded
+        draft for that issuer ties out against its as-filed numbers."""
+        if svc.edgar is None:
+            raise HTTPException(status_code=503, detail="EDGAR ingestion is not enabled")
+        try:
+            report = svc.ingest_edgar(req.ticker, tenant_id, max_years=req.max_years)
+        except EdgarUnavailable as exc:
+            raise HTTPException(status_code=502, detail=f"EDGAR unreachable: {exc}") from exc
         return IngestResponse(
             source=report.source,
             ingested=report.ingested,
@@ -228,6 +254,13 @@ def create_app(service: AttestService | None = None, *, seed_demo: bool = False)
             doc_kind = DocumentKind(kind)
         except ValueError:
             doc_kind = DocumentKind.OTHER
+
+        # When an issuer ticker is supplied and live EDGAR ingestion is enabled,
+        # load that issuer's filed facts first so the draft ties out against its
+        # as-filed numbers. Best-effort and honest: an outage adds a warning, never
+        # a failure — the draft still analyzes, its figures simply stay untraced.
+        if entity:
+            warnings = warnings + svc.ensure_issuer_facts(tenant_id, entity)
 
         document, result, resolved_entity, resolved_period = svc.analyze_text(
             tenant_id=tenant_id,

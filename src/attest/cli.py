@@ -3,6 +3,7 @@
     attest demo                # ingest the Meridian filing, verify the close pack, print a report
     attest verify [--use-llm]  # verify the demo close pack, optionally via the LLM edge
     attest serve               # run the API with uvicorn
+    attest ingest-edgar TICKER # pull an issuer's real filed facts from SEC EDGAR
     attest synth               # generate synthetic perturbation cases (robustness coverage)
     attest restatements        # harvest real conflict labels from an 8-K Item 4.02 record
 """
@@ -102,6 +103,26 @@ def _run_serve(host: str, port: int) -> int:
     return 0
 
 
+def _run_ingest_edgar(ticker: str, tenant: str, max_years: int) -> int:
+    from attest.ingestion.edgar import EdgarUnavailable, HttpEdgarClient
+    from attest.service import AttestService
+
+    service = AttestService(edgar=HttpEdgarClient())
+    try:
+        report = service.ingest_edgar(ticker, tenant, max_years=max_years)
+    except EdgarUnavailable as exc:
+        print(f"Could not reach SEC EDGAR: {exc}")
+        return 1
+    print(f"Ingested {report.ingested} filed facts for {ticker.upper()} "
+          f"({report.skipped} metric(s) not reported):")
+    facts = sorted(service.store.all(tenant), key=lambda f: (f.metric, f.period))
+    for f in facts:
+        print(f"   {f.metric:<22} {f.period:<10} {f.quantity().display():>18}   {f.source_label}")
+    if not facts:
+        print(f"   (no us-gaap facts found — check the ticker symbol '{ticker}')")
+    return 0
+
+
 def _run_synth(csv_path: str | None, out_path: str | None) -> int:
     import json
 
@@ -184,6 +205,12 @@ def main(argv: list[str] | None = None) -> int:
     serve = sub.add_parser("serve", help="run the API server")
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument("--port", type=int, default=8000)
+    edgar = sub.add_parser(
+        "ingest-edgar", help="pull an issuer's real filed facts from SEC EDGAR by ticker"
+    )
+    edgar.add_argument("ticker", help="issuer ticker symbol, e.g. PANW")
+    edgar.add_argument("--tenant", default="default", help="tenant to load the facts under")
+    edgar.add_argument("--max-years", type=int, default=3, help="recent fiscal years to load")
     synth = sub.add_parser(
         "synth", help="generate synthetic perturbation cases (robustness coverage)"
     )
@@ -202,6 +229,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_verify(args.use_llm)
     if args.command == "serve":
         return _run_serve(args.host, args.port)
+    if args.command == "ingest-edgar":
+        return _run_ingest_edgar(args.ticker, args.tenant, args.max_years)
     if args.command == "synth":
         return _run_synth(args.csv, args.out)
     if args.command == "restatements":

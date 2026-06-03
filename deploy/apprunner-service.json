@@ -11,7 +11,9 @@
       "ImageConfiguration": {
         "Port": "8000",
         "RuntimeEnvironmentVariables": {
-          "LOG_LEVEL": "info"
+          "LOG_LEVEL": "info",
+          "ATTEST_EDGAR": "on",
+          "ATTEST_EDGAR_USER_AGENT": "Attest disclosure-verification (contact: ir-ops@attest.example)"
         },
         "RuntimeEnvironmentSecrets": {
           "DATABASE_URL": "arn:aws:secretsmanager:<REGION>:<ACCOUNT_ID>:secret:attest/database-url",

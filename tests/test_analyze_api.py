@@ -9,6 +9,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from attest.api.app import create_app
+from attest.service import AttestService
+from test_edgar_ingestion import panw_client
 
 RELEASE = (
     "Meridian Systems reported total revenue of $1.24 billion, up 18% year over year. "
@@ -171,3 +173,47 @@ def test_analyze_records_verdicts_in_audit_chain(client):
     audit = client.get("/tenants/meridian/audit").json()
     assert any(e["type"] == "verdict" for e in audit)
     assert client.get("/audit/verify").json()["intact"] is True
+
+
+# -- EDGAR tie-out: upload a real transcript, tie out to filed SEC facts -------
+
+PANW_TRANSCRIPT = (
+    "Palo Alto Networks Fiscal Second Quarter 2026 Earnings Call. "
+    "Total revenue was $2.59 billion and grew 15%. Our remaining performance "
+    "obligation, or RPO, grew 23% to $16.0 billion."
+)
+
+
+@pytest.fixture
+def edgar_client():
+    """A TestClient over an app with live EDGAR stubbed by the static PANW client."""
+    return TestClient(create_app(AttestService(edgar=panw_client())))
+
+
+def test_ingest_edgar_endpoint_loads_filed_facts(edgar_client):
+    r = edgar_client.post("/tenants/acme/ingest/edgar", json={"ticker": "PANW"})
+    assert r.status_code == 200
+    assert r.json()["ingested"] >= 2
+    facts = edgar_client.get("/tenants/acme/facts").json()
+    metrics = {f["metric"] for f in facts}
+    assert "total_revenue" in metrics and "total_rpo" in metrics
+
+
+def test_ingest_edgar_returns_503_when_disabled(client):
+    # The default app has no EDGAR client wired (hermetic, no network).
+    r = client.post("/tenants/acme/ingest/edgar", json={"ticker": "PANW"})
+    assert r.status_code == 503
+
+
+def test_analyze_with_ticker_auto_ingests_and_ties_out(edgar_client):
+    r = edgar_client.post(
+        "/tenants/acme/analyze",
+        data={"kind": "script", "entity": "PANW"},
+        files={"file": ("panw_q2.txt", PANW_TRANSCRIPT.encode(), "text/plain")},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["period"] == "FY2026-Q2"
+    traced = {v["metric"] for v in body["verdicts"] if v["verdict"] == "traced"}
+    assert {"total_revenue", "total_rpo"} <= traced
+    assert any("PANW" in w for w in body["warnings"])  # honest note that filings loaded

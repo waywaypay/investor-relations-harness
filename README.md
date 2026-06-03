@@ -23,6 +23,7 @@ pip install -e ".[dev]"
 
 attest demo          # ingest the Meridian filing, verify the close pack, print a report
 attest verify --use-llm  # same close pack, claims proposed by the LLM edge (see "v2" below)
+attest ingest-edgar PANW # pull a real issuer's filed facts from SEC EDGAR (see "live EDGAR" below)
 pytest               # run the suite, including the eval regression gate
 attest serve         # API + upload UI at http://127.0.0.1:8000  (API docs at /docs)
 ```
@@ -82,8 +83,8 @@ src/attest/
   audit/           append-only, event-sourced, sha256 hash-chained log
   edge/            the replaceable LLM layer (v2): claim proposer + history narrator
   storage/         durable backends behind the store Protocols: Postgres + Redis cache
-  ingestion/       connectors (EDGAR/XBRL adapter, 8-K EX-99.1 guidance adapter,
-                                sample filing + press-release fixtures)
+  ingestion/       connectors (XBRL-instance adapter, live SEC EDGAR companyfacts
+                                connector, 8-K EX-99.1 guidance adapter, fixtures)
   eval/            the golden-set harness + CI gate (figure FN rate must be 0)
     perturbation.py  synthetic case generator — known mutations of real filed values
     synthetic_eval.py scores the engine on synthetic cases in a SEPARATE bucket
@@ -163,6 +164,7 @@ GET  /                                           the upload & verify web UI
 POST /tenants/{tenant}/ingest/xbrl              ingest an XBRL instance
 POST /tenants/{tenant}/ingest/guidance          extract forward guidance from 8-K EX-99.1 prose
 POST /tenants/{tenant}/ingest/demo              seed the bundled Meridian filing
+POST /tenants/{tenant}/ingest/edgar             pull an issuer's real filed facts from SEC EDGAR by ticker
 GET  /tenants/{tenant}/facts                    list facts-with-provenance
 GET  /tenants/{tenant}/extraction/aliases       the tenant's metric synonyms
 PUT  /tenants/{tenant}/extraction/aliases       configure the tenant's metric synonyms
@@ -178,7 +180,10 @@ GET  /audit/verify                              re-derive the hash chain
 `POST /analyze` accepts a multipart `file` **or** a `text` field (plus optional
 `title`, `kind`, `entity`, `period`). It recovers the prose, lets the edge
 propose figure claims, and runs the full engine — the same spine the demo close
-pack flows through, now driven by a real document.
+pack flows through, now driven by a real document. When `entity` is an issuer
+**ticker** (e.g. `PANW`) and live EDGAR is enabled, the upload first loads that
+issuer's real filed facts (below), so the draft ties out against its as-filed
+numbers rather than coming back uniformly untraced.
 
 ### Uploading real documents — and where the "edge" lives
 
@@ -237,6 +242,43 @@ in a filed 8-K exhibit is a real, citable disclosure, these facts are `filing_li
 (traceable), distinct from the internal pre-filing planning guidance that ingests
 as non-filed `management_input`. A later draft that reaffirms prior guidance then
 ties out to the exact published sentence.
+
+### Tie out to real SEC filings (live EDGAR)
+
+The demo seeds one hand-shaped fixture; real use needs the issuer's *actual* filed
+numbers. `src/attest/ingestion/edgar.py` is the live sibling of the XBRL adapter:
+given a ticker it resolves the CIK, pulls the issuer's machine-tagged `us-gaap`
+facts from SEC's public `companyconcept` API, and lands them as `EDGAR_XBRL`
+facts-with-provenance — the same shape the fixture produces, so the engine can
+still call them `traced`. Upload a Palo Alto Networks earnings transcript with
+`entity=PANW` and the headline figures tie out to the Q2 FY2026 10-Q ("$2.59
+billion" → the filed `$2,594M`; "$16.0 billion" RPO → the filed value), while the
+operational/non-GAAP figures that XBRL doesn't tag stay honestly untraced.
+
+Two design points keep it honest rather than a scrape:
+
+- **The fiscal period comes from the datapoint, not the filing.** SEC's `fy`/`fp`
+  describe the *filing's* focus, so a prior-year comparative inside a 10-Q carries
+  the current filing's `fy`/`fp`. Binding on that would invent a restatement. The
+  connector derives each fact's period from its own `end` date against the issuer's
+  fiscal-year-end (`submissions.fiscalYearEnd`), so comparatives land where they
+  belong (PANW's year ends 31 July, so a quarter ending 31 Jan 2026 is `FY2026-Q2`).
+- **Re-reports aren't restatements.** The same period is often re-stated in a later
+  filing at a coarser rounding; those collapse to one fact within a tight
+  tolerance, so only a *materially* different value lands as a new version — the
+  engine's restatement detection still fires without rounding noise faking one.
+
+```bash
+attest ingest-edgar PANW              # preview an issuer's filed facts from EDGAR
+attest serve                          # the served UI auto-loads filings when you upload with a ticker
+curl -X POST .../tenants/acme/ingest/edgar -H 'content-type: application/json' -d '{"ticker": "PANW"}'
+```
+
+It is a swappable transport (`EdgarClient` Protocol): `HttpEdgarClient` is the real
+stdlib-only client, `StaticEdgarClient` backs the hermetic tests. Live EDGAR is on
+for `attest serve` and opt-in elsewhere via `ATTEST_EDGAR`; SEC asks every client to
+identify itself, so set a contact in `ATTEST_EDGAR_USER_AGENT`. The whole suite runs
+with no network; the one live smoke test is gated behind `ATTEST_TEST_EDGAR=1`.
 
 ## v2: the LLM edge (the *replaceable* probabilistic layer)
 
@@ -315,11 +357,12 @@ database. The storage integration tests run against real servers when
 
 ## Scope
 
-In scope (and built): the deterministic spine, the rules engines, ingestion, the
-audit log, the eval harness, the API/CLI (v1), the LLM edge — claim proposer and
-historical-consistency narrator — **plus durable Postgres + Redis storage behind
-the existing Protocols** (above). Still **out of scope**: the consensus parser,
-the ERP/close-package connector, the editor add-ins, and the remaining production
-datastores (vector / object store). Schema migrations are an idempotent
+In scope (and built): the deterministic spine, the rules engines, ingestion
+(incl. the **live EDGAR/XBRL connector** that ties uploads out against real filed
+facts), the audit log, the eval harness, the API/CLI (v1), the LLM edge — claim
+proposer and historical-consistency narrator — **plus durable Postgres + Redis
+storage behind the existing Protocols** (above). Still **out of scope**: the
+consensus parser, the ERP/close-package connector, the editor add-ins, and the
+remaining production datastores (vector / object store). Schema migrations are an idempotent
 `schema.sql` for now; a versioned tool (e.g. Alembic) is the next step before the
 schema evolves in production.
