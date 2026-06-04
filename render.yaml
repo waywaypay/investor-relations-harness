@@ -8,6 +8,12 @@
 # filing at startup, so an uploaded Meridian transcript ties out the moment the
 # page loads — no ticker, no separate ingest. (State is in-process memory for
 # this v1, so keep a single instance; reseeded fresh on each start/deploy.)
+#
+# ATTEST_EDGAR=on enables live SEC tie-out: an uploaded draft tagged with an
+# issuer ticker pulls that issuer's as-filed XBRL from EDGAR and ties figures
+# out against it. SEC asks automated clients to identify themselves, so set a
+# real contact in ATTEST_EDGAR_USER_AGENT. (Only as-filed GAAP facts tie out;
+# non-GAAP / operational figures have no filed source and stay untraced.)
 services:
   - type: web
     name: attest
@@ -20,3 +26,7 @@ services:
     envVars:
       - key: ATTEST_SEED_DEMO
         value: "1"
+      - key: ATTEST_EDGAR
+        value: "on"
+      - key: ATTEST_EDGAR_USER_AGENT
+        value: "Attest IR disclosure-verification (contact: max@deerpark.io)"

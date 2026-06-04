@@ -56,26 +56,27 @@ def create_app(service: AttestService | None = None, *, seed_demo: bool = False)
         description="Deterministic disclosure-verification spine for investor relations.",
     )
     if service is None:
-        # ATTEST_SEED_DEMO lets the container entry point (uvicorn --factory, which
-        # passes no args) ship the ready-to-explore Meridian instance — a hosted
-        # demo (e.g. Render) ties figures out the moment the page loads, with no
-        # separate ingest step.
+        # The container entry point (uvicorn --factory) passes no args. Wire a live
+        # EDGAR client so an uploaded draft tagged with an issuer ticker ties out to
+        # that issuer's as-filed XBRL (see /analyze -> ensure_issuer_facts). It is
+        # opt-in via ATTEST_EDGAR (default off) so importing this module in tests
+        # never reaches for the network.
+        from attest.storage.factory import edgar_client_from_env
+
+        service = AttestService(edgar=edgar_client_from_env(default_enabled=False))
+
+        # ATTEST_SEED_DEMO ships the ready-to-explore Meridian instance — the
+        # bundled filing is ingested so the front-end ties its figures out the
+        # moment the page loads, with no separate ingest step. Layered onto the
+        # EDGAR-enabled service above (not seeded_service(), which wires no EDGAR)
+        # so the seeded demo can *also* tie out real ticker-tagged uploads.
         env_seed = os.environ.get("ATTEST_SEED_DEMO", "").strip().lower() in {
             "1", "true", "yes", "on",
         }
         if seed_demo or env_seed:
-            # Ship a ready-to-explore instance: the Meridian filing is ingested so
-            # the bundled front-end ties figures out the moment the page loads.
-            from attest.demo import seeded_service
+            from attest.demo import TENANT
 
-            service = seeded_service()
-        else:
-            # The container/App Runner entry point (uvicorn --factory). Live EDGAR
-            # tie-out is opt-in here via ATTEST_EDGAR, so importing this module in
-            # tests never reaches for the network.
-            from attest.storage.factory import edgar_client_from_env
-
-            service = AttestService(edgar=edgar_client_from_env(default_enabled=False))
+            service.ingest_xbrl(load_fixture(_DEMO_FIXTURE), tenant_id=TENANT)
     app.state.service = service
 
     # CORS so the web workspace (Vite dev server on :5173) can call the API
