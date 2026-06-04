@@ -79,7 +79,7 @@ function Workspace() {
         <Sidebar view={view} setView={setView} onUpload={() => openUploadNew()} onManage={openManager} />
         <div className="stage">
           {activeDoc && (
-            <div style={{ width: "100%", maxWidth: 680 }}>
+            <div style={{ width: "100%" }}>
               <DocumentView
                 key={activeDoc.id}
                 doc={activeDoc}

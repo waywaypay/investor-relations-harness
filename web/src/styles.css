@@ -290,22 +290,24 @@ body{font-family:var(--ui);background:var(--paper);color:var(--ink);
 .editbtn:hover{border-color:var(--accent);color:var(--accent)}
 .editbtn.on{background:var(--accent);color:#fff;border-color:var(--accent)}
 
-/* version control bar (under the doc toolbar) */
-.versionbar{width:100%;max-width:680px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;
-  background:#FBFAF6;border:1px solid var(--line);border-radius:10px;padding:8px 12px;margin-bottom:14px}
-.vb-label{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);font-weight:600;min-width:0}
-.vb-label b{color:var(--ink)}
-.vb-ic{color:var(--accent);font-size:13px}
+/* document + version-control side rail */
+.docwrap{display:flex;align-items:flex-start;justify-content:center;gap:20px;width:100%}
+.doccol{width:100%;max-width:680px;min-width:0}
+.docside{flex-shrink:0;width:172px;display:flex;flex-direction:column;gap:8px;position:sticky;top:34px}
 .vb-select{font-family:var(--ui);font-size:12px;font-weight:600;color:var(--ink);background:#fff;
-  border:1px solid var(--line-strong);border-radius:7px;padding:4px 8px;cursor:pointer;max-width:200px}
+  border:1px solid var(--line-strong);border-radius:7px;padding:5px 9px;cursor:pointer}
 .vb-select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
-.vb-count{font-size:10.5px;color:var(--faint);font-weight:600}
-.vb-acts{display:flex;align-items:center;gap:8px}
-.vb-btn{font-family:var(--ui);font-size:11.5px;font-weight:700;color:var(--accent);background:var(--verified-bg);
-  border:1px solid #cfe0d4;border-radius:7px;padding:5px 10px;cursor:pointer;transition:.15s}
+.vb-btn{font-family:var(--ui);font-size:12px;font-weight:700;color:var(--accent);background:var(--verified-bg);
+  border:1px solid #cfe0d4;border-radius:8px;padding:9px 12px;cursor:pointer;transition:.15s;text-align:center}
 .vb-btn:hover{background:var(--accent);color:#fff;border-color:var(--accent)}
 .vb-btn.ghost{color:var(--muted);background:#fff;border-color:var(--line-strong)}
 .vb-btn.ghost:hover{border-color:var(--accent);color:var(--accent);background:#fff}
+.docside .vb-btn,.docside .vb-select{width:100%}
+@media (max-width:900px){
+  .docwrap{flex-direction:column;align-items:center}
+  .docside{flex-direction:row;width:100%;max-width:680px;position:static;justify-content:flex-end}
+  .docside .vb-btn,.docside .vb-select{width:auto}
+}
 
 /* documents manager modal */
 .modal.docmgr{max-width:620px}
