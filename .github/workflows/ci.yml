@@ -5,6 +5,9 @@ on:
     branches: ["main"]
   pull_request:
     branches: ["main"]
+  # Lets you re-trigger a deploy from the Actions tab ("Run workflow") without
+  # an empty commit — handy if a deploy needs replaying.
+  workflow_dispatch:
 
 # Cancel superseded runs on the same ref so the latest push is what's reported.
 concurrency:
@@ -87,3 +90,35 @@ jobs:
       # compares the bundle's stamped source fingerprint against web/ source.
       - name: Served SPA bundle is rebuilt from web/ source
         run: python scripts/check_spa_fresh.py
+
+  deploy:
+    name: deploy (trigger Render)
+    # Only after every check is green, and only for main itself — never on PRs.
+    needs: [backend, lint, web, bundle]
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    steps:
+      # Render's own GitHub auto-deploy only fires when the live service is bound
+      # to this repo's Blueprint (render.yaml). A service created by hand ignores
+      # the Blueprint, so merges to main never redeploy and the site goes stale.
+      # This makes the deploy explicit: GitHub pings Render's Deploy Hook once CI
+      # passes, so every merge to main ships — visibly, here in the Actions tab —
+      # regardless of how the service was wired up.
+      #
+      # One-time setup: copy the service's Deploy Hook URL (Render dashboard →
+      # the service → Settings → Deploy Hook) into a repo secret named
+      # RENDER_DEPLOY_HOOK_URL (Settings → Secrets and variables → Actions).
+      - name: Trigger Render deploy
+        env:
+          HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$HOOK_URL" ]; then
+            echo "::warning::RENDER_DEPLOY_HOOK_URL is not set — skipping the deploy trigger."
+            echo "Add the service's Deploy Hook URL under Settings → Secrets and variables → Actions to enable auto-deploy."
+            exit 0
+          fi
+          echo "Triggering Render deploy of main…"
+          status=$(curl -fsS -X POST -o /dev/null -w '%{http_code}' "$HOOK_URL")
+          echo "Render accepted the deploy (HTTP $status). Track it in the Render dashboard → Events."
