@@ -262,6 +262,18 @@ class AttestService:
                 return fact.entity
         return tenant_id.upper()
 
+    def has_filed_facts(self, tenant_id: str, entity: str) -> bool:
+        """True iff a filed source exists for ``entity`` (or one of its segments).
+
+        The precondition for any figure of ``entity`` to trace: with no filed fact
+        loaded there is nothing to tie out against, so every figure stays untraced.
+        """
+        prefix = f"{entity}:"
+        return any(
+            f.is_filed and (f.entity == entity or f.entity.startswith(prefix))
+            for f in self.store.all(tenant_id)
+        )
+
     # -- extraction vocabulary (tenant-configurable) -------------------------
 
     def aliases_for(self, tenant_id: str) -> AliasConfig:

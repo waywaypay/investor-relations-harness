@@ -270,6 +270,29 @@ def create_app(service: AttestService | None = None, *, seed_demo: bool = False)
             entity=entity or None,
             period=period or None,
         )
+
+        # A figure can only link to a source when filed facts for the issuer are
+        # loaded. When none are, every figure is honestly "untraced" — but the two
+        # silent paths (no ticker supplied, or EDGAR disabled) leave that
+        # unexplained. Say it plainly. The ticker-given-but-unreachable / not-found
+        # cases are already explained by ensure_issuer_facts above.
+        if result.counts.get("untraced") and not svc.has_filed_facts(
+            tenant_id, resolved_entity
+        ):
+            if not entity:
+                warnings = warnings + [
+                    "No issuer ticker was provided, so no filed source was loaded — "
+                    "these figures can't be traced. Re-upload with the issuer's ticker "
+                    "to tie out against its filings.",
+                ]
+            elif svc.edgar is None:
+                warnings = warnings + [
+                    f"Live EDGAR tie-out is disabled in this deployment, so no filed "
+                    f"source was loaded for {resolved_entity} — its figures stay "
+                    f"untraced. Enable EDGAR (set ATTEST_EDGAR) or ingest the issuer's "
+                    f"filing first.",
+                ]
+
         base = _to_verify_response(result)
         return AnalyzeResponse(
             document_id=base.document_id,
