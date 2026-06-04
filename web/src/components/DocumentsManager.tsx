@@ -1,7 +1,15 @@
 import { useState } from "react";
 import { useStore } from "../store";
 import { Scrim } from "./FigureModal";
-import type { DocVersion, Figure, LibraryDoc } from "../types";
+import type { DocKind, DocVersion, Figure, LibraryDoc } from "../types";
+
+// Plain-language category labels, matching the sidebar.
+const KIND_LABEL: Record<DocKind, string> = {
+  release: "Earnings releases",
+  script: "Call scripts",
+  qa: "Analyst Q&A",
+  other: "Other documents",
+};
 
 // Coverage for one version: how many of its figures are traced / need review /
 // conflict, against the live figure map.
@@ -166,27 +174,39 @@ export function DocumentsManager({
   onUploadNew,
   onUploadVersion,
   focusDocId,
+  focusKind = null,
 }: {
   onClose: () => void;
   onOpen: (docId: string) => void;
-  onUploadNew: () => void;
+  onUploadNew: (role?: "draft" | "reference") => void;
   onUploadVersion: (doc: LibraryDoc) => void;
   focusDocId?: string | null;
+  /** When set, the manager is scoped to one document category. */
+  focusKind?: DocKind | null;
 }) {
   const store = useStore();
   const [expanded, setExpanded] = useState<string | null>(focusDocId ?? null);
 
+  // When scoped to a category, show only that kind.
+  const docs = focusKind ? store.library.filter((d) => d.kind === focusKind) : store.library;
+
   // Group by period, preserving first-seen order.
   const periods: string[] = [];
-  for (const d of store.library) if (!periods.includes(d.period)) periods.push(d.period);
+  for (const d of docs) if (!periods.includes(d.period)) periods.push(d.period);
+
+  const scoped = focusKind != null;
 
   return (
     <Scrim onClose={onClose} modalClass="docmgr">
       <div className="mbar">
         <span className="badge">DOCUMENTS</span>
         <div>
-          <div className="ttl">Manage documents</div>
-          <div className="sub">Every draft, its versions, and its tie-out coverage in one place.</div>
+          <div className="ttl">{scoped ? KIND_LABEL[focusKind!] : "Manage documents"}</div>
+          <div className="sub">
+            {scoped
+              ? "Past filings, transcripts, and versions for this company — add more below."
+              : "Every draft, its versions, and its tie-out coverage in one place."}
+          </div>
         </div>
         <button className="x" onClick={onClose} aria-label="Close">×</button>
       </div>
@@ -194,15 +214,20 @@ export function DocumentsManager({
       <div className="dmbody">
         <div className="dmtoolbar">
           <span className="dmcount">
-            {store.library.length} document{store.library.length === 1 ? "" : "s"}
+            {docs.length} document{docs.length === 1 ? "" : "s"}
           </span>
-          <button className="btn go" onClick={onUploadNew}>+ Upload document</button>
+          <div className="dmtoolbar-acts">
+            <button className="btn" onClick={() => onUploadNew("reference")}>
+              + Upload past transcript
+            </button>
+            <button className="btn go" onClick={() => onUploadNew("draft")}>+ New draft</button>
+          </div>
         </div>
 
         {periods.map((period) => (
           <div key={period} className="dmgroup">
             <div className="dmgroup-h">{period}</div>
-            {store.library
+            {docs
               .filter((d) => d.period === period)
               .map((d) => (
                 <DocCard
@@ -217,9 +242,11 @@ export function DocumentsManager({
           </div>
         ))}
 
-        {store.library.length === 0 && (
+        {docs.length === 0 && (
           <div className="dmempty">
-            No documents yet. Upload a release, script, or Q&A to start tying it out.
+            {scoped
+              ? "Nothing here yet — upload a past transcript or a new draft to get started."
+              : "No documents yet. Upload a release, script, or Q&A to start tying it out."}
           </div>
         )}
       </div>

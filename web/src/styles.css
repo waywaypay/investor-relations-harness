@@ -525,3 +525,55 @@ mark.hl{background:#FBE7A6;color:#5a4410;padding:0 2px;border-radius:2px;font-we
 /* The document page reads as paper on the canvas — a hairline frame, no slab. */
 .doc{border-color:var(--line)}
 .scrim{background:rgba(0,0,0,.32);backdrop-filter:saturate(180%) blur(8px);-webkit-backdrop-filter:saturate(180%) blur(8px)}
+
+/* ───────────────────────────────────────────────────────────────────────────
+   Sidebar — category-grouped and space-efficient.
+   Documents read as plain-language categories (each opens the manager for that
+   type); a compact status dot replaces the per-row coverage bars; rename / delete
+   / version actions move to the manager so the rail stays calm for first-timers.
+   ─────────────────────────────────────────────────────────────────────────── */
+.sb-org{padding:0 6px 14px;border-bottom:1px solid var(--line);margin-bottom:16px}
+.sb-org-name{font-family:var(--display);font-size:15px;font-weight:600;letter-spacing:-.2px;color:var(--ink)}
+.sb-org-sub{font-size:11px;color:var(--faint);margin-top:1px}
+
+.sb-add{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;font-family:var(--ui);
+  font-size:12.5px;font-weight:600;color:#fff;background:var(--accent);border:none;border-radius:10px;
+  padding:9px 12px;cursor:pointer;transition:.15s;margin-bottom:20px}
+.sb-add:hover{filter:brightness(1.08)}
+
+.sb-cap{font-size:10px;letter-spacing:.5px;text-transform:uppercase;color:var(--faint);font-weight:600;margin:0 6px 8px}
+.sb-cats{display:flex;flex-direction:column;margin-bottom:20px}
+
+.sb-cat{margin-bottom:7px}
+.sb-cat-h{display:flex;align-items:center;gap:9px;width:100%;text-align:left;background:none;border:none;
+  border-radius:8px;padding:6px 7px;cursor:pointer;font-family:var(--ui);transition:.12s}
+.sb-cat-h:hover{background:rgba(0,0,0,.04)}
+.sb-cat-ic{width:16px;height:16px;flex-shrink:0;color:var(--faint);display:grid;place-items:center}
+.sb-cat-ic svg{width:15px;height:15px}
+.sb-cat-h:hover .sb-cat-ic{color:var(--accent)}
+.sb-cat-l{flex:1;font-size:12px;font-weight:600;color:var(--ink);min-width:0}
+.sb-cat-n{font-size:10.5px;font-weight:600;color:var(--muted);background:rgba(0,0,0,.05);border-radius:999px;
+  min-width:19px;text-align:center;padding:1px 6px}
+.sb-cat-go{color:var(--faint);font-size:15px;line-height:1;opacity:0;transition:.12s}
+.sb-cat-h:hover .sb-cat-go,.sb-cat-h:focus-visible .sb-cat-go{opacity:1}
+
+.sb-cat-docs{display:flex;flex-direction:column;gap:1px;margin:2px 0 0 14px;padding-left:11px;border-left:1px solid var(--line)}
+.sb-doc{display:flex;align-items:center;gap:9px;width:100%;text-align:left;background:none;border:none;
+  border-radius:7px;padding:6px 8px;cursor:pointer;font-family:var(--ui);color:var(--ink);transition:.12s}
+.sb-doc:hover{background:rgba(0,0,0,.04)}
+.sb-doc.active{background:var(--verified-bg)}
+.sb-doc.active .sb-doc-name{color:var(--accent);font-weight:600}
+.sb-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;background:var(--faint)}
+.sb-dot.v{background:var(--verified)} .sb-dot.r{background:var(--review)} .sb-dot.f{background:var(--flag)} .sb-dot.none{background:var(--line-strong)}
+.sb-doc-name{flex:1;font-size:12.5px;font-weight:500;line-height:1.3;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sb-doc-v{font-size:9.5px;font-weight:700;color:var(--accent);flex-shrink:0}
+
+/* Tools rows reuse .sb-doc with a leading glyph instead of a status dot. */
+.sb-doc.tool{padding:7px 8px}
+.sb-doc-ic{width:16px;height:16px;flex-shrink:0;color:var(--faint);display:grid;place-items:center}
+.sb-doc-ic svg{width:15px;height:15px}
+.sb-doc.tool.active .sb-doc-ic{color:var(--accent)}
+
+/* Manager: two upload entry points (a past transcript, or a new draft). */
+.dmtoolbar-acts{display:flex;align-items:center;gap:8px}
+.dmtoolbar-acts .btn{min-width:0;padding:8px 13px}
