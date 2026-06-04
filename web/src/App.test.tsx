@@ -117,11 +117,12 @@ describe("document library & upload", () => {
     await screen.findByText("$42 million");
 
     // Delete it from the documents manager (rename/delete/version actions live
-    // there now, keeping the sidebar uncluttered).
+    // there now, keeping the sidebar uncluttered). The manager opens in the main
+    // stage, not a modal.
     fireEvent.click(screen.getByRole("button", { name: /Manage all/i }));
     const card = (screen.getByDisplayValue("Uploaded document").closest(".dmcard")) as HTMLElement;
     fireEvent.click(within(card).getByRole("button", { name: /Delete document/i }));
-    expect(screen.queryByText("$42 million")).not.toBeInTheDocument();
+    expect(screen.queryByDisplayValue("Uploaded document")).not.toBeInTheDocument();
   });
 
   it("files a new version of a document and lets you switch back to the prior one", async () => {

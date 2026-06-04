@@ -577,3 +577,11 @@ mark.hl{background:#FBE7A6;color:#5a4410;padding:0 2px;border-radius:2px;font-we
 /* Manager: two upload entry points (a past transcript, or a new draft). */
 .dmtoolbar-acts{display:flex;align-items:center;gap:8px}
 .dmtoolbar-acts .btn{min-width:0;padding:8px 13px}
+
+/* Documents manager as a stage view (not a modal): a centered column matching
+   the consensus/calendar surfaces, with a page header instead of a modal bar. */
+.mgr{width:100%;max-width:720px}
+.mgr-head{margin-bottom:20px}
+.mgr-head .ttl{font-family:var(--display);font-size:24px;font-weight:600;letter-spacing:-.3px;color:var(--ink)}
+.mgr-head .sub{font-family:var(--doc);font-size:14.5px;color:var(--muted);font-style:italic;line-height:1.5;margin-top:5px}
+.mgr .dmbody{padding:0;overflow:visible}

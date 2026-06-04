@@ -29,13 +29,14 @@ function Workspace() {
   const [uploadTarget, setUploadTarget] = useState<LibraryDoc | null>(null);
   // Whether a fresh upload opens as a draft to verify or a prior disclosure.
   const [uploadRole, setUploadRole] = useState<"draft" | "reference">("draft");
-  const [managerOpen, setManagerOpen] = useState(false);
+  // The documents manager is a full view in the stage (view === "manager"), not a
+  // modal — scoped to a category and/or focused on a document via these.
   const [managerFocus, setManagerFocus] = useState<string | null>(null);
-  // When set, the manager is scoped to one document category.
   const [managerKind, setManagerKind] = useState<DocKind | null>(null);
   const popHideTimer = useRef<number | undefined>(undefined);
 
-  const isDoc = view !== "consensus" && view !== "calendar";
+  const isManager = view === "manager";
+  const isDoc = view !== "consensus" && view !== "calendar" && !isManager;
   const activeDoc = isDoc ? store.library.find((d) => d.id === view) ?? null : null;
 
   // Reset the figure filter when leaving a document.
@@ -48,7 +49,7 @@ function Workspace() {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         setFigModal(null); setNarModal(null); setCommitModal(false);
-        setUploadOpen(false); setManagerOpen(false);
+        setUploadOpen(false);
       }
     };
     document.addEventListener("keydown", onKey);
@@ -65,9 +66,10 @@ function Workspace() {
     setUploadTarget(null); setUploadRole(role); setUploadOpen(true);
   };
   const openUploadVersion = (doc: LibraryDoc) => { setUploadTarget(doc); setUploadOpen(true); };
-  // Open the manager — optionally focused on a document, or scoped to a category.
+  // Open the manager as a stage view — optionally focused on a document, or
+  // scoped to a category.
   const openManager = (focus?: string, kind?: DocKind) => {
-    setManagerFocus(focus ?? null); setManagerKind(kind ?? null); setManagerOpen(true);
+    setManagerFocus(focus ?? null); setManagerKind(kind ?? null); setView("manager");
   };
 
   return (
@@ -93,6 +95,15 @@ function Workspace() {
           )}
           {view === "consensus" && <Consensus />}
           {view === "calendar" && <Calendar />}
+          {isManager && (
+            <DocumentsManager
+              focusDocId={managerFocus}
+              focusKind={managerKind}
+              onOpen={(id) => setView(id)}
+              onUploadNew={openUploadNew}
+              onUploadVersion={openUploadVersion}
+            />
+          )}
         </div>
       </div>
 
@@ -101,17 +112,6 @@ function Workspace() {
         onEnter={() => window.clearTimeout(popHideTimer.current)}
         onLeave={() => { popHideTimer.current = window.setTimeout(() => setPop(null), 120); }}
       />
-
-      {managerOpen && (
-        <DocumentsManager
-          focusDocId={managerFocus}
-          focusKind={managerKind}
-          onClose={() => setManagerOpen(false)}
-          onOpen={(id) => setView(id)}
-          onUploadNew={openUploadNew}
-          onUploadVersion={openUploadVersion}
-        />
-      )}
 
       {uploadOpen && (
         <UploadModal
