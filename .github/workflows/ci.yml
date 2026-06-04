@@ -72,3 +72,18 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  bundle:
+    name: served bundle (freshness)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # The backend serves a prebuilt, committed bundle (src/attest/api/static/
+      # index.html). Fail if it wasn't rebuilt from the current web/ source, so a
+      # web change can't silently ship the stale UI. No Node/build needed — this
+      # compares the bundle's stamped source fingerprint against web/ source.
+      - name: Served SPA bundle is rebuilt from web/ source
+        run: python scripts/check_spa_fresh.py
