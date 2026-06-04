@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { App } from "./App";
 
 // Regression: a returning user has uploaded documents persisted by an older
@@ -40,6 +40,8 @@ describe("persisted-upload migration", () => {
 
   it("keeps the migrated upload visible in the library", () => {
     render(<App />);
+    // The legacy doc's unknown kind buckets into "Other documents"; expand it.
+    fireEvent.click(screen.getByRole("button", { name: /Expand Other documents/i }));
     expect(screen.getByText("Legacy upload")).toBeInTheDocument();
   });
 });

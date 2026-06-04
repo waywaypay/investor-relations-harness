@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useStore } from "../store";
 import type { Block, DocKind, Figure, LibraryDoc } from "../types";
 
@@ -62,6 +63,15 @@ export function Sidebar({
   onManage: (focusDocId?: string, kind?: DocKind) => void;
 }) {
   const store = useStore();
+  // Categories are collapsed by default — the rail shows just the types; a click
+  // on the chevron reveals that category's documents.
+  const [openKinds, setOpenKinds] = useState<Set<DocKind>>(new Set());
+  const toggleKind = (k: DocKind) =>
+    setOpenKinds((prev) => {
+      const next = new Set(prev);
+      next.has(k) ? next.delete(k) : next.add(k);
+      return next;
+    });
 
   // Bucket documents by category, preserving library order within each.
   const byKind: Record<DocKind, LibraryDoc[]> = { release: [], script: [], qa: [], other: [] };
@@ -79,40 +89,54 @@ export function Sidebar({
 
       <div className="sb-cap">Documents</div>
       <div className="sb-cats">
-        {categories.map((k) => (
-          <div className="sb-cat" key={k}>
-            {/* The category header opens the manager scoped to this type, where past
-                filings and transcripts for the company can be uploaded. */}
-            <button
-              className="sb-cat-h"
-              onClick={() => onManage(undefined, k)}
-              title={`Manage ${KIND_META[k].label} — upload past filings & transcripts`}
-            >
-              <span className="sb-cat-ic" dangerouslySetInnerHTML={{ __html: KIND_META[k].icon }} />
-              <span className="sb-cat-l">{KIND_META[k].label}</span>
-              <span className="sb-cat-n">{byKind[k].length}</span>
-              <span className="sb-cat-go" aria-hidden="true">›</span>
-            </button>
-            <div className="sb-cat-docs">
-              {byKind[k].map((d) => (
+        {categories.map((k) => {
+          const open = openKinds.has(k);
+          return (
+            <div className="sb-cat" key={k}>
+              <div className="sb-cat-h">
+                {/* The name opens the manager scoped to this type (where past filings
+                    and transcripts are uploaded); the chevron reveals the files. */}
                 <button
-                  key={d.id}
-                  className={`sb-doc ${view === d.id ? "active" : ""}`}
-                  aria-current={view === d.id ? "true" : undefined}
-                  onClick={() => setView(d.id)}
+                  className="sb-cat-main"
+                  onClick={() => onManage(undefined, k)}
+                  aria-label={`Manage ${KIND_META[k].label}`}
                 >
-                  <span className={`sb-dot ${statusOf(d, store.figures)}`} aria-hidden="true" />
-                  <span className="sb-doc-name">{d.name}</span>
-                  {d.versions.length > 1 && (
-                    <span className="sb-doc-v" title={`${d.versions.length} versions`}>
-                      v{d.versions.length}
-                    </span>
-                  )}
+                  <span className="sb-cat-ic" dangerouslySetInnerHTML={{ __html: KIND_META[k].icon }} />
+                  <span className="sb-cat-l">{KIND_META[k].label}</span>
+                  <span className="sb-cat-n">{byKind[k].length}</span>
                 </button>
-              ))}
+                <button
+                  className="sb-cat-toggle"
+                  onClick={() => toggleKind(k)}
+                  aria-expanded={open}
+                  aria-label={`${open ? "Collapse" : "Expand"} ${KIND_META[k].label}`}
+                >
+                  <span className="caret" aria-hidden="true">{open ? "▾" : "▸"}</span>
+                </button>
+              </div>
+              {open && (
+                <div className="sb-cat-docs">
+                  {byKind[k].map((d) => (
+                    <button
+                      key={d.id}
+                      className={`sb-doc ${view === d.id ? "active" : ""}`}
+                      aria-current={view === d.id ? "true" : undefined}
+                      onClick={() => setView(d.id)}
+                    >
+                      <span className={`sb-dot ${statusOf(d, store.figures)}`} aria-hidden="true" />
+                      <span className="sb-doc-name">{d.name}</span>
+                      {d.versions.length > 1 && (
+                        <span className="sb-doc-v" title={`${d.versions.length} versions`}>
+                          v{d.versions.length}
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <button className="sb-manageall" onClick={() => onManage()}>
