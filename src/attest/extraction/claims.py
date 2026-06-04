@@ -22,7 +22,7 @@ from dataclasses import dataclass
 
 from attest.domain.facts import Confidence
 from attest.domain.metrics import MetricRegistry
-from attest.domain.money import Unit
+from attest.domain.money import NOUN_WORDS, Unit
 from attest.domain.verdicts import FigureClaim
 from attest.factstore.repository import FactStore
 from attest.verification.candidates import detect_candidates
@@ -66,12 +66,13 @@ _GUIDANCE_NEAR = re.compile(
 # A guidance range stated as a single span: "$1.31 to $1.34 billion", "$1.31–1.34B",
 # or — as transcripts phrase it — symbol-free "1.31 to 1.34 billion". When no "$"
 # is present a trailing scale word is required so a plain year span ("2025 to 2026")
-# is not mistaken for money.
+# is not mistaken for money, and a trailing count noun ("400 to 500 million users")
+# is excluded so an operating-metric range is not read as currency guidance.
 _RANGE_RE = re.compile(
     r"\$\s?\d[\d,]*(?:\.\d+)?\s*(?:to|through|and|[-–—])\s*\$?\s?\d[\d,]*(?:\.\d+)?\s*"
     r"(?:billion|million|thousand|trillion|bn|mm|[bmkt])?"
     r"|\b\d[\d,]*(?:\.\d+)?\s*(?:to|through|and|[-–—])\s*\d[\d,]*(?:\.\d+)?\s*"
-    r"(?:billion|million|thousand|trillion|bn|mm)\b",
+    rf"(?:billion|million|thousand|trillion|bn|mm)\b(?!\s*(?:{NOUN_WORDS})\b)",
     re.IGNORECASE,
 )
 
@@ -154,12 +155,18 @@ class _MetricView:
 
 
 def _unit_of_candidate(text: str, qty_unit: Unit | None) -> Unit:
+    # The normalized quantity is authoritative when present; this text-based path
+    # is the fallback for spans that resisted normalization (quantity is None).
     if qty_unit is not None:
         return qty_unit
-    if "%" in text or re.search(r"percent|pct", text, re.IGNORECASE):
+    if "%" in text or re.search(r"\b(?:percent|pct)\b", text, re.IGNORECASE):
         return Unit.PERCENT
     if re.search(r"bps|basis points", text, re.IGNORECASE):
         return Unit.BASIS_POINTS
+    if re.search(r"\bshares?\b", text, re.IGNORECASE):
+        return Unit.SHARES
+    if re.search(rf"\b(?:{NOUN_WORDS})\b", text, re.IGNORECASE):
+        return Unit.COUNT
     return Unit.CURRENCY
 
 

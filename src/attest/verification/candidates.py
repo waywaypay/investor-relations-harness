@@ -12,7 +12,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from attest.domain.money import Quantity, QuantityParseError, parse_quantity
+from attest.domain.money import NOUN_WORDS, Quantity, QuantityParseError, parse_quantity
 
 # Greedy: currency with optional scale word, percentages, basis points.
 #
@@ -22,13 +22,20 @@ from attest.domain.money import Quantity, QuantityParseError, parse_quantity
 # is the failure mode, so both are caught. The symbol-free currency branches
 # *require* a scale word or the word "dollars" as an anchor — a bare integer like
 # a year ("2026") must not read as money.
+#
+# The ``count`` branch comes before ``curscale`` and captures the trailing noun
+# ("100 million shares", "480 million users") so the value layer can type it as a
+# share/unit count, not money — otherwise the bare "100 million" reads as $100M
+# and is tied out against a dollar metric. Order matters: a count noun wins over
+# the symbol-free currency branch at the same position.
 _CANDIDATE_RE = re.compile(
-    r"""
+    rf"""
     (?P<cur>\$\s?\d[\d,]*(?:\.\d+)?\s*(?:billion|million|thousand|trillion|bn|mm|[bmkt])?\b)
+    | (?P<count>\b\d[\d,]*(?:\.\d+)?\s*(?:billion|million|thousand|trillion|bn|mm)?\s*(?:{NOUN_WORDS})\b)
     | (?P<curscale>\b\d[\d,]*(?:\.\d+)?\s*(?:billion|million|thousand|trillion|bn|mm)\b)
     | (?P<curword>\b\d[\d,]*(?:\.\d+)?\s+(?:dollars|cents)\b)
-    | (?P<pct>\b\d{1,3}(?:\.\d+)?\s?(?:%|percent\b|pct\b))
-    | (?P<bps>\b\d{1,4}(?:\.\d+)?\s?(?:bps|basis\ points)\b)
+    | (?P<pct>\b\d{{1,3}}(?:\.\d+)?\s?(?:%|percent\b|pct\b))
+    | (?P<bps>\b\d{{1,4}}(?:\.\d+)?\s?(?:bps|basis\ points)\b)
     """,
     re.IGNORECASE | re.VERBOSE,
 )
