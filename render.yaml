@@ -1,0 +1,22 @@
+# Render Blueprint — https://render.com/docs/blueprint-spec
+#
+# One Docker web service built from the repo Dockerfile. The image bundles the
+# FastAPI backend and the prebuilt React workspace (src/attest/api/static), so a
+# single service serves both the UI and the same-origin API the UI calls.
+#
+# ATTEST_SEED_DEMO=1 makes the container ingest the bundled Meridian Q1 FY2026
+# filing at startup, so an uploaded Meridian transcript ties out the moment the
+# page loads — no ticker, no separate ingest. (State is in-process memory for
+# this v1, so keep a single instance; reseeded fresh on each start/deploy.)
+services:
+  - type: web
+    name: attest
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    branch: main
+    autoDeploy: true
+    healthCheckPath: /health
+    envVars:
+      - key: ATTEST_SEED_DEMO
+        value: "1"
