@@ -24,9 +24,13 @@ export function UploadModal({
 }) {
   const store = useStore();
   const isVersion = target != null;
+  // "draft" verifies the document (ties figures out); "reference" files it as a
+  // prior disclosure — the corpus a later draft is checked against for contradictions.
+  const [role, setRole] = useState<"draft" | "reference">("draft");
   const [kind, setKind] = useState<DocKind>(target?.kind ?? "script");
   const [title, setTitle] = useState(target?.name ?? "");
   const [ticker, setTicker] = useState("");
+  const [period, setPeriod] = useState("");
   const [note, setNote] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [text, setText] = useState("");
@@ -43,11 +47,24 @@ export function UploadModal({
 
   const canSubmit = !busy && (file != null || text.trim().length > 0);
 
+  const isReference = role === "reference" && !isVersion;
+
   const submit = async () => {
     if (!canSubmit) return;
     setBusy(true);
     setError(null);
     try {
+      if (isReference) {
+        await store.ingestDisclosure({
+          file: file ?? undefined,
+          text: file ? undefined : text.trim() || undefined,
+          entity: ticker.trim().toUpperCase() || undefined,
+          period: period.trim() || undefined,
+          label: title.trim() || file?.name || undefined,
+        });
+        onClose();
+        return;
+      }
       const docId = await store.uploadDocument(
         {
           kind,
@@ -62,7 +79,7 @@ export function UploadModal({
       onUploaded(docId);
       onClose();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Upload failed.");
+      setError(e instanceof Error ? e.message : isReference ? "Could not file disclosure." : "Upload failed.");
     } finally {
       setBusy(false);
     }
@@ -73,13 +90,21 @@ export function UploadModal({
   return (
     <Scrim onClose={onClose} modalClass="upmodal">
       <div className="mbar">
-        <span className="badge">{isVersion ? "NEW VERSION" : "UPLOAD"}</span>
+        <span className="badge">{isVersion ? "NEW VERSION" : isReference ? "REFERENCE" : "UPLOAD"}</span>
         <div>
-          <div className="ttl">{isVersion ? `New version of “${target!.name}”` : "Add a document"}</div>
+          <div className="ttl">
+            {isVersion
+              ? `New version of “${target!.name}”`
+              : isReference
+                ? "File a prior disclosure"
+                : "Add a document"}
+          </div>
           <div className="sub">
             {isVersion
               ? `Files as ${nextVersionLabel} — your earlier drafts and their tie-outs are kept.`
-              : "Upload a release, script, or Q&A — every figure ties out to your filed sources."}
+              : isReference
+                ? "Its figures become the reference future drafts are checked against — a restated number that changed is flagged."
+                : "Upload a release, script, or Q&A — every figure ties out to your filed sources."}
           </div>
         </div>
         <button className="x" onClick={onClose} aria-label="Close">×</button>
@@ -87,6 +112,30 @@ export function UploadModal({
 
       <div className="upbody">
         {!isVersion && (
+          <label className="upfield">
+            <span className="upcap">What is this?</span>
+            <div className="upkinds">
+              <button
+                type="button"
+                className={`upkind ${role === "draft" ? "active" : ""}`}
+                onClick={() => setRole("draft")}
+              >
+                <span className="upk-l">Draft to verify</span>
+                <span className="upk-h">Tie figures out to filed sources</span>
+              </button>
+              <button
+                type="button"
+                className={`upkind ${role === "reference" ? "active" : ""}`}
+                onClick={() => setRole("reference")}
+              >
+                <span className="upk-l">Prior disclosure</span>
+                <span className="upk-h">Reference — flag later contradictions</span>
+              </button>
+            </div>
+          </label>
+        )}
+
+        {!isVersion && !isReference && (
           <label className="upfield">
             <span className="upcap">Document type</span>
             <div className="upkinds">
@@ -128,6 +177,20 @@ export function UploadModal({
             spellCheck={false}
           />
         </label>
+
+        {isReference && (
+          <label className="upfield">
+            <span className="upcap">Period it reports <span className="upopt">(optional)</span></span>
+            <input
+              className="upinput"
+              type="text"
+              placeholder="e.g. FY2025-Q2 — anchors figures stated without their own period"
+              value={period}
+              onChange={(e) => setPeriod(e.target.value)}
+              spellCheck={false}
+            />
+          </label>
+        )}
 
         {isVersion && (
           <label className="upfield">
@@ -189,7 +252,9 @@ export function UploadModal({
         <div className="upacts">
           <button className="btn" onClick={onClose} disabled={busy}>Cancel</button>
           <button className="btn go" onClick={submit} disabled={!canSubmit}>
-            {busy ? "Analyzing…" : isVersion ? "Analyze & file version" : "Analyze & add"}
+            {busy
+              ? isReference ? "Filing…" : "Analyzing…"
+              : isReference ? "File as reference" : isVersion ? "Analyze & file version" : "Analyze & add"}
           </button>
         </div>
       </div>

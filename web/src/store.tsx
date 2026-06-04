@@ -11,7 +11,7 @@ import {
   newVersionId,
   type BuiltVersion,
 } from "./lib/buildDoc";
-import { apiBaseUrl, client, type AnalyzeInput } from "./api/client";
+import { apiBaseUrl, client, type AnalyzeInput, type DisclosureInput } from "./api/client";
 
 type FigureMap = Record<string, Figure>;
 type NarrativeMap = Record<string, Narrative>;
@@ -36,6 +36,9 @@ interface Store {
    *  version of that document; otherwise it becomes a new document. Returns the
    *  id of the document to navigate to. */
   uploadDocument: (input: AnalyzeInput, targetDocId?: string, note?: string) => Promise<string>;
+  /** File a prior disclosure (past release / transcript / deck) as the reference
+   *  corpus future drafts are checked against. Returns the number of figures filed. */
+  ingestDisclosure: (input: DisclosureInput) => Promise<number>;
   removeDoc: (id: string) => void;
   /** Make a stored version the one the document renders. */
   setActiveVersion: (docId: string, versionId: string) => void;
@@ -363,6 +366,23 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     [showToast]
   );
 
+  const ingestDisclosure = useCallback(
+    async (input: DisclosureInput): Promise<number> => {
+      // Consistency-only: this is a backend capability (the figures become the
+      // reference a later draft is compared against), so there is no offline
+      // fallback — a failure surfaces to the modal.
+      const result = await client.ingestDisclosure(input);
+      const name = input.label || input.file?.name || "prior disclosure";
+      showToast(
+        result.ingested
+          ? `Filed ${result.ingested} reference figure${result.ingested > 1 ? "s" : ""} from “${name}”.`
+          : `No recognizable figures in “${name}” — nothing to reference.`
+      );
+      return result.ingested;
+    },
+    [showToast]
+  );
+
   const removeDoc = useCallback(
     (id: string) => {
       const doc = library.find((d) => d.id === id);
@@ -445,12 +465,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       figures, narratives, commitments, library, toast,
       showToast, editFigure, bindFigure, resolveFigure, restoreFigure,
       removeFigure, addFigure, resolveNarrative, addressCommitment,
-      uploadDocument, removeDoc, setActiveVersion, removeVersion, renameDoc,
+      uploadDocument, ingestDisclosure, removeDoc, setActiveVersion, removeVersion, renameDoc,
     }),
     [
       figures, narratives, commitments, library, toast, showToast, editFigure, bindFigure,
       resolveFigure, restoreFigure, removeFigure, addFigure, resolveNarrative, addressCommitment,
-      uploadDocument, removeDoc, setActiveVersion, removeVersion, renameDoc,
+      uploadDocument, ingestDisclosure, removeDoc, setActiveVersion, removeVersion, renameDoc,
     ]
   );
 

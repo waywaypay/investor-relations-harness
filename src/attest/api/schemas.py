@@ -27,21 +27,6 @@ class GuidanceIngestRequest(BaseModel):
     label: str | None = Field(default=None, description="human-readable citation label")
 
 
-class DisclosureIngestRequest(BaseModel):
-    """A prior public disclosure (past release / transcript / deck) to extract
-    previously-stated figures from, for consistency checks against later drafts."""
-
-    text: str = Field(description="the prior disclosure's text")
-    entity: str = Field(description="issuer entity, e.g. 'MRDN'")
-    period: str | None = Field(
-        default=None,
-        description="the period the disclosure reports, e.g. 'FY2025-Q2', anchoring figures without their own period",
-    )
-    as_of: str = Field(default="1970-01-01", description="ISO date the disclosure was published")
-    source_ref: str = Field(default="prior-disclosure", description="stable id for the source, used in the citation")
-    label: str | None = Field(default=None, description="human-readable citation label, e.g. 'Q1 FY2025 call'")
-
-
 class EdgarIngestRequest(BaseModel):
     """Pull an issuer's real filed facts from SEC EDGAR by ticker."""
 

@@ -44,11 +44,22 @@ def test_draft_restating_prior_disclosure_is_consistent():
     assert "consistent" in v.reason.lower()
 
 
-def test_ingest_disclosure_endpoint():
+def test_ingest_disclosure_endpoint_text():
     client = TestClient(create_app(AttestService()))
     r = client.post(
         "/tenants/acme/ingest/disclosure",
-        json={"text": _PRIOR, "entity": "ACME", "period": "FY2025-Q1", "label": "Q1 call"},
+        data={"text": _PRIOR, "entity": "ACME", "period": "FY2025-Q1", "label": "Q1 call"},
+    )
+    assert r.status_code == 200
+    assert r.json()["ingested"] >= 1
+
+
+def test_ingest_disclosure_endpoint_file():
+    client = TestClient(create_app(AttestService()))
+    r = client.post(
+        "/tenants/acme/ingest/disclosure",
+        data={"entity": "ACME", "period": "FY2025-Q1"},
+        files={"file": ("q1_call.txt", _PRIOR.encode(), "text/plain")},
     )
     assert r.status_code == 200
     assert r.json()["ingested"] >= 1
