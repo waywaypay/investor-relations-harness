@@ -108,7 +108,6 @@ function DocCard({
 }) {
   const store = useStore();
   const [name, setName] = useState(doc.name);
-  const isDemo = doc.source === "demo";
 
   const commitName = () => {
     const clean = name.trim();
@@ -128,11 +127,7 @@ function DocCard({
           onBlur={commitName}
           onKeyDown={(e) => { if (e.key === "Enter") (e.currentTarget as HTMLInputElement).blur(); }}
         />
-        {/* Kind/source at rest; on hover the row reveals its actions in the same slot. */}
-        <div className="dmrow-meta">
-          <span className={`dmtag ${isDemo ? "demo" : "up"}`}>{isDemo ? "Sample" : "Uploaded"}</span>
-          <span className="dmrow-sub">{doc.subtitle}</span>
-        </div>
+        {/* Actions sit at the row's end and surface on hover. */}
         <div className="dmrow-acts">
           <button className="dmlink" onClick={onOpen}>Open</button>
           <button className="dmlink" onClick={onUploadVersion}>+ Version</button>

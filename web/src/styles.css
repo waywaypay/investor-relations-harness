@@ -325,9 +325,6 @@ body{font-family:var(--ui);background:var(--paper);color:var(--ink);
 .dmname:hover{border-color:var(--line)}
 .dmname:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);background:#fff}
 .dmcard-sub{font-size:11px;color:var(--faint);margin-top:2px;display:flex;align-items:center;gap:7px}
-.dmtag{font-size:9px;font-weight:700;letter-spacing:.3px;padding:2px 6px;border-radius:5px;text-transform:uppercase}
-.dmtag.demo{background:var(--paper);color:var(--muted);border:1px solid var(--line-strong)}
-.dmtag.up{background:var(--verified-bg);color:var(--verified);border:1px solid #cfe0d4}
 .dmvers{margin:11px 0 4px;border-top:1px solid var(--line);padding-top:6px}
 .dmver{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:8px 9px;border-radius:8px}
 .dmver.active{background:var(--verified-bg)}
@@ -604,10 +601,7 @@ mark.hl{background:#FBE7A6;color:#5a4410;padding:0 2px;border-radius:2px;font-we
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mgr .dmname:hover{border-color:var(--line)}
 .mgr .dmname:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(31,74,54,.16);background:#fff}
-.dmrow-meta{display:flex;align-items:center;gap:8px;flex-shrink:0;min-width:0}
-.dmrow-sub{font-size:11px;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:240px}
 .dmrow-acts{display:none;align-items:center;gap:2px;flex-shrink:0}
-.dmrow:hover .dmrow-meta{display:none}
 .dmrow:hover .dmrow-acts{display:flex}
 .dmrow-acts .dmlink{padding:4px 8px}
 .dmrow-vtoggle{display:flex;align-items:center;justify-content:flex-end;gap:4px;flex-shrink:0;min-width:42px;
