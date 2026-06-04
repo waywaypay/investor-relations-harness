@@ -63,10 +63,15 @@ _GUIDANCE_NEAR = re.compile(
     re.IGNORECASE,
 )
 
-# A guidance range stated as a single span: "$1.31 to $1.34 billion", "$1.31–1.34B".
+# A guidance range stated as a single span: "$1.31 to $1.34 billion", "$1.31–1.34B",
+# or — as transcripts phrase it — symbol-free "1.31 to 1.34 billion". When no "$"
+# is present a trailing scale word is required so a plain year span ("2025 to 2026")
+# is not mistaken for money.
 _RANGE_RE = re.compile(
     r"\$\s?\d[\d,]*(?:\.\d+)?\s*(?:to|through|and|[-–—])\s*\$?\s?\d[\d,]*(?:\.\d+)?\s*"
-    r"(?:billion|million|thousand|trillion|bn|mm|[bmkt])?",
+    r"(?:billion|million|thousand|trillion|bn|mm|[bmkt])?"
+    r"|\b\d[\d,]*(?:\.\d+)?\s*(?:to|through|and|[-–—])\s*\d[\d,]*(?:\.\d+)?\s*"
+    r"(?:billion|million|thousand|trillion|bn|mm)\b",
     re.IGNORECASE,
 )
 
@@ -151,7 +156,7 @@ class _MetricView:
 def _unit_of_candidate(text: str, qty_unit: Unit | None) -> Unit:
     if qty_unit is not None:
         return qty_unit
-    if "%" in text:
+    if "%" in text or re.search(r"percent|pct", text, re.IGNORECASE):
         return Unit.PERCENT
     if re.search(r"bps|basis points", text, re.IGNORECASE):
         return Unit.BASIS_POINTS

@@ -200,3 +200,50 @@ def test_full_pipeline_reproduces_the_restatement_conflict():
     rules = {f.rule for f in result.findings}
     assert "forward_looking.safe_harbor_required" in rules
     assert "derived.recomputation_mismatch" in rules
+
+
+# -- spoken / transcript figure dialect --------------------------------------
+
+# The same quarter as RELEASE, phrased the way an earnings-call transcript reads:
+# no "$" symbols and "percent" spelled out. Pasted prose and Word exports land here
+# too. Under-detection is the failure mode, so these must still be located.
+TRANSCRIPT = (
+    "Thanks everyone for joining the call. Total revenue was 1.24 billion dollars, "
+    "up 18 percent year over year. Cloud segment revenue reached 612 million dollars, "
+    "up 31 percent from the prior-year period. Operating cash flow was 338 million dollars. "
+    "We repurchased 250 million dollars of common stock. For the second quarter, we expect "
+    "total revenue in the range of 1.31 to 1.34 billion."
+)
+
+
+def test_candidate_detection_handles_spoken_figures():
+    from attest.domain.money import Unit, parse_quantity
+    from attest.verification.candidates import detect_candidates
+
+    texts = {c.text for c in detect_candidates(TRANSCRIPT)}
+    # Symbol-free currency (scale word or "dollars" anchors it) and spelled percent.
+    assert "1.24 billion" in texts
+    assert "612 million" in texts
+    assert "31 percent" in texts
+    # The values normalize to the same quantities as their "$"/"%" equivalents.
+    assert parse_quantity("1.24 billion") == parse_quantity("$1.24 billion")
+    assert parse_quantity("31 percent").unit is Unit.PERCENT
+    assert parse_quantity("31 percent") == parse_quantity("31%")
+    # "87 cents" is $0.87, not $87 — the trailing money word changes the scale.
+    assert parse_quantity("87 cents") == parse_quantity("$0.87")
+    # A bare year is not money: no scale word, no "$", no "dollars".
+    assert not detect_candidates("In fiscal 2026 we expanded the platform.")
+
+
+def test_full_pipeline_traces_a_spoken_transcript():
+    svc = seeded_service()
+    _, result, entity, period = svc.analyze_text(
+        tenant_id="meridian", text=TRANSCRIPT, title="Q1 FY2026 earnings call",
+        kind=DocumentKind.SCRIPT, entity="MRDN", period="FY2026-Q1",
+    )
+    assert entity == "MRDN" and period == "FY2026-Q1"
+    # The regression: spoken figures used to yield zero candidates and trace nothing.
+    # Now the symbol-free currency figures bind to their filed sources.
+    assert result.counts["traced"] == 4  # revenue, cloud revenue, cash flow, repurchase
+    assert result.counts["conflict"] == 1  # the 31% cloud-growth restatement still trips
+    assert result.counts["needs_review"] == 1  # the guidance range still needs sign-off
