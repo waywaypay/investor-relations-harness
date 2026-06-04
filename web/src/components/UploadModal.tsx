@@ -16,17 +16,20 @@ export function UploadModal({
   onClose,
   onUploaded,
   target = null,
+  initialRole = "draft",
 }: {
   onClose: () => void;
   onUploaded: (docId: string) => void;
   /** When set, the upload is filed as a new version of this document. */
   target?: LibraryDoc | null;
+  /** Which mode the modal opens in (the manager opens it straight to "reference"). */
+  initialRole?: "draft" | "reference";
 }) {
   const store = useStore();
   const isVersion = target != null;
   // "draft" verifies the document (ties figures out); "reference" files it as a
   // prior disclosure — the corpus a later draft is checked against for contradictions.
-  const [role, setRole] = useState<"draft" | "reference">("draft");
+  const [role, setRole] = useState<"draft" | "reference">(isVersion ? "draft" : initialRole);
   const [kind, setKind] = useState<DocKind>(target?.kind ?? "script");
   const [title, setTitle] = useState(target?.name ?? "");
   const [ticker, setTicker] = useState("");

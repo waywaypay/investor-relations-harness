@@ -86,13 +86,13 @@ describe("document library & upload", () => {
   });
 
   it("offers an upload button and opens the upload modal", () => {
-    fireEvent.click(screen.getByRole("button", { name: "+ Upload" }));
+    fireEvent.click(screen.getByRole("button", { name: /Add document/i }));
     expect(screen.getByText("Add a document")).toBeInTheDocument();
     expect(screen.getByText(/Analyze & add/i)).toBeInTheDocument();
   });
 
   it("uploads a pasted draft and renders it with detected figures", async () => {
-    fireEvent.click(screen.getByRole("button", { name: "+ Upload" }));
+    fireEvent.click(screen.getByRole("button", { name: /Add document/i }));
     fireEvent.change(screen.getByPlaceholderText(/e\.g\./i), {
       target: { value: "My Q2 script" },
     });
@@ -109,23 +109,24 @@ describe("document library & upload", () => {
   });
 
   it("lets you remove an uploaded document from the workspace", async () => {
-    fireEvent.click(screen.getByRole("button", { name: "+ Upload" }));
+    fireEvent.click(screen.getByRole("button", { name: /Add document/i }));
     fireEvent.change(screen.getByPlaceholderText(/Paste your draft/i), {
       target: { value: "Operating cash flow was $42 million for the period." },
     });
     fireEvent.click(screen.getByText(/Analyze & add/i));
     await screen.findByText("$42 million");
 
-    // The uploaded doc's row menu carries a Delete action; using it drops the doc
-    // and falls back to another document.
-    fireEvent.click(screen.getByRole("button", { name: /Actions for Uploaded document/i }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Delete" }));
+    // Delete it from the documents manager (rename/delete/version actions live
+    // there now, keeping the sidebar uncluttered).
+    fireEvent.click(screen.getByRole("button", { name: /Manage all/i }));
+    const card = (screen.getByDisplayValue("Uploaded document").closest(".dmcard")) as HTMLElement;
+    fireEvent.click(within(card).getByRole("button", { name: /Delete document/i }));
     expect(screen.queryByText("$42 million")).not.toBeInTheDocument();
   });
 
   it("files a new version of a document and lets you switch back to the prior one", async () => {
     // Upload an initial document.
-    fireEvent.click(screen.getByRole("button", { name: "+ Upload" }));
+    fireEvent.click(screen.getByRole("button", { name: /Add document/i }));
     fireEvent.change(screen.getByPlaceholderText(/e\.g\./i), { target: { value: "My draft" } });
     fireEvent.change(screen.getByPlaceholderText(/Paste your draft/i), {
       target: { value: "Revenue was $1.0 billion this quarter." },
@@ -161,15 +162,11 @@ describe("document library & upload", () => {
     expect(screen.getAllByDisplayValue("Q1 release (renamed)").length).toBeGreaterThan(0);
   });
 
-  it("renames a document inline from the sidebar row menu", () => {
-    // Open the row's actions menu and choose Rename — the row name becomes an
-    // editable field in place, no modal required.
-    fireEvent.click(screen.getByRole("button", { name: /Actions for Earnings release/i }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Rename" }));
-    const input = screen.getByLabelText(/Rename Earnings release/i) as HTMLInputElement;
-    fireEvent.change(input, { target: { value: "Q1 release v2" } });
-    fireEvent.blur(input);
-    // The renamed document shows its new name (in the sidebar, and the open doc's crumb).
-    expect(screen.getAllByText("Q1 release v2").length).toBeGreaterThan(0);
+  it("opens the manager scoped to a category to upload past transcripts", () => {
+    // Clicking a document category in the sidebar opens the manager focused on
+    // that type, where past filings/transcripts for the company can be uploaded.
+    fireEvent.click(screen.getByRole("button", { name: /Earnings releases/i }));
+    expect(screen.getByText(/Past filings, transcripts/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Upload past transcript/i })).toBeInTheDocument();
   });
 });

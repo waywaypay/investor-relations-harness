@@ -11,7 +11,7 @@ import { CommitmentModal } from "./components/CommitmentModal";
 import { UploadModal } from "./components/UploadModal";
 import { DocumentsManager } from "./components/DocumentsManager";
 import { Popover, type PopTarget } from "./components/Popover";
-import type { LibraryDoc } from "./types";
+import type { DocKind, LibraryDoc } from "./types";
 
 type View = string; // a library doc id, or "consensus" | "calendar"
 
@@ -27,8 +27,12 @@ function Workspace() {
   // When set, the upload modal files a new version of this document instead of
   // creating a fresh one.
   const [uploadTarget, setUploadTarget] = useState<LibraryDoc | null>(null);
+  // Whether a fresh upload opens as a draft to verify or a prior disclosure.
+  const [uploadRole, setUploadRole] = useState<"draft" | "reference">("draft");
   const [managerOpen, setManagerOpen] = useState(false);
   const [managerFocus, setManagerFocus] = useState<string | null>(null);
+  // When set, the manager is scoped to one document category.
+  const [managerKind, setManagerKind] = useState<DocKind | null>(null);
   const popHideTimer = useRef<number | undefined>(undefined);
 
   const isDoc = view !== "consensus" && view !== "calendar";
@@ -55,16 +59,22 @@ function Workspace() {
   const openFig = (id: string) => { setPop(null); setFigModal(id); };
   const openNar = (id: string) => { setPop(null); setNarModal(id); };
 
-  // Upload entry points: a fresh document, or a new version of an existing one.
-  const openUploadNew = () => { setUploadTarget(null); setUploadOpen(true); };
+  // Upload entry points: a fresh document (as a draft or a prior disclosure), or a
+  // new version of an existing one.
+  const openUploadNew = (role: "draft" | "reference" = "draft") => {
+    setUploadTarget(null); setUploadRole(role); setUploadOpen(true);
+  };
   const openUploadVersion = (doc: LibraryDoc) => { setUploadTarget(doc); setUploadOpen(true); };
-  const openManager = (focus?: string) => { setManagerFocus(focus ?? null); setManagerOpen(true); };
+  // Open the manager — optionally focused on a document, or scoped to a category.
+  const openManager = (focus?: string, kind?: DocKind) => {
+    setManagerFocus(focus ?? null); setManagerKind(kind ?? null); setManagerOpen(true);
+  };
 
   return (
     <>
       <TopBar activeDoc={activeDoc?.id ?? null} filter={filter} setFilter={setFilter} />
       <div className="layout">
-        <Sidebar view={view} setView={setView} onUpload={openUploadNew} onManage={openManager} />
+        <Sidebar view={view} setView={setView} onUpload={() => openUploadNew()} onManage={openManager} />
         <div className="stage">
           {activeDoc && (
             <div style={{ width: "100%", maxWidth: 680 }}>
@@ -95,6 +105,7 @@ function Workspace() {
       {managerOpen && (
         <DocumentsManager
           focusDocId={managerFocus}
+          focusKind={managerKind}
           onClose={() => setManagerOpen(false)}
           onOpen={(id) => setView(id)}
           onUploadNew={openUploadNew}
@@ -105,7 +116,8 @@ function Workspace() {
       {uploadOpen && (
         <UploadModal
           target={uploadTarget}
-          onClose={() => { setUploadOpen(false); setUploadTarget(null); }}
+          initialRole={uploadRole}
+          onClose={() => { setUploadOpen(false); setUploadTarget(null); setUploadRole("draft"); }}
           onUploaded={(id) => setView(id)}
         />
       )}
