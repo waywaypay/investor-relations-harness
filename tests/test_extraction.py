@@ -247,3 +247,55 @@ def test_full_pipeline_traces_a_spoken_transcript():
     assert result.counts["traced"] == 4  # revenue, cloud revenue, cash flow, repurchase
     assert result.counts["conflict"] == 1  # the 31% cloud-growth restatement still trips
     assert result.counts["needs_review"] == 1  # the guidance range still needs sign-off
+
+
+# -- non-monetary counts must not read as currency ---------------------------
+
+def test_counts_are_typed_as_count_or_shares_not_currency():
+    from attest.domain.money import Unit, parse_quantity
+    from attest.verification.candidates import detect_candidates
+
+    # The trailing noun fixes the unit; the bare number alone would be $480M / $100M.
+    assert parse_quantity("480 million users").unit is Unit.COUNT
+    assert parse_quantity("100 million shares").unit is Unit.SHARES
+    assert parse_quantity("480 million users").value == 480_000_000
+    # Detection captures the noun so the unit survives to the value layer.
+    texts = {c.text for c in detect_candidates("we serve 480 million users worldwide")}
+    assert "480 million users" in texts
+    # A real currency figure is unaffected — "dollars" is not a count noun.
+    assert parse_quantity("250 million dollars").unit is Unit.CURRENCY
+    # "shareholders" is a count of people, not a dollar amount or a share count.
+    holders = detect_candidates("we thank our 5 million shareholders")
+    assert {c.text for c in holders} == {"5 million shareholders"}
+    assert parse_quantity("5 million shareholders").unit is Unit.COUNT
+
+
+def test_user_and_share_counts_do_not_produce_false_conflicts():
+    svc = seeded_service()
+    # A user count sitting near the word "revenue" used to bind to total_revenue and
+    # conflict; a share count near "repurchased" used to bind to share_repurchases.
+    text = (
+        "Total revenue was 1.24 billion dollars. We now serve 480 million users, "
+        "and during the quarter we repurchased 100 million shares of common stock."
+    )
+    doc, result, _, _ = svc.analyze_text(
+        tenant_id="meridian", text=text, title="Q1 FY2026 call",
+        kind=DocumentKind.SCRIPT, entity="MRDN", period="FY2026-Q1",
+    )
+    assert result.counts["conflict"] == 0  # neither count is asserted against a dollar metric
+    assert result.counts["traced"] == 1  # the real revenue figure still traces
+    by_text = {c.displayed_text: c.metric for c in doc.claims}
+    assert by_text["480 million users"] == "unidentified"
+    assert by_text["100 million shares"] == "unidentified"
+
+
+def test_count_ranges_are_not_read_as_currency_guidance():
+    svc = seeded_service()
+    text = "For the second quarter we expect to add 400 to 500 million users."
+    doc, result, _, _ = svc.analyze_text(
+        tenant_id="meridian", text=text, title="Q1 FY2026 call",
+        kind=DocumentKind.SCRIPT, entity="MRDN", period="FY2026-Q1",
+    )
+    # No bogus q2_revenue_guidance claim from an operating-metric range.
+    assert all(c.metric != "q2_revenue_guidance" for c in doc.claims)
+    assert result.counts["needs_review"] == 0

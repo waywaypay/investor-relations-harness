@@ -57,8 +57,29 @@ _SCALES: dict[str, Decimal] = {
 _NUMBER = r"[-+]?\d[\d,]*(?:\.\d+)?"
 _SCALE_WORDS = "|".join(sorted(_SCALES, key=len, reverse=True))
 
+# Nouns that, trailing a figure, mark it as a non-monetary count rather than
+# money — a share count, a user count. Deliberately small and high-precision:
+# the point is to stop "100 million shares" from being tied out against a dollar
+# metric (it would otherwise read as $100M), not to classify every noun. Shared
+# with the detector (:mod:`attest.verification.candidates`) and the extraction
+# edge so the three stay in lockstep.
+_SHARE_NOUNS = ("shares", "share")
+_COUNT_NOUNS = (
+    "users", "subscribers", "customers", "members", "seats", "employees",
+    "stores", "locations", "accounts", "devices", "vehicles", "households",
+    "transactions", "downloads", "installs", "units", "shareholders",
+    "shareholder", "people", "patients",
+)
+NOUN_WORDS = "|".join(sorted({*_SHARE_NOUNS, *_COUNT_NOUNS}, key=len, reverse=True))
+
 _RE_PERCENT = re.compile(rf"^\(?\s*(?P<num>{_NUMBER})\s*(?:%|percent|pct)\s*\)?$", re.IGNORECASE)
 _RE_BPS = re.compile(rf"^\(?\s*(?P<num>{_NUMBER})\s*(?:bps|basis points)\s*\)?$", re.IGNORECASE)
+# A figure trailed by a count/share noun ("100 million shares", "480 million
+# users"): same number+scale grammar as currency, but the noun fixes the unit.
+_RE_COUNT = re.compile(
+    rf"^\(?\s*(?P<num>{_NUMBER})\s*(?P<scale>{_SCALE_WORDS})?\s*(?P<noun>{NOUN_WORDS})\s*\)?$",
+    re.IGNORECASE,
+)
 # Currency may be symbol-led ("$1.24 billion") or spelled ("1.24 billion dollars",
 # "87 cents"); the trailing money word is optional and ignored once matched.
 _RE_CURRENCY = re.compile(
@@ -194,6 +215,19 @@ def parse_quantity(text: str) -> Quantity:
         if negative_paren:
             value = -value
         return Quantity(value=value, unit=Unit.BASIS_POINTS, quantum=_quantum_for(num, Decimal(1)))
+
+    # Counts before currency: "100 million shares" must not fall through to the
+    # currency branch and read as $100M. The noun decides shares vs. a bare count.
+    m = _RE_COUNT.match(s)
+    if m:
+        num = m.group("num")
+        scale = (m.group("scale") or "").lower()
+        multiplier = _SCALES.get(scale, Decimal(1))
+        value = _to_decimal(num) * multiplier
+        if negative_paren:
+            value = -value
+        unit = Unit.SHARES if m.group("noun").lower() in _SHARE_NOUNS else Unit.COUNT
+        return Quantity(value=value, unit=unit, quantum=_quantum_for(num, multiplier))
 
     m = _RE_CURRENCY.match(s)
     if m:
