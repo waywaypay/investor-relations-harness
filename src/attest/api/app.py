@@ -56,7 +56,14 @@ def create_app(service: AttestService | None = None, *, seed_demo: bool = False)
         description="Deterministic disclosure-verification spine for investor relations.",
     )
     if service is None:
-        if seed_demo:
+        # ATTEST_SEED_DEMO lets the container entry point (uvicorn --factory, which
+        # passes no args) ship the ready-to-explore Meridian instance — a hosted
+        # demo (e.g. Render) ties figures out the moment the page loads, with no
+        # separate ingest step.
+        env_seed = os.environ.get("ATTEST_SEED_DEMO", "").strip().lower() in {
+            "1", "true", "yes", "on",
+        }
+        if seed_demo or env_seed:
             # Ship a ready-to-explore instance: the Meridian filing is ingested so
             # the bundled front-end ties figures out the moment the page loads.
             from attest.demo import seeded_service
