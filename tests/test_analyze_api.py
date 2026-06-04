@@ -66,6 +66,48 @@ def test_analyze_pasted_text_ties_out_against_filed_sources(client):
     assert "forward_looking.safe_harbor_required" in rules
 
 
+def test_analyze_without_ticker_warns_no_filed_source(client):
+    # No demo seeded, no ticker supplied: every figure is untraced, and the
+    # response now explains *why* instead of leaving a silent wall of "untraced".
+    r = client.post(
+        "/tenants/acme/analyze",
+        data={"text": RELEASE, "title": "Q1 release", "kind": "release"},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["counts"].get("traced", 0) == 0
+    assert body["counts"]["untraced"] > 0
+    assert any("no issuer ticker was provided" in w.lower() for w in body["warnings"])
+
+
+def test_analyze_with_ticker_but_edgar_disabled_warns(client):
+    # A ticker is given but live EDGAR tie-out is off (the default in tests), so
+    # nothing loads — the response says so rather than failing silently.
+    r = client.post(
+        "/tenants/acme/analyze",
+        data={"text": RELEASE, "title": "Q1 release", "kind": "release", "entity": "AAPL"},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["counts"].get("traced", 0) == 0
+    assert any("edgar" in w.lower() and "disabled" in w.lower() for w in body["warnings"])
+
+
+def test_analyze_with_filed_source_does_not_warn_about_missing_source(client):
+    # When the issuer's filed facts are loaded, figures trace and the
+    # no-filed-source warning is absent.
+    _seed_demo(client)
+    r = client.post(
+        "/tenants/meridian/analyze",
+        data={"text": RELEASE, "title": "Q1 release", "kind": "release",
+              "entity": "MRDN", "period": "FY2026-Q1"},
+    )
+    body = r.json()
+    assert body["counts"]["traced"] == 6
+    assert not any("no filed source" in w.lower() or "no issuer ticker" in w.lower()
+                   for w in body["warnings"])
+
+
 def test_analyze_file_upload(client):
     _seed_demo(client)
     r = client.post(
