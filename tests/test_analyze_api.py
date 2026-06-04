@@ -259,3 +259,20 @@ def test_analyze_with_ticker_auto_ingests_and_ties_out(edgar_client):
     traced = {v["metric"] for v in body["verdicts"] if v["verdict"] == "traced"}
     assert {"total_revenue", "total_rpo"} <= traced
     assert any("PANW" in w for w in body["warnings"])  # honest note that filings loaded
+
+
+def test_analyze_auto_detects_ticker_from_text(edgar_client):
+    # No entity field: the issuer is recovered from "(NASDAQ: PANW)" in the prose,
+    # so the draft still pulls PANW's filings and ties out.
+    transcript = "Palo Alto Networks (NASDAQ: PANW) " + PANW_TRANSCRIPT
+    r = edgar_client.post(
+        "/tenants/acme/analyze",
+        data={"kind": "script"},
+        files={"file": ("panw_q2.txt", transcript.encode(), "text/plain")},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["entity"] == "PANW"
+    traced = {v["metric"] for v in body["verdicts"] if v["verdict"] == "traced"}
+    assert {"total_revenue", "total_rpo"} <= traced
+    assert any("PANW" in w for w in body["warnings"])

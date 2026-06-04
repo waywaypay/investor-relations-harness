@@ -117,11 +117,11 @@ export function UploadModal({
         </label>
 
         <label className="upfield">
-          <span className="upcap">Issuer ticker <span className="upopt">(optional)</span></span>
+          <span className="upcap">Issuer ticker <span className="upopt">(auto-detected from the text)</span></span>
           <input
             className="upinput"
             type="text"
-            placeholder="PANW — ties figures out to this issuer's SEC filings"
+            placeholder="Detected from the document — set it only to override"
             value={ticker}
             onChange={(e) => setTicker(e.target.value)}
             autoCapitalize="characters"

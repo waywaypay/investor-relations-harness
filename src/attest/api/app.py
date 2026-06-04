@@ -30,6 +30,7 @@ from attest.api.schemas import (
     VerifyResponse,
 )
 from attest.domain.document import Document, DocumentKind
+from attest.extraction.claims import infer_entity_ticker
 from attest.extraction.text import extract_text
 from attest.ingestion.edgar import EdgarUnavailable
 from attest.ingestion.edgar_xbrl import load_fixture
@@ -263,10 +264,21 @@ def create_app(service: AttestService | None = None, *, seed_demo: bool = False)
         except ValueError:
             doc_kind = DocumentKind.OTHER
 
-        # When an issuer ticker is supplied and live EDGAR ingestion is enabled,
-        # load that issuer's filed facts first so the draft ties out against its
-        # as-filed numbers. Best-effort and honest: an outage adds a warning, never
-        # a failure — the draft still analyzes, its figures simply stay untraced.
+        # No ticker typed? Recover it from the draft itself — earnings materials
+        # name the issuer as "Company (NASDAQ: TICKER)" — so the upload ties out
+        # to the right company with nothing to type.
+        if not entity:
+            detected = infer_entity_ticker(resolved_title or "", doc_text)
+            if detected:
+                entity = detected
+                warnings = warnings + [
+                    f"Detected issuer ticker {detected} in the document."
+                ]
+
+        # When an issuer ticker is supplied (or detected) and live EDGAR ingestion
+        # is enabled, load that issuer's filed facts first so the draft ties out
+        # against its as-filed numbers. Best-effort and honest: an outage adds a
+        # warning, never a failure — the draft still analyzes, figures stay untraced.
         if entity:
             warnings = warnings + svc.ensure_issuer_facts(tenant_id, entity)
 
@@ -289,9 +301,10 @@ def create_app(service: AttestService | None = None, *, seed_demo: bool = False)
         ):
             if not entity:
                 warnings = warnings + [
-                    "No issuer ticker was provided, so no filed source was loaded — "
-                    "these figures can't be traced. Re-upload with the issuer's ticker "
-                    "to tie out against its filings.",
+                    "No issuer ticker was provided, and none could be detected in the "
+                    "document, so no filed source was loaded — these figures can't be "
+                    "traced. Re-upload with the issuer's ticker (e.g. 'NASDAQ: ACME' in "
+                    "the text, or the ticker field) to tie out against its filings.",
                 ]
             elif svc.edgar is None:
                 warnings = warnings + [
