@@ -158,64 +158,59 @@ export function DocumentView(props: Props) {
     setEditing((e) => !e);
   };
 
-  const activeVersion = doc.versions.find((v) => v.id === doc.activeVersionId) ?? doc.versions[0];
   const multiVersion = doc.versions.length > 1;
 
   return (
-    <>
-      <div className="doctools">
-        <div className="dt-crumb">{doc.period} · <b>{doc.name}</b></div>
-        <div className="dt-right">
-          <span className={chipCls}><span className="dotp" />{chipTxt}</span>
-          <button className={`editbtn ${editing ? "on" : ""}`} onClick={toggleEdit}>
-            {editing ? "Done editing" : "Edit draft"}
-          </button>
+    <div className="docwrap">
+      <div className="doccol">
+        <div className="doctools">
+          <div className="dt-crumb">{doc.period} · <b>{doc.name}</b></div>
+          <div className="dt-right">
+            <span className={chipCls}><span className="dotp" />{chipTxt}</span>
+            <button className={`editbtn ${editing ? "on" : ""}`} onClick={toggleEdit}>
+              {editing ? "Done editing" : "Edit draft"}
+            </button>
+          </div>
         </div>
+        {editing && (
+          <div className="edithint">
+            ✎ Editing — type anywhere to rewrite the draft. Edit a <b>highlighted figure</b> and click away to re-verify it against the filed source.
+          </div>
+        )}
+        {doc.warnings && doc.warnings.length > 0 && (
+          <div className="docwarn">
+            {doc.warnings.map((w, i) => (
+              <div key={i}>⚠ {w}</div>
+            ))}
+          </div>
+        )}
+        <article
+          className={`doc ${editing ? "editing" : ""}`}
+          contentEditable={editing}
+          suppressContentEditableWarning
+        >
+          {doc.blocks.map((b, i) => renderBlock(b, i))}
+        </article>
       </div>
-      <div className="versionbar">
-        <span className="vb-label">
-          <span className="vb-ic">⎘</span>
-          {multiVersion ? (
-            <select
-              className="vb-select"
-              value={doc.activeVersionId}
-              aria-label="Active version"
-              onChange={(e) => store.setActiveVersion(doc.id, e.target.value)}
-            >
-              {doc.versions.map((v) => (
-                <option key={v.id} value={v.id}>{v.label}</option>
-              ))}
-            </select>
-          ) : (
-            <b>{activeVersion?.label ?? "Version 1"}</b>
-          )}
-          <span className="vb-count">{doc.versions.length} version{doc.versions.length > 1 ? "s" : ""}</span>
-        </span>
-        <span className="vb-acts">
-          <button className="vb-btn" onClick={onUploadVersion}>+ Upload new version</button>
-          <button className="vb-btn ghost" onClick={onManageVersions}>History</button>
-        </span>
-      </div>
-      {editing && (
-        <div className="edithint">
-          ✎ Editing — type anywhere to rewrite the draft. Edit a <b>highlighted figure</b> and click away to re-verify it against the filed source.
-        </div>
-      )}
-      {doc.warnings && doc.warnings.length > 0 && (
-        <div className="docwarn">
-          {doc.warnings.map((w, i) => (
-            <div key={i}>⚠ {w}</div>
-          ))}
-        </div>
-      )}
-      <article
-        className={`doc ${editing ? "editing" : ""}`}
-        contentEditable={editing}
-        suppressContentEditableWarning
-      >
-        {doc.blocks.map((b, i) => renderBlock(b, i))}
-      </article>
-    </>
+      {/* Version controls live in a rail beside the document, not a bar on top.
+          The switcher only appears once there's more than one version. */}
+      <aside className="docside">
+        {multiVersion && (
+          <select
+            className="vb-select"
+            value={doc.activeVersionId}
+            aria-label="Active version"
+            onChange={(e) => store.setActiveVersion(doc.id, e.target.value)}
+          >
+            {doc.versions.map((v) => (
+              <option key={v.id} value={v.id}>{v.label}</option>
+            ))}
+          </select>
+        )}
+        <button className="vb-btn" onClick={onUploadVersion}>+ Upload new version</button>
+        <button className="vb-btn ghost" onClick={onManageVersions}>History</button>
+      </aside>
+    </div>
   );
 }
 
