@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { useStore } from "../store";
 import { Scrim } from "./FigureModal";
+import { detectTicker } from "../lib/ticker";
 import type { DocKind, LibraryDoc } from "../types";
 
 const KIND_OPTIONS: { value: DocKind; label: string; hint: string }[] = [
@@ -27,13 +28,14 @@ export function UploadModal({
 }) {
   const store = useStore();
   const isVersion = target != null;
-  // "draft" verifies the document (ties figures out); "reference" files it as a
-  // prior disclosure — the corpus a later draft is checked against for contradictions.
-  const [role, setRole] = useState<"draft" | "reference">(isVersion ? "draft" : initialRole);
+  // Which action this modal performs is fixed by the entry point that opened it,
+  // not chosen here: the sidebar and "New draft" open it as a draft to verify;
+  // "Upload past transcript" opens it as a prior disclosure (the reference corpus
+  // later drafts are checked against). A new version is always a draft.
+  const isReference = !isVersion && initialRole === "reference";
   const [kind, setKind] = useState<DocKind>(target?.kind ?? "script");
   const [title, setTitle] = useState(target?.name ?? "");
   const [ticker, setTicker] = useState("");
-  const [period, setPeriod] = useState("");
   const [note, setNote] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [text, setText] = useState("");
@@ -45,12 +47,22 @@ export function UploadModal({
   const pickFile = (f: File | null) => {
     setFile(f);
     setError(null);
-    if (f && !title) setTitle(f.name.replace(/\.[^.]+$/, ""));
+    if (!f) return;
+    if (!title) setTitle(f.name.replace(/\.[^.]+$/, ""));
+    // Auto-detect the issuer ticker from the document text — the standing promise
+    // of the field — without clobbering a value the user already typed. Guarded
+    // because not every File exposes .text() (older browsers; jsdom in tests).
+    if (typeof f.text === "function") {
+      f.text()
+        .then((raw) => {
+          const sym = detectTicker(raw);
+          if (sym) setTicker((cur) => cur || sym);
+        })
+        .catch(() => void 0);
+    }
   };
 
   const canSubmit = !busy && (file != null || text.trim().length > 0);
-
-  const isReference = role === "reference" && !isVersion;
 
   const submit = async () => {
     if (!canSubmit) return;
@@ -62,7 +74,6 @@ export function UploadModal({
           file: file ?? undefined,
           text: file ? undefined : text.trim() || undefined,
           entity: ticker.trim().toUpperCase() || undefined,
-          period: period.trim() || undefined,
           label: title.trim() || file?.name || undefined,
         });
         onClose();
@@ -114,30 +125,6 @@ export function UploadModal({
       </div>
 
       <div className="upbody">
-        {!isVersion && (
-          <label className="upfield">
-            <span className="upcap">What is this?</span>
-            <div className="upkinds">
-              <button
-                type="button"
-                className={`upkind ${role === "draft" ? "active" : ""}`}
-                onClick={() => setRole("draft")}
-              >
-                <span className="upk-l">Draft to verify</span>
-                <span className="upk-h">Tie figures out to filed sources</span>
-              </button>
-              <button
-                type="button"
-                className={`upkind ${role === "reference" ? "active" : ""}`}
-                onClick={() => setRole("reference")}
-              >
-                <span className="upk-l">Prior disclosure</span>
-                <span className="upk-h">Reference — flag later contradictions</span>
-              </button>
-            </div>
-          </label>
-        )}
-
         {!isVersion && !isReference && (
           <label className="upfield">
             <span className="upcap">Document type</span>
@@ -154,44 +141,6 @@ export function UploadModal({
                 </button>
               ))}
             </div>
-          </label>
-        )}
-
-        <label className="upfield">
-          <span className="upcap">Title <span className="upopt">(optional)</span></span>
-          <input
-            className="upinput"
-            type="text"
-            placeholder="e.g. Q2 FY2026 prepared remarks — draft 3"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-          />
-        </label>
-
-        <label className="upfield">
-          <span className="upcap">Issuer ticker <span className="upopt">(auto-detected from the text)</span></span>
-          <input
-            className="upinput"
-            type="text"
-            placeholder="Detected from the document — set it only to override"
-            value={ticker}
-            onChange={(e) => setTicker(e.target.value)}
-            autoCapitalize="characters"
-            spellCheck={false}
-          />
-        </label>
-
-        {isReference && (
-          <label className="upfield">
-            <span className="upcap">Period it reports <span className="upopt">(optional)</span></span>
-            <input
-              className="upinput"
-              type="text"
-              placeholder="e.g. FY2025-Q2 — anchors figures stated without their own period"
-              value={period}
-              onChange={(e) => setPeriod(e.target.value)}
-              spellCheck={false}
-            />
           </label>
         )}
 
@@ -237,6 +186,36 @@ export function UploadModal({
             onChange={(e) => pickFile(e.target.files?.[0] ?? null)}
           />
         </div>
+
+        {/* Revealed only once a file is chosen: the title seeds from the filename
+            and the ticker is auto-detected from the document text (override either). */}
+        {file && (
+          <>
+            <label className="upfield">
+              <span className="upcap">Title <span className="upopt">(optional)</span></span>
+              <input
+                className="upinput"
+                type="text"
+                placeholder="e.g. Q2 FY2026 prepared remarks — draft 3"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+              />
+            </label>
+
+            <label className="upfield">
+              <span className="upcap">Issuer ticker <span className="upopt">(auto-detected from the text)</span></span>
+              <input
+                className="upinput"
+                type="text"
+                placeholder="e.g. PANW — ties the draft out to filed sources"
+                value={ticker}
+                onChange={(e) => setTicker(e.target.value)}
+                autoCapitalize="characters"
+                spellCheck={false}
+              />
+            </label>
+          </>
+        )}
 
         <div className="upor">or paste the text</div>
 

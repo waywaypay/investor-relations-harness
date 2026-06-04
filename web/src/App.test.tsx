@@ -95,9 +95,8 @@ describe("document library & upload", () => {
 
   it("uploads a pasted draft and renders it with detected figures", async () => {
     fireEvent.click(screen.getByRole("button", { name: /Add document/i }));
-    fireEvent.change(screen.getByPlaceholderText(/e\.g\./i), {
-      target: { value: "My Q2 script" },
-    });
+    // Pasting (no file) shows no title field — title/ticker are reserved for the
+    // file-upload path — so the draft files under the default name.
     fireEvent.change(screen.getByPlaceholderText(/Paste your draft/i), {
       target: { value: "Revenue this quarter was $1.5 billion, up 12% year over year." },
     });
@@ -105,9 +104,28 @@ describe("document library & upload", () => {
 
     // The new document renders (heading), the figure is detected and shown, and an
     // honest warning notes there's no backend to tie it out against.
-    expect(await screen.findByRole("heading", { name: "My Q2 script" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Uploaded document" })).toBeInTheDocument();
     expect(screen.getByText("$1.5 billion")).toBeInTheDocument();
     expect(screen.getByText(/No verification backend connected/i)).toBeInTheDocument();
+  });
+
+  it("reveals title and ticker only after a file is chosen, seeding the title from the filename", async () => {
+    fireEvent.click(screen.getByRole("button", { name: /Add document/i }));
+    // Before a file is chosen the metadata fields are hidden — the modal opens to
+    // just the document-type picker, the dropzone, and the paste box.
+    expect(screen.queryByPlaceholderText(/e\.g\./i)).not.toBeInTheDocument();
+
+    // Choosing a file reveals them and seeds the title from the filename. (The
+    // ticker auto-detect reads file.text(), which jsdom's File lacks; the
+    // detection itself is covered in src/lib/ticker.test.ts.)
+    const file = new File(["Revenue was $1.5 billion this quarter."], "q2-release.txt", {
+      type: "text/plain",
+    });
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [file] } });
+
+    expect(await screen.findByDisplayValue("q2-release")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/ties the draft out to filed sources/i)).toBeInTheDocument();
   });
 
   it("lets you remove an uploaded document from the workspace", async () => {
@@ -128,9 +146,8 @@ describe("document library & upload", () => {
   });
 
   it("files a new version of a document and lets you switch back to the prior one", async () => {
-    // Upload an initial document.
+    // Upload an initial document (pasted, so it files under the default name).
     fireEvent.click(screen.getByRole("button", { name: /Add document/i }));
-    fireEvent.change(screen.getByPlaceholderText(/e\.g\./i), { target: { value: "My draft" } });
     fireEvent.change(screen.getByPlaceholderText(/Paste your draft/i), {
       target: { value: "Revenue was $1.0 billion this quarter." },
     });
