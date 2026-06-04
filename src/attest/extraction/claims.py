@@ -221,6 +221,35 @@ def infer_period(*texts: str) -> str | None:
     return None
 
 
+# An exchange-qualified ticker, the form earnings materials use to identify the
+# issuer: "Meridian Systems (NASDAQ: MRDN)", "(NYSE American: ABC.A)". Anchoring
+# on a known exchange keyword + colon keeps this from matching arbitrary
+# parentheticals or capitalised words. No IGNORECASE on the symbol: tickers are
+# upper-case, and that avoids matching lower-case prose after a stray colon.
+_TICKER_RE = re.compile(
+    r"(?:NYSE(?:\s+American|\s+Arca)?|Nasdaq|NASDAQ|Cboe|OTCQX|OTCQB|OTC|AMEX|TSX|LSE)"
+    r"[^):\n]*?:\s*([A-Z]{1,5}(?:\.[A-Z])?)\b"
+)
+
+
+def infer_entity_ticker(*texts: str) -> str | None:
+    """Best-effort issuer ticker from a draft's prose, so an upload ties out to
+    the right company without the author typing it.
+
+    Looks only for an *exchange-qualified* ticker (e.g. "Acme Corp (NASDAQ: ACME)")
+    — that explicit anchor is reliable and keeps it from guessing at arbitrary
+    capitalised words. Returns the upper-cased symbol, or ``None`` when none is
+    stated, so the caller leaves the entity unresolved rather than tying out to
+    the wrong issuer.
+    """
+    for text in texts:
+        if not text:
+            continue
+        if (m := _TICKER_RE.search(text)) is not None:
+            return m.group(1).upper()
+    return None
+
+
 def _next_period(period: str | None) -> str | None:
     if not period:
         return None
