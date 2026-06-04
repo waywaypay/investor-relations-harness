@@ -21,7 +21,7 @@ from attest.factstore.repository import FactStore, InMemoryFactStore
 from attest.ingestion.base import IngestionReport
 from attest.ingestion.edgar import EdgarClient, EdgarConnector, EdgarUnavailable
 from attest.ingestion.edgar_xbrl import XBRLConnector
-from attest.ingestion.guidance import GuidanceConnector
+from attest.ingestion.guidance import DisclosureConnector, GuidanceConnector
 from attest.verification.engine import VerificationEngine, VerificationResult
 from attest.verification.rules import check_cross_document_consistency
 
@@ -97,6 +97,46 @@ class AttestService:
             accession=accession,
             base_period=base_period,
             as_of=as_of,
+            label=label,
+        )
+        self.store.add_many(facts)
+        self.audit_log.append(
+            actor=actor,
+            type=EventType.INGEST,
+            tenant_id=tenant_id,
+            payload=report.model_dump(),
+        )
+        return report
+
+    def ingest_disclosure(
+        self,
+        *,
+        text: str,
+        tenant_id: str,
+        entity: str,
+        period: str | None = None,
+        as_of: str = "1970-01-01",
+        source_ref: str = "prior-disclosure",
+        label: str | None = None,
+        actor: str = "system:ingestion",
+    ) -> IngestionReport:
+        """Ingest a prior public disclosure (past release / transcript / deck) as
+        non-filed "previously disclosed" facts.
+
+        The corpus for consistency checks: figures with no filed XBRL source
+        (non-GAAP, operational) still get a reference, so a later draft that restates
+        one and *changed it* is flagged as contradicting prior disclosure. Like every
+        ingestion, it writes an attributable audit event.
+        """
+        facts, report = DisclosureConnector(
+            self.registry, self.store, self.aliases_for(tenant_id)
+        ).fetch(
+            text=text,
+            tenant_id=tenant_id,
+            entity=entity,
+            period=period,
+            as_of=as_of,
+            source_ref=source_ref,
             label=label,
         )
         self.store.add_many(facts)

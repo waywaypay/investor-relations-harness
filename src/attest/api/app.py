@@ -21,6 +21,7 @@ from attest.api.schemas import (
     AnalyzeResponse,
     AuditVerifyResponse,
     ClosePackResponse,
+    DisclosureIngestRequest,
     EditRequest,
     EdgarIngestRequest,
     GuidanceIngestRequest,
@@ -147,6 +148,30 @@ def create_app(service: AttestService | None = None, *, seed_demo: bool = False)
             accession=req.accession,
             base_period=req.base_period,
             as_of=req.as_of,
+            label=req.label,
+        )
+        return IngestResponse(
+            source=report.source,
+            ingested=report.ingested,
+            skipped=report.skipped,
+            skipped_tags=list(report.skipped_tags),
+        )
+
+    @app.post("/tenants/{tenant_id}/ingest/disclosure", response_model=IngestResponse)
+    def ingest_disclosure(
+        tenant_id: str, req: DisclosureIngestRequest, svc: AttestService = Depends(get_service)
+    ) -> IngestResponse:
+        """Ingest a prior public disclosure (past release / transcript / deck) so a
+        later draft can be checked for consistency: a figure restated with a changed
+        value is flagged as contradicting what the company previously disclosed —
+        even for non-GAAP / operational numbers that have no filed source."""
+        report = svc.ingest_disclosure(
+            text=req.text,
+            tenant_id=tenant_id,
+            entity=req.entity,
+            period=req.period,
+            as_of=req.as_of,
+            source_ref=req.source_ref,
             label=req.label,
         )
         return IngestResponse(

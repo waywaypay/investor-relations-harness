@@ -33,6 +33,8 @@ from pathlib import Path
 from attest.domain.facts import Confidence, Fact, SourceType
 from attest.domain.metrics import DEFAULT_REGISTRY, MetricRegistry
 from attest.domain.money import Quantity, QuantityParseError, Unit, parse_quantity
+from attest.extraction.claims import AliasConfig, ClaimExtractor
+from attest.factstore.repository import FactStore
 from attest.ingestion.base import IngestionReport
 from attest.verification.rules.ranges import parse_range
 
@@ -244,6 +246,108 @@ class GuidanceConnector:
 
         report = IngestionReport(
             source=f"guidance_8k:{accession}",
+            tenant_id=tenant_id,
+            ingested=len(facts),
+            skipped=len(skipped),
+            skipped_tags=tuple(skipped),
+        )
+        return facts, report
+
+
+def _excerpt_at(text: str, span: tuple[int, int] | None) -> str:
+    """The sentence-ish window around a claim span, for the 'you previously said X'
+    citation. Falls back to empty when there is no span."""
+    if not span:
+        return ""
+    start, end = span
+    left = text.rfind(".", 0, start) + 1
+    right = text.find(".", end)
+    right = len(text) if right == -1 else right + 1
+    return text[left:right].strip()
+
+
+class DisclosureConnector:
+    """Maps a prior public disclosure — a past earnings release, call transcript,
+    or investor deck — into non-filed "previously disclosed" facts.
+
+    This is the corpus that lets a draft be checked for *consistency* with what the
+    company already said, including the non-GAAP and operational figures that have
+    no filed XBRL source. It runs the **same** :class:`ClaimExtractor` the draft path
+    uses, so the metric ids line up and a later restatement binds to its prior value;
+    every figure is stamped ``PRIOR_DISCLOSURE`` (non-filed) so the engine
+    value-compares the draft against it instead of tracing to it.
+    """
+
+    def __init__(
+        self,
+        registry: MetricRegistry | None = None,
+        store: FactStore | None = None,
+        aliases: AliasConfig | None = None,
+    ) -> None:
+        self.registry = registry or DEFAULT_REGISTRY
+        self.store = store
+        self.aliases = aliases
+
+    def fetch(
+        self,
+        *,
+        text: str,
+        tenant_id: str,
+        entity: str,
+        period: str | None = None,
+        as_of: str = "1970-01-01",
+        source_ref: str = "prior-disclosure",
+        label: str | None = None,
+    ) -> tuple[list[Fact], IngestionReport]:
+        """Extract every recognized figure from a prior disclosure into facts.
+
+        ``period`` is the fiscal period the disclosure reports (e.g. ``FY2025-Q2``);
+        it anchors figures whose sentence states no period of its own. A figure with
+        no resolvable period, or one that can't be normalized to a quantity, is
+        skipped — a consistency check needs a period and a comparable value.
+        """
+        source_label = label or "Prior disclosure"
+        extractor = ClaimExtractor(self.registry, self.store, self.aliases)
+        claims = extractor.extract(
+            text, document_id=source_ref, tenant_id=tenant_id, entity=entity, period=period
+        )
+
+        facts: list[Fact] = []
+        seen: set[tuple[str, str, str, str]] = set()
+        skipped: list[str] = []
+        for claim in claims:
+            if not claim.period:
+                continue
+            scope = (tenant_id, claim.entity, claim.metric, claim.period)
+            if scope in seen:  # first statement of a scope wins
+                continue
+            try:
+                qty = parse_quantity(claim.displayed_text)
+            except QuantityParseError:
+                skipped.append(claim.displayed_text[:60])
+                continue
+            seen.add(scope)
+            facts.append(
+                Fact(
+                    id=f"disclosure:{source_ref}:{claim.metric}:{claim.period}",
+                    tenant_id=tenant_id,
+                    entity=claim.entity,
+                    metric=claim.metric,
+                    period=claim.period,
+                    value=qty.value,
+                    unit=qty.unit,
+                    quantum=qty.quantum,
+                    source_type=SourceType.PRIOR_DISCLOSURE,
+                    source_ref=source_ref,
+                    source_label=source_label,
+                    source_excerpt=_excerpt_at(text, claim.span) or claim.displayed_text,
+                    as_of=as_of,
+                    confidence=Confidence.HIGH,
+                )
+            )
+
+        report = IngestionReport(
+            source=f"disclosure:{source_ref}",
             tenant_id=tenant_id,
             ingested=len(facts),
             skipped=len(skipped),
