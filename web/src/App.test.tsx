@@ -120,7 +120,7 @@ describe("document library & upload", () => {
     // there now, keeping the sidebar uncluttered). The manager opens in the main
     // stage, not a modal.
     fireEvent.click(screen.getByRole("button", { name: /Manage all/i }));
-    const card = (screen.getByDisplayValue("Uploaded document").closest(".dmcard")) as HTMLElement;
+    const card = (screen.getByDisplayValue("Uploaded document").closest(".dmrow")) as HTMLElement;
     fireEvent.click(within(card).getByRole("button", { name: /Delete document/i }));
     expect(screen.queryByDisplayValue("Uploaded document")).not.toBeInTheDocument();
   });
