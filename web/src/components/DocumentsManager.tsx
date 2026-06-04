@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useStore } from "../store";
-import { Scrim } from "./FigureModal";
 import type { DocKind, DocVersion, Figure, LibraryDoc } from "../types";
 
 // Plain-language category labels, matching the sidebar.
@@ -169,14 +168,12 @@ function DocCard({
 }
 
 export function DocumentsManager({
-  onClose,
   onOpen,
   onUploadNew,
   onUploadVersion,
   focusDocId,
   focusKind = null,
 }: {
-  onClose: () => void;
   onOpen: (docId: string) => void;
   onUploadNew: (role?: "draft" | "reference") => void;
   onUploadVersion: (doc: LibraryDoc) => void;
@@ -197,18 +194,14 @@ export function DocumentsManager({
   const scoped = focusKind != null;
 
   return (
-    <Scrim onClose={onClose} modalClass="docmgr">
-      <div className="mbar">
-        <span className="badge">DOCUMENTS</span>
-        <div>
-          <div className="ttl">{scoped ? KIND_LABEL[focusKind!] : "Manage documents"}</div>
-          <div className="sub">
-            {scoped
-              ? "Past filings, transcripts, and versions for this company — add more below."
-              : "Every draft, its versions, and its tie-out coverage in one place."}
-          </div>
+    <div className="mgr">
+      <div className="mgr-head">
+        <div className="ttl">{scoped ? KIND_LABEL[focusKind!] : "Manage documents"}</div>
+        <div className="sub">
+          {scoped
+            ? "Past filings, transcripts, and versions for this company — add more below."
+            : "Every draft, its versions, and its tie-out coverage in one place."}
         </div>
-        <button className="x" onClick={onClose} aria-label="Close">×</button>
       </div>
 
       <div className="dmbody">
@@ -235,7 +228,7 @@ export function DocumentsManager({
                   doc={d}
                   expanded={expanded === d.id}
                   onToggle={() => setExpanded((cur) => (cur === d.id ? null : d.id))}
-                  onOpen={() => { onOpen(d.id); onClose(); }}
+                  onOpen={() => onOpen(d.id)}
                   onUploadVersion={() => onUploadVersion(d)}
                 />
               ))}
@@ -250,6 +243,6 @@ export function DocumentsManager({
           </div>
         )}
       </div>
-    </Scrim>
+    </div>
   );
 }
