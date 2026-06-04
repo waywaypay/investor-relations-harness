@@ -117,25 +117,41 @@ function DocCard({
   };
 
   return (
-    <div className="dmcard">
-      <div className="dmcard-h">
-        <span className="dmcard-ic" dangerouslySetInnerHTML={{ __html: doc.icon }} />
-        <div className="dmcard-id">
-          <input
-            className="dmname"
-            value={name}
-            aria-label={`Rename ${doc.name}`}
-            onChange={(e) => setName(e.target.value)}
-            onBlur={commitName}
-            onKeyDown={(e) => { if (e.key === "Enter") (e.currentTarget as HTMLInputElement).blur(); }}
-          />
-          <div className="dmcard-sub">
-            <span className={`dmtag ${isDemo ? "demo" : "up"}`}>{isDemo ? "Sample" : "Uploaded"}</span>
-            {doc.subtitle}
-          </div>
+    <div className={`dmrow ${expanded ? "open" : ""}`}>
+      <div className="dmrow-h">
+        <span className="dmrow-ic" dangerouslySetInnerHTML={{ __html: doc.icon }} />
+        <input
+          className="dmname"
+          value={name}
+          aria-label={`Rename ${doc.name}`}
+          onChange={(e) => setName(e.target.value)}
+          onBlur={commitName}
+          onKeyDown={(e) => { if (e.key === "Enter") (e.currentTarget as HTMLInputElement).blur(); }}
+        />
+        {/* Kind/source at rest; on hover the row reveals its actions in the same slot. */}
+        <div className="dmrow-meta">
+          <span className={`dmtag ${isDemo ? "demo" : "up"}`}>{isDemo ? "Sample" : "Uploaded"}</span>
+          <span className="dmrow-sub">{doc.subtitle}</span>
         </div>
-        <button className="dmlink" onClick={onToggle}>
-          {doc.versions.length} version{doc.versions.length > 1 ? "s" : ""} {expanded ? "▾" : "▸"}
+        <div className="dmrow-acts">
+          <button className="dmlink" onClick={onOpen}>Open</button>
+          <button className="dmlink" onClick={onUploadVersion}>+ Version</button>
+          <button
+            className="dmlink danger"
+            aria-label="Delete document"
+            onClick={() => store.removeDoc(doc.id)}
+          >
+            Delete
+          </button>
+        </div>
+        <button
+          className="dmrow-vtoggle"
+          onClick={onToggle}
+          aria-expanded={expanded}
+          title={`${doc.versions.length} version${doc.versions.length > 1 ? "s" : ""}`}
+        >
+          {doc.versions.length}
+          <span className="caret" aria-hidden="true">{expanded ? "▾" : "▸"}</span>
         </button>
       </div>
 
@@ -144,23 +160,6 @@ function DocCard({
           {doc.versions.map((v) => (
             <VersionRow key={v.id} doc={doc} version={v} onOpen={onOpen} />
           ))}
-        </div>
-      )}
-
-      <div className="dmcard-acts">
-        <button className="btn" onClick={onUploadVersion}>+ Upload new version</button>
-        <button className="btn" onClick={onOpen}>Open</button>
-        <button
-          className="btn danger"
-          onClick={() => store.removeDoc(doc.id)}
-        >
-          Delete document
-        </button>
-      </div>
-      {isDemo && (
-        <div className="dmnote">
-          Sample document. New versions you file on it stay for this session; upload your own
-          document to keep its version history across reloads.
         </div>
       )}
     </div>
