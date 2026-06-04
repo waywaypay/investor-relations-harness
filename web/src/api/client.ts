@@ -80,7 +80,9 @@ export const offlineClient: AttestClient = {
   },
 };
 
-export const apiBaseUrl: string | undefined = import.meta.env.VITE_ATTEST_API;
+export const apiBaseUrl: string =
+  import.meta.env.VITE_ATTEST_API ??
+  (typeof window !== "undefined" ? window.location.origin : "");
 
 // --- live client -----------------------------------------------------------
 
@@ -189,7 +191,12 @@ export function createLiveClient(baseUrl: string): AttestClient {
   };
 }
 
-/** The client the app uses: live when VITE_ATTEST_API is set, offline otherwise. */
+/** The client the app uses. It targets a backend by default — the page's own
+ *  origin (so a FastAPI-served bundle or `attest serve` ties out with no config),
+ *  or VITE_ATTEST_API for a split deployment. When no backend answers, the store's
+ *  analyze/verify calls reject and degrade to the offline, honestly-untraced path,
+ *  so a pure static demo still works. `offlineClient` is only the non-browser
+ *  (SSR/test) fallback where there is no origin to target. */
 export const client: AttestClient = apiBaseUrl
   ? createLiveClient(apiBaseUrl)
   : offlineClient;

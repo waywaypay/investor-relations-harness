@@ -40,6 +40,17 @@ describe("detectNewFigures", () => {
     expect(found).toContain("$1.24 billion");
     expect(found).toContain("31%");
   });
+  it("finds spoken transcript figures (no $, spelled percent)", () => {
+    const found = detectNewFigures(
+      "Total revenue was 1.24 billion dollars, up 31 percent. Cloud reached 480 million."
+    );
+    expect(found).toContain("1.24 billion");
+    expect(found).toContain("31 percent");
+    expect(found).toContain("480 million");
+  });
+  it("does not read a bare year as a figure", () => {
+    expect(detectNewFigures("In fiscal 2026 we expanded the platform.")).toEqual([]);
+  });
   it("returns nothing for prose without figures", () => {
     expect(detectNewFigures("no numbers here")).toEqual([]);
   });
