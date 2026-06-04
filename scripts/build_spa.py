@@ -18,6 +18,7 @@ bundle is built with ``VITE_ATTEST_API`` unset (defaults to a relative base).
 from __future__ import annotations
 
 import argparse
+import hashlib
 import re
 import subprocess
 import sys
@@ -27,6 +28,36 @@ ROOT = Path(__file__).resolve().parent.parent
 WEB = ROOT / "web"
 DIST = WEB / "dist"
 OUT = ROOT / "src" / "attest" / "api" / "static" / "index.html"
+
+# The web/ inputs (besides web/src/**) that determine the built bundle. Build
+# artifacts (dist, tsconfig.tsbuildinfo) and node_modules are deliberately out.
+_FINGERPRINT_FILES = ("index.html", "package.json", "package-lock.json",
+                      "tsconfig.json", "vite.config.ts")
+
+# Trailing marker the build stamps into the bundle: a fingerprint of the web/
+# source it was inlined from. scripts/check_spa_fresh.py recomputes the source
+# fingerprint and fails CI if it no longer matches — so a web/ change that wasn't
+# rebuilt into the served bundle can't silently ship the stale UI.
+MARKER_RE = re.compile(r"<!-- attest-spa-src:([0-9a-f]{64}) -->")
+
+
+def source_fingerprint() -> str:
+    """A stable SHA-256 over the web/ source that determines the built bundle.
+
+    Hashing the *source* (not Vite's output) makes the freshness check
+    independent of Node/Vite build reproducibility: it answers "was the served
+    bundle rebuilt from this exact source?", which is the thing that goes stale.
+    """
+    paths: list[Path] = [p for p in (WEB / "src").rglob("*") if p.is_file()]
+    paths += [WEB / name for name in _FINGERPRINT_FILES if (WEB / name).is_file()]
+    h = hashlib.sha256()
+    for p in sorted(paths, key=lambda x: x.relative_to(WEB).as_posix()):
+        h.update(p.relative_to(WEB).as_posix().encode())
+        h.update(b"\0")
+        h.update(p.read_bytes())
+        h.update(b"\0")
+    return h.hexdigest()
+
 
 SCRIPT_RE = re.compile(
     r'<script\b[^>]*\bsrc="(?P<src>/assets/[^"]+\.js)"[^>]*></script>'
@@ -75,6 +106,9 @@ def main() -> int:
     if "/assets/" in html:
         print("error: some /assets/ references were not inlined", file=sys.stderr)
         return 1
+
+    # Stamp the source fingerprint so CI can detect a stale bundle (see MARKER_RE).
+    html = f"{html}\n<!-- attest-spa-src:{source_fingerprint()} -->\n"
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(html, encoding="utf-8")
