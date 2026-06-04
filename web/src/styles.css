@@ -1,15 +1,24 @@
 :root{
-  --paper:#F4F1EA; --card:#FEFDFA; --ink:#1B1A17; --muted:#6E6A62; --faint:#9A958B;
-  --line:#E4DFD4; --line-strong:#D4CDBE;
+  /* Apple-minimal surface: near-white background, pure-white cards, hairline
+     separators (translucent black), Apple's neutral text grays. */
+  --paper:#F5F5F7; --card:#FFFFFF; --ink:#1D1D1F; --muted:#6E6E73; --faint:#A1A1A6;
+  --line:rgba(0,0,0,.07); --line-strong:rgba(0,0,0,.13);
+  /* Verdict palette is functional vocabulary — kept stable. */
   --verified:#235C3F; --verified-bg:#E8F0EA;
   --review:#9A6A14; --review-bg:#F8EFDC;
   --flag:#9E382C; --flag-bg:#F6E5E1;
   --accent:#1F4A36;
-  --ui:'Hanken Grotesk',sans-serif; --doc:'Newsreader',Georgia,serif; --display:'Fraunces',Georgia,serif;
+  /* System typography first (SF on Apple), Hanken Grotesk as the cross-platform
+     fallback. The reading surface stays serif; headings use the clean sans. */
+  --ui:-apple-system,BlinkMacSystemFont,'SF Pro Text','Hanken Grotesk',system-ui,'Segoe UI',sans-serif;
+  --doc:'Newsreader',Georgia,serif;
+  --display:-apple-system,BlinkMacSystemFont,'SF Pro Display','Hanken Grotesk',system-ui,sans-serif;
+  --elev-pop:0 8px 30px rgba(0,0,0,.12);
+  --elev-modal:0 24px 64px rgba(0,0,0,.22);
 }
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:var(--ui);background:var(--paper);color:var(--ink);-webkit-font-smoothing:antialiased;
-  background-image:radial-gradient(circle at 1px 1px, rgba(0,0,0,0.018) 1px, transparent 0);background-size:22px 22px;min-height:100vh}
+body{font-family:var(--ui);background:var(--paper);color:var(--ink);
+  -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;min-height:100vh}
 
 /* TOP BAR */
 .topbar{display:flex;align-items:center;gap:18px;padding:0 20px;height:58px;background:var(--card);
@@ -480,3 +489,39 @@ mark.hl{background:#FBE7A6;color:#5a4410;padding:0 2px;border-radius:2px;font-we
 .app-crash button{font-family:var(--ui);font-size:13px;font-weight:700;color:#fff;background:var(--accent);
   border:1px solid var(--accent);border-radius:8px;padding:9px 16px;cursor:pointer;transition:.15s}
 .app-crash button:hover{filter:brightness(1.08)}
+
+/* ───────────────────────────────────────────────────────────────────────────
+   Apple-minimal refinement layer.
+   Clarity, deference, depth: quieter micro-labels, restrained elevation, and a
+   single accent. Overrides by source order; no markup or class changes, so all
+   behavior is untouched. The verdict palette and reading serif stay intact.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+/* Restrained elevation — soft, single-layer shadows instead of heavy drops. */
+.doc{box-shadow:0 1px 2px rgba(0,0,0,.04),0 12px 32px -20px rgba(0,0,0,.22)}
+.modal{box-shadow:var(--elev-modal);border-radius:18px}
+.pop,.rowmenu{box-shadow:var(--elev-pop)}
+.toast{box-shadow:0 8px 30px rgba(0,0,0,.18);border-radius:12px}
+
+/* Selection reads as a calm accent ring, not a glowing slab. */
+.docitem.active{box-shadow:inset 0 0 0 1.5px var(--accent)}
+.docitem:hover{transform:none;border-color:var(--line-strong)}
+
+/* Micro-labels: keep the small-caps rhythm but lift the visual weight off them
+   (lighter, tighter tracking) so the content leads. */
+.sb-cap,.upcap,.docgroup-h,.dmgroup-h,.dmtoolbar .dmcount,.srctitle,.cal-wd,
+.doc .eyebrow,.doc h2{font-weight:600;letter-spacing:.4px}
+
+/* Quieter secondary controls: a soft fill on hover rather than an accent jump
+   (the primary action stays the only saturated element). */
+.btn:hover{border-color:var(--line-strong);background:var(--paper)}
+.chip{font-weight:500}
+.editbtn:hover{background:var(--paper);border-color:var(--line-strong);color:var(--ink)}
+
+/* Inputs/controls: a single 2px accent ring on focus, no doubled outline. */
+.upinput:focus,.uptext:focus,.vb-select:focus,.di-rename:focus,.dmname:focus{
+  box-shadow:0 0 0 3px rgba(31,74,54,.16);border-color:var(--accent)}
+
+/* The document page reads as paper on the canvas — a hairline frame, no slab. */
+.doc{border-color:var(--line)}
+.scrim{background:rgba(0,0,0,.32);backdrop-filter:saturate(180%) blur(8px);-webkit-backdrop-filter:saturate(180%) blur(8px)}
