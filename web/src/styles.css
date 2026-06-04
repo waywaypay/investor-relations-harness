@@ -585,3 +585,32 @@ mark.hl{background:#FBE7A6;color:#5a4410;padding:0 2px;border-radius:2px;font-we
 .mgr-head .ttl{font-family:var(--display);font-size:24px;font-weight:600;letter-spacing:-.3px;color:var(--ink)}
 .mgr-head .sub{font-family:var(--doc);font-size:14.5px;color:var(--muted);font-style:italic;line-height:1.5;margin-top:5px}
 .mgr .dmbody{padding:0;overflow:visible}
+
+/* Manager document list — dense, Finder-style rows. One line per document: icon,
+   (editable) name, kind at rest / actions on hover, and a version-count disclosure.
+   Versions expand inline. Replaces the tall per-document cards. */
+.mgr .dmgroup{gap:0;margin-bottom:16px}
+.dmrow{border-radius:8px;transition:background .12s}
+.dmrow:hover{background:rgba(0,0,0,.04)}
+.dmrow-h{display:flex;align-items:center;gap:10px;padding:6px 10px;border-bottom:1px solid var(--line)}
+.dmrow:last-child .dmrow-h,.dmrow.open .dmrow-h{border-bottom:none}
+.dmrow-ic{width:22px;height:22px;flex-shrink:0;border-radius:6px;background:var(--paper);display:grid;place-items:center;color:var(--accent)}
+.dmrow-ic svg{width:13px;height:13px}
+.mgr .dmname{flex:1;min-width:0;font-family:var(--ui);font-size:13px;font-weight:600;color:var(--ink);
+  border:1px solid transparent;border-radius:6px;padding:3px 6px;margin-left:-6px;background:transparent;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mgr .dmname:hover{border-color:var(--line)}
+.mgr .dmname:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(31,74,54,.16);background:#fff}
+.dmrow-meta{display:flex;align-items:center;gap:8px;flex-shrink:0;min-width:0}
+.dmrow-sub{font-size:11px;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:240px}
+.dmrow-acts{display:none;align-items:center;gap:2px;flex-shrink:0}
+.dmrow:hover .dmrow-meta{display:none}
+.dmrow:hover .dmrow-acts{display:flex}
+.dmrow-acts .dmlink{padding:4px 8px}
+.dmrow-vtoggle{display:flex;align-items:center;justify-content:flex-end;gap:4px;flex-shrink:0;min-width:42px;
+  background:none;border:none;cursor:pointer;font-family:var(--ui);font-size:11.5px;font-weight:600;
+  color:var(--muted);padding:4px 7px;border-radius:6px;font-variant-numeric:tabular-nums}
+.dmrow-vtoggle:hover{background:rgba(0,0,0,.06);color:var(--ink)}
+.dmrow-vtoggle .caret{font-size:9px;color:var(--faint)}
+.dmrow .dmvers{margin:0;padding:2px 10px 8px 42px;border-top:none}
+.dmrow .dmver{padding:6px 9px}
