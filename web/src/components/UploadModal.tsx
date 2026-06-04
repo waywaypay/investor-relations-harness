@@ -142,7 +142,11 @@ export function UploadModal({
           </label>
         )}
 
-        <label className="upfield">
+        {/* A <div>, not a <label>: the dropzone already opens the input via its
+            onClick, and a wrapping <label> would *also* forward the click to the
+            contained <input>, firing the file picker twice (pick a file, hit
+            Open, and the picker reappears). */}
+        <div className="upfield">
           <span className="upcap">Upload a file</span>
           <div
             className={`dropzone ${drag ? "drag" : ""}`}
@@ -166,7 +170,7 @@ export function UploadModal({
             style={{ display: "none" }}
             onChange={(e) => pickFile(e.target.files?.[0] ?? null)}
           />
-        </label>
+        </div>
 
         <div className="upor">or paste the text</div>
 
