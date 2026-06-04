@@ -23,6 +23,9 @@ class SourceType(str, Enum):
     FILING_LINE = "filing_line"      # a specific line on a filed statement
     INTERNAL_CLOSE = "internal_close"  # a cell in the company's pre-filing close package
     ANALYST_MODEL = "analyst_model"  # a parsed sell-side estimate
+    PRIOR_DISCLOSURE = "prior_disclosure"  # a figure the company previously stated (past
+    #                                        release / transcript / deck) — not a filing,
+    #                                        but the reference for a consistency check
     MANAGEMENT_INPUT = "management_input"  # guidance / forward-looking — no filed source
 
     @property
