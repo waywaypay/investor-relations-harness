@@ -57,11 +57,30 @@ export interface AnalyzeInput {
   period?: string;
 }
 
+/** Inputs for filing a prior disclosure (past release / transcript / deck) as the
+ *  reference corpus a later draft is checked against. */
+export interface DisclosureInput {
+  file?: File;
+  text?: string;
+  entity?: string;
+  period?: string;
+  label?: string;
+}
+
+/** The result of ingesting a prior disclosure: how many figures became reference facts. */
+export interface DisclosureResult {
+  source: string;
+  ingested: number;
+  skipped: number;
+}
+
 export interface AttestClient {
   /** Verify a figure's displayed text against its bound source. */
   verifyFigure(figureId: string, text: string): Promise<VerifyResult>;
   /** Upload/paste a draft, returning the engine's claims + verdicts for rendering. */
   analyzeDocument(input: AnalyzeInput): Promise<AnalyzeResult>;
+  /** File a prior disclosure as the reference corpus for consistency checks. */
+  ingestDisclosure(input: DisclosureInput): Promise<DisclosureResult>;
 }
 
 /** Offline default. The mock UI verifies locally (src/lib/verify.ts); these throw
@@ -76,6 +95,11 @@ export const offlineClient: AttestClient = {
   async analyzeDocument() {
     throw new Error(
       "offlineClient: set VITE_ATTEST_API to the FastAPI backend to enable live analysis"
+    );
+  },
+  async ingestDisclosure() {
+    throw new Error(
+      "offlineClient: set VITE_ATTEST_API to the FastAPI backend to file a prior disclosure"
     );
   },
 };
@@ -187,6 +211,34 @@ export function createLiveClient(baseUrl: string): AttestClient {
         throw new Error(`analyze failed: ${detail}`);
       }
       return (await res.json()) as AnalyzeResult;
+    },
+
+    async ingestDisclosure(input) {
+      // Files a prior disclosure as non-filed "previously disclosed" facts, so a
+      // later draft that restates a figure and changed it is flagged as
+      // contradicting prior disclosure. Multipart, mirroring analyze.
+      const form = new FormData();
+      if (input.file) form.append("file", input.file, input.file.name);
+      if (input.text) form.append("text", input.text);
+      if (input.entity) form.append("entity", input.entity);
+      if (input.period) form.append("period", input.period);
+      if (input.label) form.append("label", input.label);
+
+      const res = await fetch(`${base}/tenants/${TENANT}/ingest/disclosure`, {
+        method: "POST",
+        body: form,
+      });
+      if (!res.ok) {
+        let detail = `HTTP ${res.status}`;
+        try {
+          const body = await res.json();
+          if (body?.detail) detail = body.detail;
+        } catch {
+          /* non-JSON error body; keep the status */
+        }
+        throw new Error(`ingest disclosure failed: ${detail}`);
+      }
+      return (await res.json()) as DisclosureResult;
     },
   };
 }

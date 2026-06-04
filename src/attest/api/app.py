@@ -21,7 +21,6 @@ from attest.api.schemas import (
     AnalyzeResponse,
     AuditVerifyResponse,
     ClosePackResponse,
-    DisclosureIngestRequest,
     EditRequest,
     EdgarIngestRequest,
     GuidanceIngestRequest,
@@ -158,21 +157,48 @@ def create_app(service: AttestService | None = None, *, seed_demo: bool = False)
         )
 
     @app.post("/tenants/{tenant_id}/ingest/disclosure", response_model=IngestResponse)
-    def ingest_disclosure(
-        tenant_id: str, req: DisclosureIngestRequest, svc: AttestService = Depends(get_service)
+    async def ingest_disclosure(
+        tenant_id: str,
+        file: UploadFile | None = File(default=None),
+        text: str | None = Form(default=None),
+        entity: str | None = Form(default=None),
+        period: str | None = Form(default=None),
+        label: str | None = Form(default=None),
+        as_of: str = Form(default="1970-01-01"),
+        svc: AttestService = Depends(get_service),
     ) -> IngestResponse:
         """Ingest a prior public disclosure (past release / transcript / deck) so a
         later draft can be checked for consistency: a figure restated with a changed
         value is flagged as contradicting what the company previously disclosed —
-        even for non-GAAP / operational numbers that have no filed source."""
+        even for non-GAAP / operational numbers that have no filed source.
+
+        Accepts a multipart ``file`` or a ``text`` field, mirroring /analyze, so any
+        upload type is recovered server-side. The issuer is taken from ``entity`` if
+        given, else detected from the document, else the tenant's primary issuer."""
+        if file is not None and file.filename:
+            extracted = extract_text(file.filename, await file.read())
+            doc_text = extracted.text
+            label = label or file.filename
+        elif text:
+            doc_text = text
+        else:
+            raise HTTPException(status_code=422, detail="provide a file upload or text")
+        if not doc_text.strip():
+            raise HTTPException(
+                status_code=422,
+                detail="no readable text could be recovered from the disclosure",
+            )
+        resolved_entity = (
+            entity or infer_entity_ticker(label or "", doc_text) or svc.default_entity(tenant_id)
+        )
         report = svc.ingest_disclosure(
-            text=req.text,
+            text=doc_text,
             tenant_id=tenant_id,
-            entity=req.entity,
-            period=req.period,
-            as_of=req.as_of,
-            source_ref=req.source_ref,
-            label=req.label,
+            entity=resolved_entity,
+            period=period or None,
+            as_of=as_of,
+            source_ref=f"disclosure:{label or 'prior'}",
+            label=label,
         )
         return IngestResponse(
             source=report.source,
