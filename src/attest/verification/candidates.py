@@ -15,10 +15,19 @@ from dataclasses import dataclass
 from attest.domain.money import Quantity, QuantityParseError, parse_quantity
 
 # Greedy: currency with optional scale word, percentages, basis points.
+#
+# Two figure dialects show up in practice. Press releases write the symbols
+# ("$1.24 billion", "31%"); earnings-call transcripts (and pasted prose) spell
+# them ("1.24 billion dollars", "31 percent", bare "480 million"). Under-detection
+# is the failure mode, so both are caught. The symbol-free currency branches
+# *require* a scale word or the word "dollars" as an anchor — a bare integer like
+# a year ("2026") must not read as money.
 _CANDIDATE_RE = re.compile(
     r"""
     (?P<cur>\$\s?\d[\d,]*(?:\.\d+)?\s*(?:billion|million|thousand|trillion|bn|mm|[bmkt])?\b)
-    | (?P<pct>\b\d{1,3}(?:\.\d+)?\s?%)
+    | (?P<curscale>\b\d[\d,]*(?:\.\d+)?\s*(?:billion|million|thousand|trillion|bn|mm)\b)
+    | (?P<curword>\b\d[\d,]*(?:\.\d+)?\s+(?:dollars|cents)\b)
+    | (?P<pct>\b\d{1,3}(?:\.\d+)?\s?(?:%|percent\b|pct\b))
     | (?P<bps>\b\d{1,4}(?:\.\d+)?\s?(?:bps|basis\ points)\b)
     """,
     re.IGNORECASE | re.VERBOSE,

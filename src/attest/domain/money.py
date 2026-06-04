@@ -57,10 +57,12 @@ _SCALES: dict[str, Decimal] = {
 _NUMBER = r"[-+]?\d[\d,]*(?:\.\d+)?"
 _SCALE_WORDS = "|".join(sorted(_SCALES, key=len, reverse=True))
 
-_RE_PERCENT = re.compile(rf"^\(?\s*(?P<num>{_NUMBER})\s*%\s*\)?$", re.IGNORECASE)
+_RE_PERCENT = re.compile(rf"^\(?\s*(?P<num>{_NUMBER})\s*(?:%|percent|pct)\s*\)?$", re.IGNORECASE)
 _RE_BPS = re.compile(rf"^\(?\s*(?P<num>{_NUMBER})\s*(?:bps|basis points)\s*\)?$", re.IGNORECASE)
+# Currency may be symbol-led ("$1.24 billion") or spelled ("1.24 billion dollars",
+# "87 cents"); the trailing money word is optional and ignored once matched.
 _RE_CURRENCY = re.compile(
-    rf"^\(?\s*(?:US)?\$?\s*(?P<num>{_NUMBER})\s*(?P<scale>{_SCALE_WORDS})?\s*\)?$",
+    rf"^\(?\s*(?:US)?\$?\s*(?P<num>{_NUMBER})\s*(?P<scale>{_SCALE_WORDS})?\s*(?P<money>dollars|cents)?\s*\)?$",
     re.IGNORECASE,
 )
 
@@ -198,6 +200,9 @@ def parse_quantity(text: str) -> Quantity:
         num = m.group("num")
         scale = (m.group("scale") or "").lower()
         multiplier = _SCALES.get(scale, Decimal(1))
+        # "87 cents" is $0.87 — a hundredth of a dollar, not 87 of them.
+        if (m.group("money") or "").lower() == "cents":
+            multiplier = multiplier / Decimal(100)
         value = _to_decimal(num) * multiplier
         if negative_paren:
             value = -value
