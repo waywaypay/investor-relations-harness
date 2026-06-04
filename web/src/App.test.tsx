@@ -72,6 +72,8 @@ describe("Attest workspace", () => {
   });
 
   it("on the script, surfaces the narrative summary bar", () => {
+    // Categories are collapsed by default — expand "Call scripts" to reveal the doc.
+    fireEvent.click(screen.getByRole("button", { name: /Expand Call scripts/i }));
     fireEvent.click(screen.getByText("Prepared remarks"));
     expect(screen.getByText(/Narrative & language/i)).toBeInTheDocument();
     // the data-conflict narrative ("accelerating") is present in the script
@@ -166,7 +168,7 @@ describe("document library & upload", () => {
   it("opens the manager scoped to a category to upload past transcripts", () => {
     // Clicking a document category in the sidebar opens the manager focused on
     // that type, where past filings/transcripts for the company can be uploaded.
-    fireEvent.click(screen.getByRole("button", { name: /Earnings releases/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Manage Earnings releases/i }));
     expect(screen.getByText(/Past filings, transcripts/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Upload past transcript/i })).toBeInTheDocument();
   });
