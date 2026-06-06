@@ -35,6 +35,21 @@ def test_parenthesised_negative():
     assert parse_quantity("($250.0)").value == Decimal("-250.0")
 
 
+def test_accounting_loss_notations_all_parse_negative():
+    # The conventions a real loss is written in — symbol inside or outside the
+    # parens, scale word inside or outside, a leading minus — must all resolve to
+    # the same negative value. A loss read as a positive is a wrong-signed number.
+    assert parse_quantity("$(0.12)").value == Decimal("-0.12")
+    assert parse_quantity("($0.12)").value == Decimal("-0.12")
+    assert parse_quantity("-$0.12").value == Decimal("-0.12")
+    assert parse_quantity("$(45.0) million").value == Decimal("-45000000.0")
+    assert parse_quantity("($45.0) million").value == Decimal("-45000000.0")
+    assert parse_quantity("(45 million)").value == Decimal("-45000000")
+    assert parse_quantity("(5)%").value == Decimal("-5")
+    assert parse_quantity("(5%)").value == Decimal("-5")
+    assert parse_quantity("-5%").value == Decimal("-5")
+
+
 def test_rounding_match_within_policy():
     draft = parse_quantity("$1.24 billion")
     filed = parse_quantity("$1,241.3 million")

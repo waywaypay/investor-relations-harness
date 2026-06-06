@@ -18,7 +18,7 @@ from attest.domain.money import (
     QuantityParseError,
     parse_quantity,
 )
-from attest.domain.verdicts import RuleFinding, RuleSeverity
+from attest.domain.verdicts import UNIDENTIFIED_METRIC, RuleFinding, RuleSeverity
 
 
 def _mutually_consistent(quantities: list[Quantity]) -> bool:
@@ -35,6 +35,12 @@ def check_intra_document_consistency(document: Document) -> list[RuleFinding]:
     """Flag a metric/period claimed with incompatible values within one document."""
     groups: dict[tuple[str, str, str], list[tuple[str, Quantity]]] = defaultdict(list)
     for claim in document.claims:
+        # "unidentified" is the absence of a metric, not a metric — two figures the
+        # edge couldn't attribute are not "the same metric stated two ways", so they
+        # must not be grouped and compared (e.g. distinct reconciliation adjustments
+        # like $0.18 and $0.07 are not a mismatch).
+        if claim.metric == UNIDENTIFIED_METRIC:
+            continue
         try:
             qty = parse_quantity(claim.displayed_text)
         except QuantityParseError:
@@ -67,6 +73,8 @@ def check_cross_document_consistency(documents: list[Document]) -> list[RuleFind
 
     for doc in documents:
         for claim in doc.claims:
+            if claim.metric == UNIDENTIFIED_METRIC:
+                continue  # no metric identity — see check_intra_document_consistency
             key = (claim.entity, claim.metric, claim.period)
             try:
                 norm = parse_quantity(claim.displayed_text)

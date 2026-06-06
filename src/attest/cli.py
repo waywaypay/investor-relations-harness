@@ -1,15 +1,19 @@
 """Command-line entry point.
 
-    attest demo     # ingest the Meridian filing, verify the close pack, print a report
-    attest serve    # run the API with uvicorn
+    attest verify [--use-llm]  # verify the reference close pack, optionally via the LLM edge
+    attest serve               # run the API with uvicorn
+    attest ingest-edgar TICKER # pull an issuer's real filed facts from SEC EDGAR
+    attest synth               # generate synthetic perturbation cases (robustness coverage)
+    attest restatements        # harvest real conflict labels from an 8-K Item 4.02 record
 """
 
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 
-from attest.demo import build_documents, seeded_service
+from attest.demo import build_documents, scripted_edge_service, seeded_service
 from attest.domain.verdicts import Verdict
 
 _GLYPH = {
@@ -20,12 +24,33 @@ _GLYPH = {
 }
 
 
-def _run_demo() -> int:
-    service = seeded_service()
-    documents = build_documents()
-    results, consistency = service.verify_close_pack(documents)
+def _run_verify(use_llm: bool) -> int:
+    if not use_llm:
+        service = seeded_service()
+        documents = build_documents()
+        results, consistency = service.verify_close_pack(documents)
+        _print_close_pack(service, documents, results, consistency)
+        return 0
 
-    print("Attest — Meridian Systems Q1 FY2026 close pack\n" + "=" * 56)
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        from attest.edge.service import EdgeService
+
+        edge = EdgeService.anthropic()
+        note = "LLM edge: Anthropic (live)"
+    else:
+        edge = scripted_edge_service()
+        note = "LLM edge: scripted (no ANTHROPIC_API_KEY set)"
+
+    service = seeded_service(edge=edge)
+    documents = build_documents()
+    results, consistency = service.verify_close_pack(documents, use_llm=True)
+    print(f"[{note}]")
+    _print_close_pack(service, documents, results, consistency)
+    return 0
+
+
+def _print_close_pack(service, documents, results, consistency) -> None:
+    print("Attest — Q1 FY2026 close pack\n" + "=" * 40)
     for result in results:
         doc = next(d for d in documents if d.id == result.document_id)
         c = result.counts
@@ -49,32 +74,149 @@ def _run_demo() -> int:
 
     print("\n## Audit trail")
     print(f"   {len(service.audit_log.events())} events · chain intact: {service.audit_verify()}")
-    return 0
 
 
 def _run_serve(host: str, port: int) -> int:
     import uvicorn
 
     from attest.api.app import create_app
+    from attest.storage import service_from_env
 
-    print(f"Attest — upload & verify UI at http://{host}:{port}  (API docs at /docs)")
-    uvicorn.run(create_app(), host=host, port=port)
+    service = service_from_env()
+    print(f"Attest UI:  http://{host}:{port}/        (interactive front-end)")
+    print(f"API docs:   http://{host}:{port}/docs    (OpenAPI / Swagger)")
+    uvicorn.run(create_app(service), host=host, port=port)
+    return 0
+
+
+def _run_ingest_edgar(ticker: str, tenant: str, max_years: int) -> int:
+    from attest.ingestion.edgar import EdgarUnavailable, HttpEdgarClient
+    from attest.service import AttestService
+
+    service = AttestService(edgar=HttpEdgarClient())
+    try:
+        report = service.ingest_edgar(ticker, tenant, max_years=max_years)
+    except EdgarUnavailable as exc:
+        print(f"Could not reach SEC EDGAR: {exc}")
+        return 1
+    print(f"Ingested {report.ingested} filed facts for {ticker.upper()} "
+          f"({report.skipped} metric(s) not reported):")
+    facts = sorted(service.store.all(tenant), key=lambda f: (f.metric, f.period))
+    for f in facts:
+        print(f"   {f.metric:<22} {f.period:<10} {f.quantity().display():>18}   {f.source_label}")
+    if not facts:
+        print(f"   (no us-gaap facts found — check the ticker symbol '{ticker}')")
+    return 0
+
+
+def _run_synth(csv_path: str | None, out_path: str | None) -> int:
+    import json
+
+    from attest.eval.perturbation import perturb_facts
+    from attest.eval.synthetic_eval import run_synthetic_eval
+
+    if csv_path:
+        from attest.eval.sheets_bridge import facts_from_csv_path
+
+        facts = facts_from_csv_path(csv_path, tenant_id="corpus")
+        cases = perturb_facts(facts)
+        print(f"Generated {len(cases)} synthetic cases from {csv_path}")
+    else:
+        from attest.ingestion.edgar_xbrl import load_fixture
+        from attest.service import AttestService
+
+        svc = AttestService()
+        svc.ingest_xbrl(load_fixture("atlas_q1_fy2026"), tenant_id="atlas")
+        cases = perturb_facts(svc.store.all("atlas"))
+        print(f"Generated {len(cases)} synthetic cases from the bundled fixture")
+
+    if out_path:
+        payload = {
+            "name": "synthetic_perturbation",
+            "label_source": "synthetic_perturbation",
+            "caveat": "Robustness coverage only — NOT a reliability metric. Keep "
+            "separate from the human-labeled golden gate.",
+            "cases": [c.as_golden_row() for c in cases],
+        }
+        with open(out_path, "w", encoding="utf-8") as fh:
+            json.dump(payload, fh, indent=2)
+        print(f"Wrote {out_path}")
+
+    if not csv_path:
+        report = run_synthetic_eval()
+        d = report.as_dict()
+        print(f"\nBucket: {d['bucket']}")
+        print(f"  cases {d['total']} · accuracy {d['exact_accuracy']} · "
+              f"FN rate {d['figure_false_negative_rate']}")
+        print(f"  {d['caveat']}")
+    return 0
+
+
+def _run_restatements(fixture: str, out_path: str | None) -> int:
+    import json
+
+    from attest.eval.restatement import cases_from_restatement, load_restatement_fixture
+
+    rec = load_restatement_fixture(fixture)
+    cases = cases_from_restatement(rec)
+    print(f"Harvested {len(cases)} real labels from {rec['filer']} 8-K Item 4.02 "
+          f"({rec['accession']}):")
+    for c in cases:
+        print(f"  [{c.expected.value:<8}] {c.metric} {c.period}: {c.text}")
+    if out_path:
+        payload = {
+            "name": "edgar_restatement",
+            "label_source": "edgar_restatement",
+            "note": "Real adjudicated restatement labels — eligible for the reliability gate.",
+            "cases": [c.as_golden_row() for c in cases],
+        }
+        with open(out_path, "w", encoding="utf-8") as fh:
+            json.dump(payload, fh, indent=2)
+        print(f"Wrote {out_path}")
     return 0
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="attest", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
-    sub.add_parser("demo", help="verify the bundled Meridian close pack")
+    verify = sub.add_parser("verify", help="verify the reference close pack")
+    verify.add_argument(
+        "--use-llm",
+        action="store_true",
+        help="propose claims and narrate via the LLM edge (falls back to a "
+        "scripted client when ANTHROPIC_API_KEY is unset)",
+    )
     serve = sub.add_parser("serve", help="run the API server")
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument("--port", type=int, default=8000)
+    edgar = sub.add_parser(
+        "ingest-edgar", help="pull an issuer's real filed facts from SEC EDGAR by ticker"
+    )
+    edgar.add_argument("ticker", help="issuer ticker symbol, e.g. PANW")
+    edgar.add_argument("--tenant", default="default", help="tenant to load the facts under")
+    edgar.add_argument("--max-years", type=int, default=3, help="recent fiscal years to load")
+    synth = sub.add_parser(
+        "synth", help="generate synthetic perturbation cases (robustness coverage)"
+    )
+    synth.add_argument("--csv", help="path to a 02_Facts CSV export; omit to use the fixture")
+    synth.add_argument("--out", help="write generated cases to this JSON path")
+    rst = sub.add_parser(
+        "restatements", help="harvest real conflict labels from an 8-K Item 4.02 record"
+    )
+    rst.add_argument("--fixture", default="atlas_cloud_4_02", help="bundled restatement fixture")
+    rst.add_argument("--out", help="write harvested cases to this JSON path")
 
     args = parser.parse_args(argv)
-    if args.command == "demo":
-        return _run_demo()
+    if args.command == "verify":
+        return _run_verify(args.use_llm)
     if args.command == "serve":
         return _run_serve(args.host, args.port)
+    if args.command == "ingest-edgar":
+        return _run_ingest_edgar(args.ticker, args.tenant, args.max_years)
+    if args.command == "synth":
+        return _run_synth(args.csv, args.out)
+    if args.command == "restatements":
+        return _run_restatements(args.fixture, args.out)
     return 1
 
 

@@ -77,25 +77,35 @@ class MetricRegistry:
     def non_gaap(self) -> list[MetricSpec]:
         return [s for s in self._by_id.values() if s.is_non_gaap]
 
+    def all(self) -> list[MetricSpec]:
+        """Every registered spec, in registration order."""
+        return list(self._by_id.values())
+
     def __contains__(self, metric_id: str) -> bool:
         return metric_id in self._by_id
 
 
-# A default registry covering the Meridian Systems demo close pack. In production
-# this is tenant-configurable; the shape stays the same.
+# Default registry. In production this is tenant-configurable; the shape stays
+# the same.
 DEFAULT_REGISTRY = MetricRegistry(
     [
         MetricSpec(
             id="total_revenue",
             label="Total revenue",
             unit=Unit.CURRENCY,
-            xbrl_tags=("us-gaap:Revenues", "us-gaap:RevenueFromContractWithCustomer"),
+            # The current standard tag is listed first so it wins for issuers that
+            # report under ASC 606; ``Revenues`` is the legacy fallback.
+            xbrl_tags=(
+                "us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax",
+                "us-gaap:Revenues",
+                "us-gaap:RevenueFromContractWithCustomer",
+            ),
         ),
         MetricSpec(
             id="cloud_revenue",
             label="Cloud segment revenue",
             unit=Unit.CURRENCY,
-            xbrl_tags=("mrdn:CloudSegmentRevenue",),
+            xbrl_tags=("atls:CloudSegmentRevenue",),
         ),
         MetricSpec(
             id="cloud_growth_yoy",
@@ -136,6 +146,40 @@ DEFAULT_REGISTRY = MetricRegistry(
             label="Operating cash flow",
             unit=Unit.CURRENCY,
             xbrl_tags=("us-gaap:NetCashProvidedByUsedInOperatingActivities",),
+        ),
+        # General income-statement / balance-sheet metrics so a draft analyzed
+        # against a real EDGAR filing (see attest.ingestion.edgar) ties out beyond
+        # the reference fixture's vocabulary. Each carries the us-gaap tag the
+        # connector fetches; the unit is what the engine compares in.
+        MetricSpec(
+            id="net_income",
+            label="Net income",
+            unit=Unit.CURRENCY,
+            xbrl_tags=("us-gaap:NetIncomeLoss",),
+        ),
+        MetricSpec(
+            id="operating_income",
+            label="Operating income",
+            unit=Unit.CURRENCY,
+            xbrl_tags=("us-gaap:OperatingIncomeLoss",),
+        ),
+        MetricSpec(
+            id="gross_profit",
+            label="Gross profit",
+            unit=Unit.CURRENCY,
+            xbrl_tags=("us-gaap:GrossProfit",),
+        ),
+        MetricSpec(
+            id="total_rpo",
+            label="Remaining performance obligations",
+            unit=Unit.CURRENCY,
+            xbrl_tags=("us-gaap:RevenueRemainingPerformanceObligation",),
+        ),
+        MetricSpec(
+            id="cash_and_equivalents",
+            label="Cash and cash equivalents",
+            unit=Unit.CURRENCY,
+            xbrl_tags=("us-gaap:CashAndCashEquivalentsAtCarryingValue",),
         ),
         MetricSpec(
             id="share_repurchases",

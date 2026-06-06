@@ -215,7 +215,6 @@ def test_unit_mismatch_ok_when_units_align():
 # -- Increment 7: intra-document figure consistency ------------------------
 
 def test_intradoc_flags_same_metric_two_values():
-    reg = MetricRegistry([MetricSpec(id="total_revenue", label="Total revenue", unit=Unit.CURRENCY)])
     doc = Document(id="d", tenant_id=T, title="d", kind=DocumentKind.OTHER,
                    text="Revenue was $1.24 billion ... revenue of $1.25 billion.",
                    claims=(
@@ -259,6 +258,18 @@ def test_guidance_range_flags_inverted():
 def test_guidance_range_ok_when_ordered():
     doc = _doc([_claim("q2_revenue_guidance", "$1.31 to $1.34 billion")])
     assert not _rule("ranges.inverted_range", check_range_sanity(doc, _guide_reg()))
+
+
+def test_guidance_range_handles_between_and_phrasing():
+    # "between $1.34 and $1.31 billion" is as common as the "to" form; the rule must
+    # parse the "and" separator too, or an inverted/wrong-midpoint range stated that
+    # way ships unflagged (the detector already accepts "and").
+    inverted = _doc([_claim("q2_revenue_guidance", "$1.34 and $1.31 billion")])
+    assert _rule("ranges.inverted_range", check_range_sanity(inverted, _guide_reg()))
+    ok = _doc([_claim("q2_revenue_guidance", "$1.31 and $1.34 billion")])
+    assert not _rule("ranges.inverted_range", check_range_sanity(ok, _guide_reg()))
+    wrong_mid = check_range_midpoint(ok, _guide_reg(), {"q2_revenue_guidance": "$1.40 billion"})
+    assert _rule("ranges.midpoint_mismatch", wrong_mid)
 
 
 # -- Increment 9: guidance midpoint consistency ----------------------------

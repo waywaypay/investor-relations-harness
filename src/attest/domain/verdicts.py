@@ -14,6 +14,12 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from attest.domain.facts import Confidence, Provenance
 
+# The metric id the edge assigns when it detected a figure but could not confidently
+# attribute it. It is the *absence* of a metric identity, not a metric — so consumers
+# that group claims by metric (the consistency rules) must never treat two
+# "unidentified" figures as the same metric stated two ways.
+UNIDENTIFIED_METRIC = "unidentified"
+
 
 class Verdict(str, Enum):
     """The four states a figure can resolve to. These are mutually exclusive."""

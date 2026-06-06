@@ -18,6 +18,18 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# The LLM edge is the replaceable, probabilistic layer. It is intentionally an
+# optional extra so the deterministic core installs and runs with no model
+# dependency. Tests exercise the edge with a fake client and never need this.
+llm = [
+    "anthropic>=0.40",
+]
+# Durable storage backends (Postgres + optional Redis cache). Also optional: the
+# in-memory reference stores are the default, so the core needs no database.
+storage = [
+    "psycopg[binary]>=3.1",
+    "redis>=5.0",
+]
 dev = [
     "pytest>=8.0",
     "httpx>=0.27",
@@ -30,7 +42,13 @@ attest = "attest.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-attest = ["ingestion/fixtures/*.json", "ingestion/fixtures/*.txt", "eval/golden/*.json", "api/static/*"]
+attest = [
+    "ingestion/fixtures/*.json",
+    "ingestion/fixtures/*.txt",
+    "eval/golden/*.json",
+    "eval/restatement_fixtures/*.json",
+    "api/static/*.html",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

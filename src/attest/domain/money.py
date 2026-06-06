@@ -57,10 +57,33 @@ _SCALES: dict[str, Decimal] = {
 _NUMBER = r"[-+]?\d[\d,]*(?:\.\d+)?"
 _SCALE_WORDS = "|".join(sorted(_SCALES, key=len, reverse=True))
 
-_RE_PERCENT = re.compile(rf"^\(?\s*(?P<num>{_NUMBER})\s*%\s*\)?$", re.IGNORECASE)
+# Nouns that, trailing a figure, mark it as a non-monetary count rather than
+# money — a share count, a user count. Deliberately small and high-precision:
+# the point is to stop "100 million shares" from being tied out against a dollar
+# metric (it would otherwise read as $100M), not to classify every noun. Shared
+# with the detector (:mod:`attest.verification.candidates`) and the extraction
+# edge so the three stay in lockstep.
+_SHARE_NOUNS = ("shares", "share")
+_COUNT_NOUNS = (
+    "users", "subscribers", "customers", "members", "seats", "employees",
+    "stores", "locations", "accounts", "devices", "vehicles", "households",
+    "transactions", "downloads", "installs", "units", "shareholders",
+    "shareholder", "people", "patients",
+)
+NOUN_WORDS = "|".join(sorted({*_SHARE_NOUNS, *_COUNT_NOUNS}, key=len, reverse=True))
+
+_RE_PERCENT = re.compile(rf"^\(?\s*(?P<num>{_NUMBER})\s*(?:%|percent|pct)\s*\)?$", re.IGNORECASE)
 _RE_BPS = re.compile(rf"^\(?\s*(?P<num>{_NUMBER})\s*(?:bps|basis points)\s*\)?$", re.IGNORECASE)
+# A figure trailed by a count/share noun ("100 million shares", "480 million
+# users"): same number+scale grammar as currency, but the noun fixes the unit.
+_RE_COUNT = re.compile(
+    rf"^\(?\s*(?P<num>{_NUMBER})\s*(?P<scale>{_SCALE_WORDS})?\s*(?P<noun>{NOUN_WORDS})\s*\)?$",
+    re.IGNORECASE,
+)
+# Currency may be symbol-led ("$1.24 billion") or spelled ("1.24 billion dollars",
+# "87 cents"); the trailing money word is optional and ignored once matched.
 _RE_CURRENCY = re.compile(
-    rf"^\(?\s*(?:US)?\$?\s*(?P<num>{_NUMBER})\s*(?P<scale>{_SCALE_WORDS})?\s*\)?$",
+    rf"^\(?\s*(?:US)?\$?\s*(?P<num>{_NUMBER})\s*(?P<scale>{_SCALE_WORDS})?\s*(?P<money>dollars|cents)?\s*\)?$",
     re.IGNORECASE,
 )
 
@@ -175,7 +198,20 @@ def parse_quantity(text: str) -> Quantity:
     if not s:
         raise QuantityParseError("cannot parse empty string")
 
-    negative_paren = s.startswith("(") and s.endswith(")")
+    # Sign, resolved once. Accounting writes a loss/decline in parentheses — and
+    # they may wrap the whole figure or only the magnitude: "($0.12)", "$(0.12)",
+    # "($45) million", "$(45) million", "(45 million)", "(5)%". A figure string has
+    # no other use for parentheses, so any balanced pair marks a negative; we strip
+    # the parens (and a leading minus, "-$0.12") so the format matchers below read a
+    # clean, unsigned magnitude and the sign is applied uniformly at the end.
+    negative_paren = "(" in s and ")" in s
+    if negative_paren:
+        s = s.replace("(", "").replace(")", "").strip()
+    if s[:1] == "-":
+        negative_paren = not negative_paren
+        s = s[1:].strip()
+    elif s[:1] == "+":
+        s = s[1:].strip()
 
     m = _RE_PERCENT.match(s)
     if m:
@@ -193,11 +229,27 @@ def parse_quantity(text: str) -> Quantity:
             value = -value
         return Quantity(value=value, unit=Unit.BASIS_POINTS, quantum=_quantum_for(num, Decimal(1)))
 
+    # Counts before currency: "100 million shares" must not fall through to the
+    # currency branch and read as $100M. The noun decides shares vs. a bare count.
+    m = _RE_COUNT.match(s)
+    if m:
+        num = m.group("num")
+        scale = (m.group("scale") or "").lower()
+        multiplier = _SCALES.get(scale, Decimal(1))
+        value = _to_decimal(num) * multiplier
+        if negative_paren:
+            value = -value
+        unit = Unit.SHARES if m.group("noun").lower() in _SHARE_NOUNS else Unit.COUNT
+        return Quantity(value=value, unit=unit, quantum=_quantum_for(num, multiplier))
+
     m = _RE_CURRENCY.match(s)
     if m:
         num = m.group("num")
         scale = (m.group("scale") or "").lower()
         multiplier = _SCALES.get(scale, Decimal(1))
+        # "87 cents" is $0.87 — a hundredth of a dollar, not 87 of them.
+        if (m.group("money") or "").lower() == "cents":
+            multiplier = multiplier / Decimal(100)
         value = _to_decimal(num) * multiplier
         if negative_paren:
             value = -value

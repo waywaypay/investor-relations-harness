@@ -19,7 +19,7 @@ from pydantic import BaseModel, ConfigDict
 from attest.audit.log import AuditLog
 from attest.audit.events import EventType
 from attest.domain.document import Document
-from attest.domain.facts import Confidence, Fact
+from attest.domain.facts import UNDATED_AS_OF, Confidence, Fact, SourceType
 from attest.domain.metrics import MetricRegistry
 from attest.domain.money import (
     DEFAULT_POLICY,
@@ -121,6 +121,48 @@ class VerificationEngine:
             )
 
         latest = versions[-1]
+
+        # A prior disclosure (a figure the company already stated publicly, with no
+        # filed XBRL source — e.g. a non-GAAP or operational number from a past
+        # release / transcript / deck) is not a filing, so it can't be "traced".
+        # But it IS the reference for a consistency check: a draft that restates it
+        # must agree, and one that doesn't is flagged as contradicting prior
+        # disclosure. This is the one non-filed source we value-compare.
+        if latest.source_type == SourceType.PRIOR_DISCLOSURE:
+            try:
+                draft_qty = parse_quantity(claim.displayed_text)
+            except QuantityParseError:
+                return self._verdict(
+                    claim,
+                    Verdict.NEEDS_REVIEW,
+                    reason=f"Could not normalize the figure as written "
+                    f"('{claim.displayed_text}') to compare against the prior disclosure.",
+                    fact=latest,
+                )
+            if claim.detect_confidence == Confidence.LOW:
+                return self._verdict(
+                    claim,
+                    Verdict.NEEDS_REVIEW,
+                    reason="Low detection confidence — routed for human review.",
+                    fact=latest,
+                )
+            as_of_clause = "" if latest.as_of == UNDATED_AS_OF else f" as of {latest.as_of}"
+            if draft_qty.matches(latest.quantity(), self.policy):
+                return self._verdict(
+                    claim,
+                    Verdict.NEEDS_REVIEW,
+                    reason=f"Consistent with the prior disclosure "
+                    f"({latest.quantity().display()}{as_of_clause}); not a filed "
+                    f"source, so confirm before publish.",
+                    fact=latest,
+                )
+            return self._verdict(
+                claim,
+                Verdict.CONFLICT,
+                reason=f"Contradicts a prior disclosure: previously stated "
+                f"{latest.quantity().display()}{as_of_clause}.",
+                fact=latest,
+            )
 
         # A non-filed source (guidance / management input) can never be "traced",
         # regardless of how the figure is written (it may even be a range).
