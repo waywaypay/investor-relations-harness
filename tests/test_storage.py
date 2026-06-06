@@ -92,6 +92,20 @@ def test_duplicate_id_raises(conn):
         store.add(_fact("dup", value="999"))
 
 
+def test_same_fact_id_isolated_across_tenants(conn):
+    # A fact id is derived from the filing (no tenant), so the same filing
+    # ingested by two tenants yields identical ids. Dedupe is per-tenant
+    # (UNIQUE (tenant_id, id)), so this must not collide.
+    store = PostgresFactStore(conn)
+    alpha = _fact("shared").model_copy(update={"tenant_id": "alpha"})
+    beta = _fact("shared", value="999").model_copy(update={"tenant_id": "beta"})
+    store.add(alpha)
+    store.add(beta)  # identical id, different tenant — must succeed
+    assert store.get("shared", tenant_id="alpha").value == alpha.value
+    assert store.get("shared", tenant_id="beta").value == beta.value
+    assert len(store.all("alpha")) == 1 and len(store.all("beta")) == 1
+
+
 def test_matches_inmemory_contract(conn):
     """The Postgres store and the in-memory store answer identically."""
     facts = [
