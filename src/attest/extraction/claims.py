@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from attest.domain.facts import Confidence
 from attest.domain.metrics import MetricRegistry
 from attest.domain.money import NOUN_WORDS, Unit
-from attest.domain.verdicts import FigureClaim
+from attest.domain.verdicts import UNIDENTIFIED_METRIC, FigureClaim
 from attest.factstore.repository import FactStore
 from attest.verification.candidates import detect_candidates
 
@@ -53,7 +53,17 @@ _ALIASES: dict[str, tuple[str, ...]] = {
     "cash_and_equivalents": ("cash and cash equivalents", "cash and equivalents"),
     "share_repurchases": ("share repurchases", "repurchases of common stock", "repurchase of common stock", "repurchased", "stock buyback", "buyback"),
     "operating_margin": ("operating margin", "margin from operations"),
-    "operating_margin_change_bps": ("operating margin expanded", "operating margin improved", "margin expansion", "basis points"),
+    # A basis-points figure is the margin *change*. "basis points" alone can't anchor
+    # it (those words sit inside the figure span, not its context), so attribute on the
+    # margin verb that precedes it — in any inflection a real draft uses ("expanded",
+    # "expanding", "contracted", "declined", "improved", "widened", "narrowed").
+    "operating_margin_change_bps": (
+        "operating margin expanded", "operating margin expanding", "operating margin improved",
+        "operating margin improving", "operating margin contracted", "operating margin contracting",
+        "operating margin declined", "operating margin widened", "operating margin narrowed",
+        "margin expanded", "margin expanding", "margin contracted", "margin improved",
+        "margin expansion", "margin contraction", "basis points",
+    ),
     "q2_revenue_guidance": ("revenue in the range", "revenue guidance", "expects total revenue", "guidance"),
 }
 
@@ -452,7 +462,7 @@ class ClaimExtractor:
                 confidence = Confidence.LOW
 
             if metric is None:
-                metric = "unidentified"
+                metric = UNIDENTIFIED_METRIC
                 confidence = Confidence.LOW
 
             # A currency figure sitting in clearly forward-looking prose is a forecast
@@ -463,7 +473,7 @@ class ClaimExtractor:
             # revenue). The figure keeps its metric; only its period shifts.
             if (
                 guidance_period
-                and metric != "unidentified"
+                and metric != UNIDENTIFIED_METRIC
                 and unit is Unit.CURRENCY
                 and _has_guidance_context(before, period)
             ):
