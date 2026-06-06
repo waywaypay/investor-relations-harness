@@ -13,8 +13,6 @@ from fastapi.testclient import TestClient
 from attest.api.app import create_app
 from attest.ingestion.prior_period import (
     EdgarFetchError,
-    FetchedExhibit,
-    LiveEdgarClient,
     PriorPeriodFetcher,
     _filing_date_window,
     _strip_html,
