@@ -128,9 +128,15 @@ class PostgresFactStore:
                 )
             return [Fact.model_validate(row[0]) for row in cur.fetchall()]
 
-    def get(self, fact_id: str) -> Fact | None:
+    def get(self, fact_id: str, tenant_id: str | None = None) -> Fact | None:
         with self._conn.cursor() as cur:
-            cur.execute("SELECT data FROM facts WHERE id=%s", (fact_id,))
+            if tenant_id is not None:
+                cur.execute(
+                    "SELECT data FROM facts WHERE tenant_id=%s AND id=%s LIMIT 1",
+                    (tenant_id, fact_id),
+                )
+            else:
+                cur.execute("SELECT data FROM facts WHERE id=%s LIMIT 1", (fact_id,))
             row = cur.fetchone()
             return Fact.model_validate(row[0]) if row else None
 

@@ -8,6 +8,8 @@ accountability: Attest never silently changes a disclosure.
 
 from __future__ import annotations
 
+import uuid
+
 from attest.audit.events import EventType
 from attest.audit.log import AuditLog, InMemoryAuditLog
 from collections.abc import Iterable, Mapping
@@ -285,7 +287,11 @@ class AttestService:
         """
         entity = entity or self.default_entity(tenant_id)
         period = period or infer_period(title, text)
-        doc_id = document_id or kind.value
+        # Each analyzed upload is a distinct document: its verdict/sign-off/override
+        # events must be attributable to *this* draft, not conflated with the last
+        # one of the same kind. Default to a unique, human-readable id rather than
+        # the bare kind ("release"), which two different releases would have shared.
+        doc_id = document_id or f"{kind.value}-{uuid.uuid4().hex[:12]}"
         extractor = ClaimExtractor(self.registry, self.store, self.aliases_for(tenant_id))
         claims = extractor.extract(
             text, document_id=doc_id, tenant_id=tenant_id, entity=entity, period=period

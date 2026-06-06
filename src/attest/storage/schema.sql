@@ -11,13 +11,17 @@
 
 CREATE TABLE IF NOT EXISTS facts (
     seq        BIGSERIAL PRIMARY KEY,          -- stable insertion order (ties on as_of)
-    id         TEXT        NOT NULL UNIQUE,     -- the fact's own id; dedupe key
+    id         TEXT        NOT NULL,            -- the fact's own id (derived from the filing)
     tenant_id  TEXT        NOT NULL,
     entity     TEXT        NOT NULL,
     metric     TEXT        NOT NULL,
     period     TEXT        NOT NULL,
     as_of      TEXT        NOT NULL,            -- ISO date the value was established/restated
-    data       JSONB       NOT NULL             -- the full Fact, model_dump(mode="json")
+    data       JSONB       NOT NULL,            -- the full Fact, model_dump(mode="json")
+    -- A fact id is only unique within a tenant: it is derived from the filing
+    -- (accession:metric:period:as_of) and carries no tenant, so the same filing
+    -- ingested by two tenants yields identical ids. Scope the dedupe per tenant.
+    UNIQUE (tenant_id, id)
 );
 
 -- Resolution is always by scope, newest-version-last; this index serves both

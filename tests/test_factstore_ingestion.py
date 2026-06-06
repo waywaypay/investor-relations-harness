@@ -32,6 +32,35 @@ def test_duplicate_id_rejected():
         pass
 
 
+def test_same_fact_id_isolated_across_tenants():
+    # Fact ids are derived from the filing (no tenant), so the same filing
+    # ingested by two tenants yields identical ids. Dedupe is per-tenant, so this
+    # must not collide — and each tenant must see only its own fact.
+    store = InMemoryFactStore()
+    a = Fact(
+        id="acc:total_revenue:FY2026-Q1:2026-04-28", tenant_id="alpha", entity="MRDN",
+        metric="total_revenue", period="FY2026-Q1", value=Decimal("100"),
+        unit=Unit.CURRENCY, source_type=SourceType.EDGAR_XBRL, as_of="2026-04-28",
+    )
+    b = a.model_copy(update={"tenant_id": "beta"})
+    store.add(a)
+    store.add(b)  # must not raise despite the identical id
+    assert len(store.all("alpha")) == 1
+    assert len(store.all("beta")) == 1
+    assert store.get(a.id, tenant_id="alpha").tenant_id == "alpha"
+    assert store.get(a.id, tenant_id="beta").tenant_id == "beta"
+
+
+def test_demo_ingests_into_multiple_tenants():
+    # The API seeds the demo into one tenant on startup; ingesting the same demo
+    # filing into another tenant must succeed (the cross-tenant collision bug).
+    store = InMemoryFactStore()
+    for tenant in ("meridian", "acme", "brandnew"):
+        facts, _ = XBRLConnector().fetch(load_fixture("meridian_q1_fy2026"), tenant_id=tenant)
+        store.add_many(facts)
+    assert len(store.all("meridian")) == len(store.all("acme")) > 0
+
+
 def test_xbrl_ingestion_maps_tags_and_precision():
     store = InMemoryFactStore()
     facts, report = XBRLConnector().fetch(load_fixture("meridian_q1_fy2026"), tenant_id="meridian")

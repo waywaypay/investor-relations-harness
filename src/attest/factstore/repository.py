@@ -41,12 +41,17 @@ class InMemoryFactStore:
     def __init__(self) -> None:
         # scope_key -> list[Fact] (insertion order preserved, sorted on read)
         self._by_scope: dict[tuple[str, str, str, str], list[Fact]] = {}
-        self._by_id: dict[str, Fact] = {}
+        # A fact id is only unique *within a tenant* — the id is derived from the
+        # filing (accession:metric:period:as_of) and carries no tenant, so the same
+        # filing ingested by two tenants yields identical ids. Keying the dedupe on
+        # (tenant_id, id) keeps each tenant's store isolated, matching scope_key.
+        self._by_id: dict[tuple[str, str], Fact] = {}
 
     def add(self, fact: Fact) -> None:
-        if fact.id in self._by_id:
+        key = (fact.tenant_id, fact.id)
+        if key in self._by_id:
             raise ValueError(f"duplicate fact id: {fact.id}")
-        self._by_id[fact.id] = fact
+        self._by_id[key] = fact
         self._by_scope.setdefault(fact.scope_key(), []).append(fact)
 
     def add_many(self, facts: Iterable[Fact]) -> int:
@@ -70,5 +75,12 @@ class InMemoryFactStore:
             facts = [f for f in facts if f.tenant_id == tenant_id]
         return facts
 
-    def get(self, fact_id: str) -> Fact | None:
-        return self._by_id.get(fact_id)
+    def get(self, fact_id: str, tenant_id: str | None = None) -> Fact | None:
+        if tenant_id is not None:
+            return self._by_id.get((tenant_id, fact_id))
+        # Tenant-agnostic lookup: ids are unique within a tenant, so fall back to
+        # the first match across tenants when no tenant is given.
+        for (tid, fid), fact in self._by_id.items():
+            if fid == fact_id:
+                return fact
+        return None
