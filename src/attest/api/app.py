@@ -26,6 +26,9 @@ from attest.api.schemas import (
     GuidanceIngestRequest,
     IngestResponse,
     OverrideRequest,
+    PriorPeriodExhibit,
+    PriorPeriodIngestRequest,
+    PriorPeriodIngestResponse,
     SignOffRequest,
     VerifyResponse,
 )
@@ -249,6 +252,46 @@ def create_app(service: AttestService | None = None, *, seed_demo: bool = False)
         except RuntimeError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         return _to_verify_response(result)
+
+    @app.post("/tenants/{tenant_id}/ingest/prior-period", response_model=PriorPeriodIngestResponse)
+    def ingest_prior_period(
+        tenant_id: str, req: PriorPeriodIngestRequest, svc: AttestService = Depends(get_service)
+    ) -> PriorPeriodIngestResponse:
+        """Auto-fetch the prior quarter's 8-K press release from EDGAR and ingest it.
+
+        Derives the prior fiscal period from ``period``, locates the matching
+        earnings 8-K on EDGAR (item 2.02 · Results of Operations), fetches
+        Exhibit 99.1 prose, and ingests it via the guidance connector. Each
+        extracted figure is stored with a citation to the exact sentence it came
+        from, so later drafts that reference prior-period figures can tie out to
+        the filed source automatically.
+
+        If ``cik`` is omitted it is resolved from ``entity`` via the SEC
+        company-tickers list. Returns an empty ``exhibits`` list when no matching
+        filing is found — the caller can surface this as "no prior period data
+        available" without treating it as an error.
+        """
+        reports, prev, exhibits = svc.fetch_prior_period(
+            tenant_id=tenant_id,
+            entity=req.entity,
+            period=req.period,
+            cik=req.cik,
+        )
+        exhibit_summaries = [
+            PriorPeriodExhibit(
+                accession=ex.accession,
+                filing_date=ex.filing_date,
+                label=ex.label,
+                ingested=rpt.ingested,
+                skipped=rpt.skipped,
+            )
+            for ex, rpt in zip(exhibits, reports)
+        ]
+        return PriorPeriodIngestResponse(
+            prior_period=prev,
+            exhibits=exhibit_summaries,
+            total_ingested=sum(r.ingested for r in reports),
+        )
 
     @app.post("/tenants/{tenant_id}/ingest/demo", response_model=IngestResponse)
     def ingest_demo(tenant_id: str, svc: AttestService = Depends(get_service)) -> IngestResponse:
