@@ -32,6 +32,8 @@ function Workspace() {
   const [uploadTarget, setUploadTarget] = useState<LibraryDoc | null>(null);
   // Whether a fresh upload opens as a draft to verify or a prior disclosure.
   const [uploadRole, setUploadRole] = useState<"draft" | "reference">("draft");
+  // Which source tab the reference modal opens on.
+  const [uploadSource, setUploadSource] = useState<"edgar" | "historical" | "file" | undefined>(undefined);
   // The documents manager is a full view in the stage (view === "manager"), not a
   // modal — scoped to a category and/or focused on a document via these.
   const [managerFocus, setManagerFocus] = useState<string | null>(null);
@@ -65,8 +67,8 @@ function Workspace() {
 
   // Upload entry points: a fresh document (as a draft or a prior disclosure), or a
   // new version of an existing one.
-  const openUploadNew = (role: "draft" | "reference" = "draft") => {
-    setUploadTarget(null); setUploadRole(role); setUploadOpen(true);
+  const openUploadNew = (role: "draft" | "reference" = "draft", source?: "edgar" | "historical" | "file") => {
+    setUploadTarget(null); setUploadRole(role); setUploadSource(source); setUploadOpen(true);
   };
   const openUploadVersion = (doc: LibraryDoc) => { setUploadTarget(doc); setUploadOpen(true); };
   // Open the manager as a stage view — optionally focused on a document, or
@@ -79,7 +81,7 @@ function Workspace() {
     <>
       <TopBar activeDoc={activeDoc?.id ?? null} filter={filter} setFilter={setFilter} />
       <div className="layout">
-        <Sidebar view={view} setView={setView} onUpload={() => openUploadNew()} onManage={openManager} />
+        <Sidebar view={view} setView={setView} onUpload={() => openUploadNew()} onManage={openManager} onOpenReference={() => openUploadNew("reference", "historical")} />
         <div className="stage">
           {activeDoc && (
             <div style={{ width: "100%" }}>
@@ -135,7 +137,8 @@ function Workspace() {
         <UploadModal
           target={uploadTarget}
           initialRole={uploadRole}
-          onClose={() => { setUploadOpen(false); setUploadTarget(null); setUploadRole("draft"); }}
+          initialSource={uploadSource}
+          onClose={() => { setUploadOpen(false); setUploadTarget(null); setUploadRole("draft"); setUploadSource(undefined); }}
           onUploaded={(id) => setView(id)}
         />
       )}

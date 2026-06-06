@@ -39,6 +39,8 @@ const ICON_CONSENSUS =
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18"/><rect x="5" y="11" width="3" height="7"/><rect x="10.5" y="7" width="3" height="11"/><rect x="16" y="13" width="3" height="5"/></svg>';
 const ICON_CALENDAR =
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></svg>';
+const ICON_HISTORICAL =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.35-4.35"/></svg>';
 
 // Document categories, in display order. Labels are plain-language and distinct
 // from any document name, so a first-time user reads the workspace at a glance.
@@ -55,12 +57,15 @@ export function Sidebar({
   setView,
   onUpload,
   onManage,
+  onOpenReference,
 }: {
   view: View;
   setView: (v: View) => void;
   onUpload: () => void;
   /** Open the documents manager — focused on a document, or scoped to a category. */
   onManage: (focusDocId?: string, kind?: DocKind) => void;
+  /** Open the reference modal to load prior disclosures as reference corpus. */
+  onOpenReference: () => void;
 }) {
   const store = useStore();
   // Categories are collapsed by default — the rail shows just the types; a click
@@ -143,7 +148,30 @@ export function Sidebar({
       <div className="sb-cats">
         <NavItem id="consensus" name="Street consensus" icon={ICON_CONSENSUS} view={view} setView={setView} />
         <NavItem id="calendar" name="Calendar & tasks" icon={ICON_CALENDAR} view={view} setView={setView} />
+        <button
+          className="sb-doc tool"
+          onClick={onOpenReference}
+          title="Search the web for past earnings releases and call transcripts to load as reference"
+        >
+          <span className="sb-doc-ic" dangerouslySetInnerHTML={{ __html: ICON_HISTORICAL }} />
+          <span className="sb-doc-name">Fetch historical</span>
+        </button>
       </div>
+
+      {store.referenceEntries.length > 0 && (
+        <>
+          <div className="sb-cap">Reference corpus</div>
+          <div className="sb-reflist">
+            {store.referenceEntries.map((e) => (
+              <div key={e.id} className="sb-refitem">
+                <span className="sb-refent">{e.entity}</span>
+                <span className="sb-refl">{e.label}</span>
+                <span className="sb-refn">{e.count > 0 ? e.count : "—"}</span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
     </aside>
   );
 }

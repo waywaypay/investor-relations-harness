@@ -22,11 +22,20 @@ import {
 type FigureMap = Record<string, Figure>;
 type NarrativeMap = Record<string, Narrative>;
 
+interface ReferenceEntry {
+  id: string;
+  entity: string;
+  label: string;
+  count: number;
+  addedAt: string;
+}
+
 interface Store {
   figures: FigureMap;
   narratives: NarrativeMap;
   commitments: Commitment[];
   library: LibraryDoc[];
+  referenceEntries: ReferenceEntry[];
   toast: string | null;
 
   showToast: (msg: string) => void;
@@ -52,7 +61,7 @@ interface Store {
   /** Search the web for an issuer's historical earnings docs to review before loading. */
   searchHistorical: (entity: string, docTypes?: string[]) => Promise<HistoricalCandidate[]>;
   /** Fetch + file the selected historical documents as reference. Returns figures filed. */
-  ingestHistorical: (entity: string, items: { url: string; title?: string }[]) => Promise<number>;
+  ingestHistorical: (entity: string, items: { url: string; title?: string; period?: string }[]) => Promise<number>;
   removeDoc: (id: string) => void;
   /** Make a stored version the one the document renders. */
   setActiveVersion: (docId: string, versionId: string) => void;
@@ -147,6 +156,7 @@ export function StoreProvider({
     ...(seedDemo ? clone(DEMO_LIBRARY) : []),
     ...persisted.docs,
   ]);
+  const [referenceEntries, setReferenceEntries] = useState<ReferenceEntry[]>([]);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | undefined>(undefined);
 
@@ -397,15 +407,19 @@ export function StoreProvider({
 
   const ingestDisclosure = useCallback(
     async (input: DisclosureInput): Promise<number> => {
-      // Consistency-only: this is a backend capability (the figures become the
-      // reference a later draft is compared against), so there is no offline
-      // fallback — a failure surfaces to the modal.
       const result = await client.ingestDisclosure(input);
       const name = input.label || input.file?.name || "prior disclosure";
+      const entity = input.entity?.toUpperCase() || "—";
+      if (result.ingested > 0) {
+        setReferenceEntries((prev) => [
+          ...prev,
+          { id: `disclosure:${name}:${Date.now()}`, entity, label: name, count: result.ingested, addedAt: new Date().toISOString().slice(0, 10) },
+        ]);
+      }
       showToast(
         result.ingested
-          ? `Filed ${result.ingested} reference figure${result.ingested > 1 ? "s" : ""} from “${name}”.`
-          : `No recognizable figures in “${name}” — nothing to reference.`
+          ? `Filed ${result.ingested} reference figure${result.ingested > 1 ? "s" : ""} from "${name}".`
+          : `No recognizable figures in "${name}" — nothing to reference.`
       );
       return result.ingested;
     },
@@ -415,10 +429,17 @@ export function StoreProvider({
   const ingestEdgar = useCallback(
     async (ticker: string, maxYears?: number): Promise<number> => {
       const result = await client.ingestEdgar(ticker, maxYears);
+      const sym = ticker.toUpperCase();
+      if (result.ingested > 0) {
+        setReferenceEntries((prev) => [
+          ...prev,
+          { id: `edgar:${sym}:${Date.now()}`, entity: sym, label: "EDGAR XBRL facts", count: result.ingested, addedAt: new Date().toISOString().slice(0, 10) },
+        ]);
+      }
       showToast(
         result.ingested
-          ? `Loaded ${result.ingested} EDGAR fact${result.ingested > 1 ? "s" : ""} for ${ticker.toUpperCase()}.`
-          : `No XBRL facts found for ${ticker.toUpperCase()} — nothing loaded.`
+          ? `Loaded ${result.ingested} EDGAR fact${result.ingested > 1 ? "s" : ""} for ${sym}.`
+          : `No XBRL facts found for ${sym} — nothing loaded.`
       );
       return result.ingested;
     },
@@ -428,11 +449,18 @@ export function StoreProvider({
   const fetchPriorPeriod = useCallback(
     async (ticker: string, period: string): Promise<number> => {
       const result = await client.fetchPriorPeriod(ticker, period);
+      const sym = ticker.toUpperCase();
       const priorLabel = result.prior_period ?? "prior period";
+      if (result.total_ingested > 0) {
+        setReferenceEntries((prev) => [
+          ...prev,
+          { id: `edgar-8k:${sym}:${priorLabel}:${Date.now()}`, entity: sym, label: `${priorLabel} 8-K`, count: result.total_ingested, addedAt: new Date().toISOString().slice(0, 10) },
+        ]);
+      }
       showToast(
         result.total_ingested
-          ? `Fetched ${result.total_ingested} figure${result.total_ingested > 1 ? "s" : ""} from ${ticker.toUpperCase()} ${priorLabel} 8-K.`
-          : `No press-release figures found for ${ticker.toUpperCase()} ${priorLabel}.`
+          ? `Fetched ${result.total_ingested} figure${result.total_ingested > 1 ? "s" : ""} from ${sym} ${priorLabel} 8-K.`
+          : `No press-release figures found for ${sym} ${priorLabel}.`
       );
       return result.total_ingested;
     },
@@ -449,13 +477,26 @@ export function StoreProvider({
   );
 
   const ingestHistorical = useCallback(
-    async (entity: string, items: { url: string; title?: string }[]): Promise<number> => {
+    async (entity: string, items: { url: string; title?: string; period?: string }[]): Promise<number> => {
       const result = await client.ingestHistorical(entity, items);
       const docs = result.documents.length;
+      const sym = entity.toUpperCase();
+      if (docs > 0) {
+        const newEntries: ReferenceEntry[] = result.documents.map((d) => ({
+          id: `historical:${d.url}`,
+          entity: sym,
+          label: d.title || d.url,
+          count: d.ingested,
+          addedAt: d.published_date || new Date().toISOString().slice(0, 10),
+        }));
+        setReferenceEntries((prev) => [...prev, ...newEntries]);
+      }
       showToast(
         result.total_ingested
           ? `Filed ${result.total_ingested} reference figure${result.total_ingested > 1 ? "s" : ""} from ${docs} document${docs > 1 ? "s" : ""}.`
-          : `Loaded ${docs} document${docs > 1 ? "s" : ""} — no recognizable figures to reference.`
+          : docs > 0
+            ? `Fetched ${docs} document${docs > 1 ? "s" : ""} — no figures extracted. Try specifying a valid ticker.`
+            : "No documents fetched — check the company name or try a ticker symbol."
       );
       return result.total_ingested;
     },
@@ -541,7 +582,7 @@ export function StoreProvider({
 
   const value = useMemo<Store>(
     () => ({
-      figures, narratives, commitments, library, toast,
+      figures, narratives, commitments, library, referenceEntries, toast,
       showToast, editFigure, bindFigure, resolveFigure, restoreFigure,
       removeFigure, addFigure, resolveNarrative, addressCommitment,
       uploadDocument, ingestDisclosure, ingestEdgar, fetchPriorPeriod,
@@ -549,7 +590,7 @@ export function StoreProvider({
       removeDoc, setActiveVersion, removeVersion, renameDoc,
     }),
     [
-      figures, narratives, commitments, library, toast, showToast, editFigure, bindFigure,
+      figures, narratives, commitments, library, referenceEntries, toast, showToast, editFigure, bindFigure,
       resolveFigure, restoreFigure, removeFigure, addFigure, resolveNarrative, addressCommitment,
       uploadDocument, ingestDisclosure, ingestEdgar, fetchPriorPeriod,
       searchHistorical, ingestHistorical,
