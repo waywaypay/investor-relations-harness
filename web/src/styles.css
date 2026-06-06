@@ -140,6 +140,10 @@ body{font-family:var(--ui);background:var(--paper);color:var(--ink);
 .uperr{background:var(--flag-bg);border:1px solid #e6b5ad;color:var(--flag);border-radius:9px;padding:10px 13px;font-size:12.5px;line-height:1.5}
 .upacts{display:flex;justify-content:flex-end;gap:10px;margin-top:4px}
 .upacts .btn{min-width:120px}
+.upsrctoggle{display:flex;gap:6px}
+.upsrc{flex:1;padding:8px 12px;font-size:12.5px;font-weight:600;font-family:var(--ui);border:1px solid var(--line-strong);border-radius:8px;background:#fff;cursor:pointer;color:var(--muted);transition:.15s}
+.upsrc:hover{border-color:var(--accent);color:var(--accent)}
+.upsrc.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);background:var(--verified-bg);color:var(--accent)}
 
 /* consensus + calendar shared */
 .cwrap{width:100%;max-width:680px}
