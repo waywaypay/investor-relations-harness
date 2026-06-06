@@ -469,4 +469,12 @@ def create_app(service: AttestService | None = None) -> FastAPI:
     return app
 
 
-app = create_app()
+# The deployed ASGI app (uvicorn attest.api.app:app). Built from the environment
+# so a deployment gets the configured storage backend *and* live EDGAR tie-out by
+# default — see attest.storage.factory.service_from_env, where ATTEST_EDGAR
+# defaults on for this interactive path (set ATTEST_EDGAR=off to disable). Tests
+# call create_app() directly, which keeps EDGAR opt-in and never touches the
+# network on import.
+from attest.storage.factory import service_from_env  # noqa: E402
+
+app = create_app(service_from_env())
