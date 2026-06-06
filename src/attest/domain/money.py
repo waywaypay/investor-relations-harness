@@ -198,7 +198,20 @@ def parse_quantity(text: str) -> Quantity:
     if not s:
         raise QuantityParseError("cannot parse empty string")
 
-    negative_paren = s.startswith("(") and s.endswith(")")
+    # Sign, resolved once. Accounting writes a loss/decline in parentheses — and
+    # they may wrap the whole figure or only the magnitude: "($0.12)", "$(0.12)",
+    # "($45) million", "$(45) million", "(45 million)", "(5)%". A figure string has
+    # no other use for parentheses, so any balanced pair marks a negative; we strip
+    # the parens (and a leading minus, "-$0.12") so the format matchers below read a
+    # clean, unsigned magnitude and the sign is applied uniformly at the end.
+    negative_paren = "(" in s and ")" in s
+    if negative_paren:
+        s = s.replace("(", "").replace(")", "").strip()
+    if s[:1] == "-":
+        negative_paren = not negative_paren
+        s = s[1:].strip()
+    elif s[:1] == "+":
+        s = s[1:].strip()
 
     m = _RE_PERCENT.match(s)
     if m:

@@ -37,8 +37,12 @@ _ALIASES: dict[str, tuple[str, ...]] = {
     "total_revenue": ("total revenue", "total net revenue", "net revenue", "revenue", "net sales", "total sales", "sales"),
     "cloud_revenue": ("cloud segment revenue", "cloud revenue", "cloud segment", "cloud business"),
     "cloud_growth_yoy": ("cloud growth", "cloud segment revenue grew", "cloud revenue grew", "cloud"),
-    "gaap_diluted_eps": ("gaap diluted eps", "gaap eps", "gaap diluted earnings per share", "diluted eps", "diluted earnings per share", "earnings per share"),
-    "non_gaap_diluted_eps": ("non-gaap diluted eps", "non gaap diluted eps", "adjusted diluted eps", "non-gaap eps", "adjusted eps", "non-gaap diluted earnings per share"),
+    # "loss per share" is the same EPS line item when the period is a loss — a
+    # company in the red writes "diluted loss per share", never "earnings". Without
+    # these, the loss figure (already the most consequential number to verify) lands
+    # unidentified and ships untraced.
+    "gaap_diluted_eps": ("gaap diluted eps", "gaap eps", "gaap diluted earnings per share", "gaap diluted loss per share", "diluted eps", "diluted earnings per share", "diluted loss per share", "earnings per share", "loss per share", "net loss per share"),
+    "non_gaap_diluted_eps": ("non-gaap diluted eps", "non gaap diluted eps", "adjusted diluted eps", "non-gaap eps", "adjusted eps", "non-gaap diluted earnings per share", "non-gaap diluted loss per share", "adjusted diluted loss per share", "non-gaap loss per share", "adjusted loss per share"),
     "operating_cash_flow": ("operating cash flow", "cash flow from operations", "cash provided by operating activities", "cash from operations"),
     "net_income": ("net income", "net earnings"),
     "operating_income": ("operating income", "income from operations", "operating profit"),

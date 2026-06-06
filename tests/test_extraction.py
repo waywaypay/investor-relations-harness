@@ -281,6 +281,27 @@ def test_candidate_detection_handles_spoken_figures():
     assert not detect_candidates("In fiscal 2026 we expanded the platform.")
 
 
+def test_candidate_detection_handles_accounting_loss_notation():
+    from attest.verification.candidates import detect_candidates
+
+    # A loss written in parentheses must be detected *and* carry a negative value —
+    # not dropped (ships unverified) and not stripped to a positive (a wrong number).
+    def one(text):
+        cands = detect_candidates(text)
+        assert len(cands) == 1, f"{text!r} -> {[c.text for c in cands]}"
+        return cands[0]
+
+    assert one("GAAP diluted loss per share was $(0.12).").quantity.value < 0
+    assert one("GAAP diluted loss per share was ($0.12).").quantity.value < 0
+    assert one("Net loss of $(45.0) million.").quantity.value < 0
+    assert one("Net loss of ($45.0) million.").quantity.value < 0
+    # An unbalanced, grammatical paren is trimmed, not read as a sign, and the span
+    # tracks the trim so the highlight stays on the figure.
+    c = one("Non-GAAP EPS was ($1.12 adjusted)")
+    assert c.text == "$1.12" and c.quantity.value > 0
+    assert "Non-GAAP EPS was ($1.12 adjusted)"[c.span[0] : c.span[1]] == "$1.12"
+
+
 def test_full_pipeline_traces_a_spoken_transcript():
     svc = seeded_service()
     _, result, entity, period = svc.analyze_text(
@@ -403,6 +424,46 @@ def test_forward_looking_revenue_does_not_conflict_with_the_current_period():
     fwd = [c for c in doc.claims if c.metric == "total_revenue" and c.period == "FY2026-Q2"]
     assert fwd, "a forward-looking revenue figure should route to the guidance period"
     assert any(f.rule == "forward_looking.safe_harbor_required" for f in result.findings)
+
+
+def test_reported_loss_ties_out_against_a_filed_negative_value():
+    """End to end: a company that reports a loss writes it in parentheses. The draft's
+    "$(0.12)" must tie out to a filed -0.12, and conflict with a filed +0.12 — never
+    silently read the loss as a positive (which would falsely bless a wrong number)."""
+    from decimal import Decimal
+
+    from attest.domain.facts import Confidence, Fact, SourceType
+    from attest.domain.money import Unit
+
+    def service_with_eps(value: str):
+        svc = seeded_service()
+        svc.store.add(
+            Fact(
+                id=f"loss-{value}", tenant_id="meridian", entity="MRDN",
+                metric="gaap_diluted_eps", period="FY2027-Q1",
+                value=Decimal(value), unit=Unit.CURRENCY, quantum=Decimal("0.01"),
+                source_type=SourceType.EDGAR_XBRL, source_ref="acc#eps",
+                source_label="10-Q", as_of="2026-09-01", confidence=Confidence.HIGH,
+            )
+        )
+        return svc
+
+    draft = "GAAP diluted loss per share was $(0.12) for the quarter."
+    # Filed value is the same loss -> traced.
+    _, traced, _, _ = service_with_eps("-0.12").analyze_text(
+        tenant_id="meridian", text=draft, title="Q1 FY2027 release",
+        kind=DocumentKind.RELEASE, entity="MRDN", period="FY2027-Q1",
+    )
+    eps = {v.metric: v for v in traced.verdicts}["gaap_diluted_eps"]
+    assert eps.verdict.value == "traced", eps.reason
+
+    # Filed value is a *gain* of +0.12 -> the loss must not be blessed as a match.
+    _, conflict, _, _ = service_with_eps("0.12").analyze_text(
+        tenant_id="meridian", text=draft, title="Q1 FY2027 release",
+        kind=DocumentKind.RELEASE, entity="MRDN", period="FY2027-Q1",
+    )
+    eps2 = {v.metric: v for v in conflict.verdicts}["gaap_diluted_eps"]
+    assert eps2.verdict.value != "traced", "a loss must not tie out to a filed gain"
 
 
 def test_retrospective_quarter_opener_does_not_misperiodize_current_figures():
