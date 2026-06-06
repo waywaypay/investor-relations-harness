@@ -146,7 +146,12 @@ class HttpEdgarClient:
         except urllib.error.HTTPError as exc:
             if exc.code == 404:  # tag not reported by this issuer — not an error
                 return None
-            raise
+            # Any other HTTP status is an availability failure, not a clean result:
+            # SEC throttling (403/429) or an outage (5xx) must degrade to an honest
+            # "couldn't reach EDGAR" warning, never crash the upload that triggered
+            # the fetch. Conflating these with a hard error breaks the documented
+            # guarantee that an EDGAR outage adds a warning, not a failure.
+            raise EdgarUnavailable(f"HTTP {exc.code} from {url}") from exc
         except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
             raise EdgarUnavailable(str(exc)) from exc
 
