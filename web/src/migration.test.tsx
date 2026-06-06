@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, within } from "@testing-library/react";
 import { App } from "./App";
 
 // Regression: a returning user has uploaded documents persisted by an older
@@ -42,6 +42,9 @@ describe("persisted-upload migration", () => {
     render(<App />);
     // The legacy doc's unknown kind buckets into "Other documents"; expand it.
     fireEvent.click(screen.getByRole("button", { name: /Expand Other documents/i }));
-    expect(screen.getByText("Legacy upload")).toBeInTheDocument();
+    // With an empty demo library the sole upload also opens in the stage, so scope
+    // the library assertion to the sidebar to stay unambiguous.
+    const sidebar = document.querySelector("aside.sidebar") as HTMLElement;
+    expect(within(sidebar).getByText("Legacy upload")).toBeInTheDocument();
   });
 });

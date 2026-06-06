@@ -17,7 +17,10 @@ type View = string; // a library doc id, or "consensus" | "calendar"
 
 function Workspace() {
   const store = useStore();
-  const [view, setView] = useState<View>("release");
+  // Open on the first document the workspace actually has — a returning user's
+  // upload, or a seeded sample in tests. With an empty library this falls through
+  // to the empty state rather than pointing at a document that isn't there.
+  const [view, setView] = useState<View>(() => store.library[0]?.id ?? "");
   const [filter, setFilter] = useState("all");
   const [pop, setPop] = useState<PopTarget>(null);
   const [figModal, setFigModal] = useState<string | null>(null);
@@ -93,6 +96,21 @@ function Workspace() {
               />
             </div>
           )}
+          {isDoc && !activeDoc && (
+            <div className="stage-empty">
+              <div className="stage-empty-card">
+                <h2>No documents yet</h2>
+                <p>
+                  Upload an earnings release, call transcript, or Q&amp;A draft and
+                  Attest detects every figure, ties each one out against your filed
+                  sources, and runs the disclosure checks.
+                </p>
+                <button className="btn go" onClick={() => openUploadNew()}>
+                  + Add a document
+                </button>
+              </div>
+            </div>
+          )}
           {view === "consensus" && <Consensus />}
           {view === "calendar" && <Calendar />}
           {isManager && (
@@ -137,9 +155,9 @@ function Workspace() {
   );
 }
 
-export function App() {
+export function App({ seedDemo = false }: { seedDemo?: boolean } = {}) {
   return (
-    <StoreProvider>
+    <StoreProvider seedDemo={seedDemo}>
       <Workspace />
     </StoreProvider>
   );

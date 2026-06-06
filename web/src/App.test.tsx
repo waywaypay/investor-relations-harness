@@ -3,7 +3,11 @@ import { render, screen, fireEvent, within } from "@testing-library/react";
 import { App } from "./App";
 
 describe("Attest workspace", () => {
-  beforeEach(() => render(<App />));
+  // These exercise the document-rendering features (coverage, figure modal,
+  // inline edit, narrative bar) against the bundled sample close pack, so they
+  // opt into seeding it. The app itself now loads empty — see the "empty
+  // workspace" suite below.
+  beforeEach(() => render(<App seedDemo />));
 
   it("renders the brand and the release as the default document", () => {
     expect(screen.getByText("Attest")).toBeInTheDocument();
@@ -73,7 +77,7 @@ describe("Attest workspace", () => {
 
   it("on the script, surfaces the narrative summary bar", () => {
     // Categories are collapsed by default — expand "Call scripts" to reveal the doc.
-    fireEvent.click(screen.getByRole("button", { name: /Expand Call scripts/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Expand Transcripts/i }));
     fireEvent.click(screen.getByText("Prepared remarks"));
     expect(screen.getByText(/Narrative & language/i)).toBeInTheDocument();
     // the data-conflict narrative ("accelerating") is present in the script
@@ -138,8 +142,8 @@ describe("document library & upload", () => {
 
     // Delete it from the documents manager (rename/delete/version actions live
     // there now, keeping the sidebar uncluttered). The manager opens in the main
-    // stage, not a modal.
-    fireEvent.click(screen.getByRole("button", { name: /Manage all/i }));
+    // stage from the document's "History" control, not a modal.
+    fireEvent.click(screen.getByRole("button", { name: /History/i }));
     const card = (screen.getByDisplayValue("Uploaded document").closest(".dmrow")) as HTMLElement;
     fireEvent.click(within(card).getByRole("button", { name: /Delete document/i }));
     expect(screen.queryByDisplayValue("Uploaded document")).not.toBeInTheDocument();
@@ -172,11 +176,18 @@ describe("document library & upload", () => {
     expect(await screen.findByText("$1.0 billion")).toBeInTheDocument();
   });
 
-  it("opens the documents manager from the 'Manage all' link and lets you rename a document", () => {
-    fireEvent.click(screen.getByRole("button", { name: /Manage all/i }));
+  it("opens the documents manager from a document's History and lets you rename it", async () => {
+    fireEvent.click(screen.getByRole("button", { name: /Add document/i }));
+    fireEvent.change(screen.getByPlaceholderText(/Paste your draft/i), {
+      target: { value: "Revenue was $2.0 billion this quarter." },
+    });
+    fireEvent.click(screen.getByText(/Analyze & add/i));
+    await screen.findByText("$2.0 billion");
+
+    // Open the manager from the document's History control and rename the upload.
+    fireEvent.click(screen.getByRole("button", { name: /History/i }));
     expect(screen.getByText("Manage documents")).toBeInTheDocument();
-    // The bundled samples are listed and can be renamed.
-    const rename = screen.getByLabelText(/Rename Earnings release/i) as HTMLInputElement;
+    const rename = screen.getByLabelText(/Rename Uploaded document/i) as HTMLInputElement;
     fireEvent.change(rename, { target: { value: "Q1 release (renamed)" } });
     fireEvent.blur(rename);
     expect(screen.getAllByDisplayValue("Q1 release (renamed)").length).toBeGreaterThan(0);
@@ -185,8 +196,32 @@ describe("document library & upload", () => {
   it("opens the manager scoped to a category to upload past transcripts", () => {
     // Clicking a document category in the sidebar opens the manager focused on
     // that type, where past filings/transcripts for the company can be uploaded.
-    fireEvent.click(screen.getByRole("button", { name: /Manage Earnings releases/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Manage Press releases/i }));
     expect(screen.getByText(/Past filings, transcripts/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Upload past transcript/i })).toBeInTheDocument();
+  });
+});
+
+describe("empty workspace (no demo seed)", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    render(<App />);
+  });
+
+  it("loads with no demo documents — no Atlas close pack, just a prompt to add one", () => {
+    // Regression: the bundled Atlas sample close pack must not be seeded on load,
+    // so a refresh never resurrects fake documents.
+    expect(
+      screen.queryByText(/Atlas Systems Reports First Quarter Fiscal 2026 Results/i)
+    ).not.toBeInTheDocument();
+    // The stage instead invites the user to add their own document.
+    expect(screen.getByText(/No documents yet/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Add a document/i })).toBeInTheDocument();
+  });
+
+  it("shows the press-releases category as empty in the sidebar", () => {
+    // Every document category starts at a zero count until the user uploads.
+    const press = screen.getByRole("button", { name: /Manage Press releases/i });
+    expect(press.textContent).toMatch(/0\s*$/);
   });
 });
