@@ -13,10 +13,10 @@ from attest.service import AttestService
 from test_edgar_ingestion import panw_client
 
 RELEASE = (
-    "Meridian Systems reported total revenue of $1.24 billion, up 18% year over year. "
+    "Atlas Systems reported total revenue of $1.24 billion, up 18% year over year. "
     "The company delivered GAAP diluted EPS of $0.87 and non-GAAP diluted EPS of $1.12. "
     "Cloud segment revenue reached $612 million, up 31% from the prior-year period. "
-    "Operating cash flow was $338 million. Meridian repurchased $250 million of common "
+    "Operating cash flow was $338 million. The company repurchased $250 million of common "
     "stock. For the second quarter, the company expects total revenue in the range of "
     "$1.31 to $1.34 billion."
 )
@@ -27,10 +27,15 @@ def client():
     return TestClient(create_app())
 
 
-def _seed_demo(client):
-    r = client.post("/tenants/meridian/ingest/demo")
+def _seed_xbrl(client, tenant="atlas"):
+    from attest.ingestion.edgar_xbrl import load_fixture
+    r = client.post(f"/tenants/{tenant}/ingest/xbrl", json=load_fixture("atlas_q1_fy2026"))
     assert r.status_code == 200
     assert r.json()["ingested"] == 15
+
+
+# Alias used by tests below; all callers seed the atlas tenant.
+_seed_demo = _seed_xbrl
 
 
 def test_home_serves_ui(client):
@@ -40,27 +45,18 @@ def test_home_serves_ui(client):
     assert "Attest" in r.text  # the served workspace (built SPA or fallback page)
 
 
-def test_ingest_demo_seeds_filed_sources(client):
-    _seed_demo(client)
-    facts = client.get("/tenants/meridian/facts").json()
+def test_ingest_xbrl_seeds_filed_sources(client):
+    _seed_xbrl(client)
+    facts = client.get("/tenants/atlas/facts").json()
     assert len(facts) == 15
 
 
-def test_ingest_demo_is_idempotent(client):
-    _seed_demo(client)
-    # Re-seeding the same tenant is a no-op, not a 500 — clicking "seed" twice or
-    # seeding a tenant the server already seeded at startup must not error.
-    r = client.post("/tenants/meridian/ingest/demo")
-    assert r.status_code == 200
-    assert r.json()["ingested"] == 0
-    assert len(client.get("/tenants/meridian/facts").json()) == 15
-
-
-def test_ingest_demo_isolated_across_tenants(client):
+def test_ingest_xbrl_isolated_across_tenants(client):
     # The same filing seeds independently into multiple tenants (no cross-tenant
     # fact-id collision), each keeping its own copy.
+    from attest.ingestion.edgar_xbrl import load_fixture
     for tenant in ("alpha", "beta"):
-        r = client.post(f"/tenants/{tenant}/ingest/demo")
+        r = client.post(f"/tenants/{tenant}/ingest/xbrl", json=load_fixture("atlas_q1_fy2026"))
         assert r.status_code == 200 and r.json()["ingested"] == 15
     assert len(client.get("/tenants/alpha/facts").json()) == 15
     assert len(client.get("/tenants/beta/facts").json()) == 15
@@ -68,7 +64,7 @@ def test_ingest_demo_isolated_across_tenants(client):
 
 def test_reingest_same_xbrl_returns_409_not_500(client):
     from attest.ingestion.edgar_xbrl import load_fixture
-    instance = load_fixture("meridian_q1_fy2026")
+    instance = load_fixture("atlas_q1_fy2026")
     assert client.post("/tenants/acme/ingest/xbrl", json=instance).status_code == 200
     r = client.post("/tenants/acme/ingest/xbrl", json=instance)
     assert r.status_code == 409
@@ -78,9 +74,9 @@ def test_reingest_same_xbrl_returns_409_not_500(client):
 def test_analyze_pasted_text_ties_out_against_filed_sources(client):
     _seed_demo(client)
     r = client.post(
-        "/tenants/meridian/analyze",
+        "/tenants/atlas/analyze",
         data={"text": RELEASE, "title": "Q1 release", "kind": "release",
-              "entity": "MRDN", "period": "FY2026-Q1"},
+              "entity": "ATLS", "period": "FY2026-Q1"},
     )
     assert r.status_code == 200
     body = r.json()
@@ -88,7 +84,7 @@ def test_analyze_pasted_text_ties_out_against_filed_sources(client):
     assert body["counts"]["conflict"] == 1       # the 31% restatement
     assert body["counts"]["needs_review"] == 1   # guidance
     assert body["publishable"] is False
-    assert body["entity"] == "MRDN" and body["period"] == "FY2026-Q1"
+    assert body["entity"] == "ATLS" and body["period"] == "FY2026-Q1"
     # Claims come back with spans so the UI can highlight figures in place.
     assert all(c["span"] is not None for c in body["claims"])
     rules = {f["rule"] for f in body["findings"]}
@@ -127,9 +123,9 @@ def test_analyze_with_filed_source_does_not_warn_about_missing_source(client):
     # no-filed-source warning is absent.
     _seed_demo(client)
     r = client.post(
-        "/tenants/meridian/analyze",
+        "/tenants/atlas/analyze",
         data={"text": RELEASE, "title": "Q1 release", "kind": "release",
-              "entity": "MRDN", "period": "FY2026-Q1"},
+              "entity": "ATLS", "period": "FY2026-Q1"},
     )
     body = r.json()
     assert body["counts"]["traced"] == 6
@@ -140,8 +136,8 @@ def test_analyze_with_filed_source_does_not_warn_about_missing_source(client):
 def test_analyze_file_upload(client):
     _seed_demo(client)
     r = client.post(
-        "/tenants/meridian/analyze",
-        data={"kind": "release", "entity": "MRDN", "period": "FY2026-Q1"},
+        "/tenants/atlas/analyze",
+        data={"kind": "release", "entity": "ATLS", "period": "FY2026-Q1"},
         files={"file": ("release.txt", RELEASE.encode(), "text/plain")},
     )
     assert r.status_code == 200
@@ -163,8 +159,8 @@ def test_analyze_docx_upload(client):
     with zipfile.ZipFile(buf, "w") as zf:
         zf.writestr("word/document.xml", xml)
     r = client.post(
-        "/tenants/meridian/analyze",
-        data={"kind": "release", "entity": "MRDN", "period": "FY2026-Q1"},
+        "/tenants/atlas/analyze",
+        data={"kind": "release", "entity": "ATLS", "period": "FY2026-Q1"},
         files={"file": ("remarks.docx", buf.getvalue(),
                         "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
     )
@@ -176,8 +172,8 @@ def test_analyze_docx_upload(client):
 def test_analyze_without_facts_is_honest_untraced_but_runs_rules(client):
     # No demo ingested: nothing can be traced, but the prose rules still fire.
     r = client.post(
-        "/tenants/meridian/analyze",
-        data={"text": RELEASE, "kind": "release", "entity": "MRDN", "period": "FY2026-Q1"},
+        "/tenants/atlas/analyze",
+        data={"text": RELEASE, "kind": "release", "entity": "ATLS", "period": "FY2026-Q1"},
     )
     assert r.status_code == 200
     body = r.json()
@@ -189,13 +185,13 @@ def test_analyze_without_facts_is_honest_untraced_but_runs_rules(client):
 
 
 def test_analyze_requires_some_input(client):
-    r = client.post("/tenants/meridian/analyze", data={"kind": "release"})
+    r = client.post("/tenants/atlas/analyze", data={"kind": "release"})
     assert r.status_code == 422
 
 
 def test_get_aliases_returns_default_vocabulary(client):
-    body = client.get("/tenants/meridian/extraction/aliases").json()
-    assert body["tenant_id"] == "meridian"
+    body = client.get("/tenants/atlas/extraction/aliases").json()
+    assert body["tenant_id"] == "atlas"
     assert "total_revenue" in body["aliases"]
 
 
@@ -204,44 +200,44 @@ def test_put_aliases_then_analyze_uses_house_style(client):
     text = "Topline was $1.24 billion for the quarter."
     # Without config the company's term isn't recognised.
     before = client.post(
-        "/tenants/meridian/analyze",
-        data={"text": text, "kind": "release", "entity": "MRDN", "period": "FY2026-Q1"},
+        "/tenants/atlas/analyze",
+        data={"text": text, "kind": "release", "entity": "ATLS", "period": "FY2026-Q1"},
     ).json()
     assert before["counts"]["traced"] == 0
 
     r = client.put(
-        "/tenants/meridian/extraction/aliases",
+        "/tenants/atlas/extraction/aliases",
         json={"aliases": {"total_revenue": ["topline"]}},
     )
     assert r.status_code == 200
     assert "topline" in r.json()["aliases"]["total_revenue"]
 
     after = client.post(
-        "/tenants/meridian/analyze",
-        data={"text": text, "kind": "release", "entity": "MRDN", "period": "FY2026-Q1"},
+        "/tenants/atlas/analyze",
+        data={"text": text, "kind": "release", "entity": "ATLS", "period": "FY2026-Q1"},
     ).json()
     assert after["counts"]["traced"] == 1  # now attributed and tied out
 
 
 def test_put_aliases_rejects_unknown_metric(client):
     r = client.put(
-        "/tenants/meridian/extraction/aliases",
+        "/tenants/atlas/extraction/aliases",
         json={"aliases": {"not_a_metric": ["foo"]}},
     )
     assert r.status_code == 422
 
 
 def test_alias_config_is_per_tenant(client):
-    client.put("/tenants/meridian/extraction/aliases", json={"aliases": {"total_revenue": ["topline"]}})
+    client.put("/tenants/atlas/extraction/aliases", json={"aliases": {"total_revenue": ["topline"]}})
     other = client.get("/tenants/acme/extraction/aliases").json()
     assert "topline" not in other["aliases"].get("total_revenue", [])
 
 
 def test_analyze_records_verdicts_in_audit_chain(client):
     _seed_demo(client)
-    client.post("/tenants/meridian/analyze",
-                data={"text": RELEASE, "kind": "release", "entity": "MRDN", "period": "FY2026-Q1"})
-    audit = client.get("/tenants/meridian/audit").json()
+    client.post("/tenants/atlas/analyze",
+                data={"text": RELEASE, "kind": "release", "entity": "ATLS", "period": "FY2026-Q1"})
+    audit = client.get("/tenants/atlas/audit").json()
     assert any(e["type"] == "verdict" for e in audit)
     assert client.get("/audit/verify").json()["intact"] is True
 
@@ -252,9 +248,9 @@ def test_analyze_assigns_unique_document_ids(client):
     _seed_demo(client)
     ids = set()
     for _ in range(3):
-        r = client.post("/tenants/meridian/analyze",
+        r = client.post("/tenants/atlas/analyze",
                         data={"text": RELEASE, "kind": "release",
-                              "entity": "MRDN", "period": "FY2026-Q1"})
+                              "entity": "ATLS", "period": "FY2026-Q1"})
         assert r.status_code == 200
         ids.add(r.json()["document_id"])
     assert len(ids) == 3

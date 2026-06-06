@@ -35,8 +35,8 @@ jobs:
         # figure false-negative rate must be 0.
         run: pytest -q
 
-      - name: Smoke-check the CLI demo
-        run: attest demo
+      - name: Smoke-check the CLI
+        run: attest verify
 
   lint:
     name: lint (ruff)

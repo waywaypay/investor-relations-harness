@@ -29,7 +29,7 @@ from attest.edge.service import EdgeService
 
 def _doc(text: str, doc_id: str = "d") -> Document:
     return Document(
-        id=doc_id, tenant_id="meridian", title="t", kind=DocumentKind.RELEASE, text=text
+        id=doc_id, tenant_id="atlas", title="t", kind=DocumentKind.RELEASE, text=text
     )
 
 
@@ -40,7 +40,7 @@ def test_proposer_maps_tool_output_to_figure_claims():
                 {
                     "displayed_text": "$1.24 billion",
                     "metric": "total_revenue",
-                    "entity": "MRDN",
+                    "entity": "ATLS",
                     "period": "FY2026-Q1",
                     "confidence": "high",
                     "span_start": 5,
@@ -49,7 +49,7 @@ def test_proposer_maps_tool_output_to_figure_claims():
                 {
                     "displayed_text": "31%",
                     "metric": "cloud_growth_yoy",
-                    "entity": "MRDN:Cloud",
+                    "entity": "ATLS:Cloud",
                     "period": "FY2026-Q1",
                     "confidence": "low",
                 },
@@ -61,7 +61,7 @@ def test_proposer_maps_tool_output_to_figure_claims():
     )
 
     assert [c.metric for c in claims] == ["total_revenue", "cloud_growth_yoy"]
-    assert claims[0].entity == "MRDN"
+    assert claims[0].entity == "ATLS"
     assert claims[0].displayed_text == "$1.24 billion"
     assert claims[0].span == (5, 18)
     assert claims[0].detect_confidence == Confidence.HIGH
@@ -86,12 +86,12 @@ def test_proposer_skips_structurally_incomplete_figures():
     client = FakeLLMClient.returning(
         {
             "figures": [
-                {"displayed_text": "$5", "metric": "", "entity": "MRDN", "period": "FY2026-Q1"},
-                {"displayed_text": "", "metric": "total_revenue", "entity": "MRDN", "period": "x"},
+                {"displayed_text": "$5", "metric": "", "entity": "ATLS", "period": "FY2026-Q1"},
+                {"displayed_text": "", "metric": "total_revenue", "entity": "ATLS", "period": "x"},
                 {
                     "displayed_text": "$5",
                     "metric": "total_revenue",
-                    "entity": "MRDN",
+                    "entity": "ATLS",
                     "period": "FY2026-Q1",
                 },
             ]
@@ -254,7 +254,7 @@ def test_edge_service_propose_replaces_claims():
                 {
                     "displayed_text": "$1.24 billion",
                     "metric": "total_revenue",
-                    "entity": "MRDN",
+                    "entity": "ATLS",
                     "period": "FY2026-Q1",
                     "confidence": "high",
                 }
@@ -357,9 +357,9 @@ def test_api_verify_use_llm_matches_and_requires_edge():
 
     # No edge configured -> use_llm rejected with a clear 422.
     plain = TestClient(create_app())
-    plain.post("/tenants/meridian/ingest/xbrl", json=load_fixture("meridian_q1_fy2026"))
+    plain.post("/tenants/atlas/ingest/xbrl", json=load_fixture("atlas_q1_fy2026"))
     r = plain.post(
-        "/tenants/meridian/verify?use_llm=true", json=release.model_dump(mode="json")
+        "/tenants/atlas/verify?use_llm=true", json=release.model_dump(mode="json")
     )
     assert r.status_code == 422
     assert "edge" in r.json()["detail"].lower()
@@ -368,7 +368,7 @@ def test_api_verify_use_llm_matches_and_requires_edge():
     service = seeded_service(edge=demo_edge_service())
     client = TestClient(create_app(service))
     body = client.post(
-        "/tenants/meridian/verify?use_llm=true", json=release.model_dump(mode="json")
+        "/tenants/atlas/verify?use_llm=true", json=release.model_dump(mode="json")
     ).json()
     assert body["counts"]["traced"] == 6
     assert body["counts"]["conflict"] == 1

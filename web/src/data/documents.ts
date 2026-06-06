@@ -29,7 +29,7 @@ export const DOCS: DocMeta[] = [
     icon: ICON_RELEASE,
     blocks: [
       { kind: "eyebrow", text: "For Immediate Release" },
-      { kind: "h1", text: "Meridian Systems Reports First Quarter Fiscal 2026 Results" },
+      { kind: "h1", text: "Atlas Systems Reports First Quarter Fiscal 2026 Results" },
       {
         kind: "dek",
         text: "Cloud segment momentum and disciplined operating leverage drive record quarterly revenue.",
@@ -39,7 +39,7 @@ export const DOCS: DocMeta[] = [
         kind: "p",
         parts: [
           t(
-            "SAN JOSE, Calif. — Meridian Systems, Inc. (NASDAQ: MRDN) today announced financial results for its first quarter ended March 31, 2026. The company reported total revenue of "
+            "SAN JOSE, Calif. — Atlas Systems, Inc. (NASDAQ: ATLS) today announced financial results for its first quarter ended March 31, 2026. The company reported total revenue of "
           ),
           f("rev"),
           t(", an increase of 18% year over year, driven by continued enterprise adoption of its cloud platform."),
@@ -72,7 +72,7 @@ export const DOCS: DocMeta[] = [
       {
         kind: "p",
         parts: [
-          t("During the quarter, Meridian repurchased "),
+          t("During the quarter, the company repurchased "),
           f("buyback"),
           t(" of common stock under its existing program."),
         ],

@@ -1,7 +1,7 @@
 {
   "accession": "0001047469-26-001234",
-  "entity": "MRDN",
-  "filer": "Meridian Systems, Inc.",
+  "entity": "ATLS",
+  "filer": "Atlas Systems, Inc.",
   "form": "10-Q",
   "period_of_report": "2026-03-31",
   "facts": [
@@ -18,14 +18,14 @@
       "as_of": "2026-04-28"
     },
     {
-      "tag": "mrdn:CloudSegmentRevenue",
-      "entity": "MRDN:Cloud",
+      "tag": "atls:CloudSegmentRevenue",
+      "entity": "ATLS:Cloud",
       "period": "FY2026-Q1",
       "value": "611800000",
       "unit": "USD",
       "decimals": -5,
       "source_type": "edgar_xbrl",
-      "source_ref": "0001047469-26-001234#mrdn:CloudSegmentRevenue",
+      "source_ref": "0001047469-26-001234#atls:CloudSegmentRevenue",
       "label": "Form 10-Q · Note 14, Segment Information · p.27",
       "excerpt": "Cloud segment revenue was $611.8 million for the quarter.",
       "as_of": "2026-04-28"
@@ -103,8 +103,8 @@
       "as_of": "2026-04-28"
     },
     {
-      "tag": "mrdn:CloudSegmentRevenue",
-      "entity": "MRDN:Cloud",
+      "tag": "atls:CloudSegmentRevenue",
+      "entity": "ATLS:Cloud",
       "period": "FY2025-Q1",
       "value": "467000000",
       "unit": "USD",
@@ -116,8 +116,8 @@
       "as_of": "2025-04-28"
     },
     {
-      "tag": "mrdn:CloudSegmentRevenue",
-      "entity": "MRDN:Cloud",
+      "tag": "atls:CloudSegmentRevenue",
+      "entity": "ATLS:Cloud",
       "period": "FY2025-Q1",
       "value": "474300000",
       "unit": "USD",
@@ -130,7 +130,7 @@
     },
     {
       "metric": "cloud_growth_yoy",
-      "entity": "MRDN:Cloud",
+      "entity": "ATLS:Cloud",
       "period": "FY2026-Q1",
       "value": "31",
       "unit": "percent",
@@ -143,7 +143,7 @@
     },
     {
       "metric": "cloud_growth_yoy",
-      "entity": "MRDN:Cloud",
+      "entity": "ATLS:Cloud",
       "period": "FY2026-Q1",
       "value": "29",
       "unit": "percent",

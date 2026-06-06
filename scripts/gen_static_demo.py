@@ -9,7 +9,7 @@ replays it, so what a visitor sees is genuine engine output.
 Two cases are produced for the bundled sample release:
   * ``unseeded`` — no facts ingested; every figure is honestly ``untraced`` while
     the deterministic rules still fire.
-  * ``seeded``   — the Meridian demo filing ingested first, so figures tie out and
+  * ``seeded``   — the bundled filing ingested first, so figures tie out and
     the cloud-growth restatement conflict surfaces.
 
 Run from the repo root with the package installed:  python scripts/gen_static_demo.py
@@ -27,16 +27,16 @@ from attest.service import AttestService
 
 # The exact sample text the UI's "Use sample release" button inserts.
 SAMPLE = (
-    "Meridian Systems Reports First Quarter Fiscal 2026 Results\n\n"
-    "Meridian Systems reported total revenue of $1.24 billion, up 18% year over "
+    "Atlas Systems Reports First Quarter Fiscal 2026 Results\n\n"
+    "Atlas Systems reported total revenue of $1.24 billion, up 18% year over "
     "year. The company delivered GAAP diluted EPS of $0.87 and non-GAAP diluted "
     "EPS of $1.12. Cloud segment revenue reached $612 million, up 31% from the "
-    "prior-year period. Operating cash flow was $338 million. Meridian "
+    "prior-year period. Operating cash flow was $338 million. The company "
     "repurchased $250 million of common stock. For the second quarter, the "
     "company expects total revenue in the range of $1.31 to $1.34 billion."
 )
 
-TENANT = "meridian"
+TENANT = "atlas"
 OUT = Path(__file__).resolve().parent.parent / "docs" / "demo-data.json"
 
 
@@ -46,7 +46,7 @@ def analyze(service: AttestService) -> dict:
         text=SAMPLE,
         title="Pasted document",
         kind=DocumentKind.RELEASE,
-        entity="MRDN",
+        entity="ATLS",
         period="FY2026-Q1",
     )
     payload = AnalyzeResponse(
@@ -70,7 +70,7 @@ def main() -> None:
     unseeded = analyze(AttestService())
 
     seeded_service = AttestService()
-    report = seeded_service.ingest_xbrl(load_fixture("meridian_q1_fy2026"), tenant_id=TENANT)
+    report = seeded_service.ingest_xbrl(load_fixture("atlas_q1_fy2026"), tenant_id=TENANT)
     seeded = analyze(seeded_service)
 
     bundle = {

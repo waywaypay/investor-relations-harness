@@ -10,12 +10,12 @@ def service():
     return seeded_service()
 
 
-def _verify(service, metric, period, text, entity="MRDN"):
+def _verify(service, metric, period, text, entity="ATLS"):
     claim = FigureClaim(
         claim_id="c", document_id="d", entity=entity, metric=metric,
         period=period, displayed_text=text,
     )
-    return service.engine.verify_claim(claim, "meridian")
+    return service.engine.verify_claim(claim, "atlas")
 
 
 def test_traced_within_rounding(service):
@@ -31,13 +31,13 @@ def test_conflict_on_wrong_value(service):
 
 
 def test_restatement_conflict_matches_superseded(service):
-    v = _verify(service, "cloud_growth_yoy", "FY2026-Q1", "31%", entity="MRDN:Cloud")
+    v = _verify(service, "cloud_growth_yoy", "FY2026-Q1", "31%", entity="ATLS:Cloud")
     assert v.verdict == Verdict.CONFLICT
     assert "restated" in v.reason.lower() or "superseded" in v.reason.lower()
 
 
 def test_corrected_value_traces(service):
-    v = _verify(service, "cloud_growth_yoy", "FY2026-Q1", "29%", entity="MRDN:Cloud")
+    v = _verify(service, "cloud_growth_yoy", "FY2026-Q1", "29%", entity="ATLS:Cloud")
     assert v.verdict == Verdict.TRACED
 
 

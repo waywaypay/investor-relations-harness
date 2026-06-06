@@ -20,10 +20,10 @@ from attest.extraction.claims import DEFAULT_ALIASES, AliasConfig, ClaimExtracto
 from attest.extraction.text import extract_text
 
 RELEASE = (
-    "Meridian Systems reported total revenue of $1.24 billion, up 18% year over year. "
+    "Atlas Systems reported total revenue of $1.24 billion, up 18% year over year. "
     "The company delivered GAAP diluted EPS of $0.87 and non-GAAP diluted EPS of $1.12. "
     "Cloud segment revenue reached $612 million, up 31% from the prior-year period. "
-    "Operating cash flow was $338 million. Meridian repurchased $250 million of common "
+    "Operating cash flow was $338 million. The company repurchased $250 million of common "
     "stock. For the second quarter, the company expects total revenue in the range of "
     "$1.31 to $1.34 billion."
 )
@@ -127,7 +127,7 @@ def test_infer_period_none_when_unknown():
 def test_extractor_maps_real_release_prose_to_canonical_metrics():
     svc = seeded_service()
     claims = ClaimExtractor(svc.registry, svc.store).extract(
-        RELEASE, document_id="release", tenant_id="meridian", entity="MRDN", period="FY2026-Q1"
+        RELEASE, document_id="release", tenant_id="atlas", entity="ATLS", period="FY2026-Q1"
     )
     by_text = {c.displayed_text: c for c in claims}
 
@@ -136,7 +136,7 @@ def test_extractor_maps_real_release_prose_to_canonical_metrics():
     assert by_text["$1.12"].metric == "non_gaap_diluted_eps"  # not confused with cloud
     # The cloud figure is attributed to the segment entity, learned from ingested facts.
     cloud = by_text["$612 million"]
-    assert cloud.metric == "cloud_revenue" and cloud.entity == "MRDN:Cloud"
+    assert cloud.metric == "cloud_revenue" and cloud.entity == "ATLS:Cloud"
     assert by_text["31%"].metric == "cloud_growth_yoy"
     # The guidance range is one span, routed to the next period as guidance.
     guidance = by_text["$1.31 to $1.34 billion"]
@@ -146,7 +146,7 @@ def test_extractor_maps_real_release_prose_to_canonical_metrics():
 def test_extractor_overdetects_but_never_asserts_unknowns():
     svc = seeded_service()
     claims = ClaimExtractor(svc.registry, svc.store).extract(
-        RELEASE, document_id="release", tenant_id="meridian", entity="MRDN", period="FY2026-Q1"
+        RELEASE, document_id="release", tenant_id="atlas", entity="ATLS", period="FY2026-Q1"
     )
     # The unattributed 18% growth figure is still surfaced, but as a low-confidence
     # 'unidentified' claim — the engine will route/leave it rather than assert it.
@@ -158,7 +158,7 @@ def test_extractor_overdetects_but_never_asserts_unknowns():
 def test_every_claim_carries_a_span_for_highlighting():
     svc = seeded_service()
     claims = ClaimExtractor(svc.registry, svc.store).extract(
-        RELEASE, document_id="release", tenant_id="meridian", entity="MRDN", period="FY2026-Q1"
+        RELEASE, document_id="release", tenant_id="atlas", entity="ATLS", period="FY2026-Q1"
     )
     for c in claims:
         assert c.span is not None
@@ -187,35 +187,35 @@ def test_extractor_honours_tenant_house_style():
     text = "Topline was $1.24 billion for the quarter."
     # Default vocabulary doesn't know "topline" — the figure is unattributed.
     default = ClaimExtractor(svc.registry, svc.store).extract(
-        text, document_id="d", tenant_id="meridian", entity="MRDN", period="FY2026-Q1"
+        text, document_id="d", tenant_id="atlas", entity="ATLS", period="FY2026-Q1"
     )
     assert default[0].metric == "unidentified"
     # With the tenant's configured synonym, it attributes — and the engine traces it.
     aliases = DEFAULT_ALIASES.extend({"total_revenue": ["topline"]})
     tuned = ClaimExtractor(svc.registry, svc.store, aliases).extract(
-        text, document_id="d", tenant_id="meridian", entity="MRDN", period="FY2026-Q1"
+        text, document_id="d", tenant_id="atlas", entity="ATLS", period="FY2026-Q1"
     )
     assert tuned[0].metric == "total_revenue"
 
 
 def test_service_configure_aliases_is_per_tenant_and_validates():
     svc = seeded_service()
-    svc.configure_aliases("meridian", {"total_revenue": ["topline"]})
-    assert "topline" in svc.aliases_for("meridian").for_metric("total_revenue")
+    svc.configure_aliases("atlas", {"total_revenue": ["topline"]})
+    assert "topline" in svc.aliases_for("atlas").for_metric("total_revenue")
     # A different tenant is unaffected.
     assert "topline" not in svc.aliases_for("acme").for_metric("total_revenue")
     # Unknown metric ids are rejected, not silently accepted.
     with pytest.raises(ValueError):
-        svc.configure_aliases("meridian", {"not_a_metric": ["x"]})
+        svc.configure_aliases("atlas", {"not_a_metric": ["x"]})
 
 
 def test_full_pipeline_reproduces_the_restatement_conflict():
     svc = seeded_service()
     _, result, entity, period = svc.analyze_text(
-        tenant_id="meridian", text=RELEASE, title="Q1 FY2026 release",
-        kind=DocumentKind.RELEASE, entity="MRDN", period="FY2026-Q1",
+        tenant_id="atlas", text=RELEASE, title="Q1 FY2026 release",
+        kind=DocumentKind.RELEASE, entity="ATLS", period="FY2026-Q1",
     )
-    assert entity == "MRDN" and period == "FY2026-Q1"
+    assert entity == "ATLS" and period == "FY2026-Q1"
     assert result.counts["traced"] == 6
     assert result.counts["conflict"] == 1  # the 31% cloud-growth restatement
     assert result.counts["needs_review"] == 1  # guidance
@@ -305,10 +305,10 @@ def test_candidate_detection_handles_accounting_loss_notation():
 def test_full_pipeline_traces_a_spoken_transcript():
     svc = seeded_service()
     _, result, entity, period = svc.analyze_text(
-        tenant_id="meridian", text=TRANSCRIPT, title="Q1 FY2026 earnings call",
-        kind=DocumentKind.SCRIPT, entity="MRDN", period="FY2026-Q1",
+        tenant_id="atlas", text=TRANSCRIPT, title="Q1 FY2026 earnings call",
+        kind=DocumentKind.SCRIPT, entity="ATLS", period="FY2026-Q1",
     )
-    assert entity == "MRDN" and period == "FY2026-Q1"
+    assert entity == "ATLS" and period == "FY2026-Q1"
     # The regression: spoken figures used to yield zero candidates and trace nothing.
     # Now the symbol-free currency figures bind to their filed sources.
     assert result.counts["traced"] == 4  # revenue, cloud revenue, cash flow, repurchase
@@ -346,8 +346,8 @@ def test_user_and_share_counts_do_not_produce_false_conflicts():
         "and during the quarter we repurchased 100 million shares of common stock."
     )
     doc, result, _, _ = svc.analyze_text(
-        tenant_id="meridian", text=text, title="Q1 FY2026 call",
-        kind=DocumentKind.SCRIPT, entity="MRDN", period="FY2026-Q1",
+        tenant_id="atlas", text=text, title="Q1 FY2026 call",
+        kind=DocumentKind.SCRIPT, entity="ATLS", period="FY2026-Q1",
     )
     assert result.counts["conflict"] == 0  # neither count is asserted against a dollar metric
     assert result.counts["traced"] == 1  # the real revenue figure still traces
@@ -360,8 +360,8 @@ def test_count_ranges_are_not_read_as_currency_guidance():
     svc = seeded_service()
     text = "For the second quarter we expect to add 400 to 500 million users."
     doc, result, _, _ = svc.analyze_text(
-        tenant_id="meridian", text=text, title="Q1 FY2026 call",
-        kind=DocumentKind.SCRIPT, entity="MRDN", period="FY2026-Q1",
+        tenant_id="atlas", text=text, title="Q1 FY2026 call",
+        kind=DocumentKind.SCRIPT, entity="ATLS", period="FY2026-Q1",
     )
     # No bogus q2_revenue_guidance claim from an operating-metric range.
     assert all(c.metric != "q2_revenue_guidance" for c in doc.claims)
@@ -381,8 +381,8 @@ def test_label_not_borrowed_across_a_same_unit_figure():
         "$250 million to shareholders through buybacks."
     )
     doc, result, _, _ = svc.analyze_text(
-        tenant_id="meridian", text=text, title="Q1 FY2026 call",
-        kind=DocumentKind.SCRIPT, entity="MRDN", period="FY2026-Q1",
+        tenant_id="atlas", text=text, title="Q1 FY2026 call",
+        kind=DocumentKind.SCRIPT, entity="ATLS", period="FY2026-Q1",
     )
     by_text = {c.displayed_text.strip(): c for c in doc.claims}
     assert by_text["$338 million"].metric == "operating_cash_flow"  # still attributed
@@ -398,8 +398,8 @@ def test_subject_resolves_across_an_intervening_percent():
     # not block attribution. (Guards against over-correcting the rule above.)
     text = "Total revenue was $1.24 billion. Cloud revenue grew 31% to $612 million."
     doc, _, _, _ = svc.analyze_text(
-        tenant_id="meridian", text=text, title="Q1 FY2026 call",
-        kind=DocumentKind.SCRIPT, entity="MRDN", period="FY2026-Q1",
+        tenant_id="atlas", text=text, title="Q1 FY2026 call",
+        kind=DocumentKind.SCRIPT, entity="ATLS", period="FY2026-Q1",
     )
     by_text = {c.displayed_text.strip(): c.metric for c in doc.claims}
     assert by_text["$612 million"] == "cloud_revenue"  # "cloud" resolved past the 31%
@@ -414,8 +414,8 @@ def test_forward_looking_revenue_does_not_conflict_with_the_current_period():
         "quarter we expect total revenue between $1.31 billion and $1.34 billion."
     )
     doc, result, _, _ = svc.analyze_text(
-        tenant_id="meridian", text=text, title="Q1 FY2026 call",
-        kind=DocumentKind.SCRIPT, entity="MRDN", period="FY2026-Q1",
+        tenant_id="atlas", text=text, title="Q1 FY2026 call",
+        kind=DocumentKind.SCRIPT, entity="ATLS", period="FY2026-Q1",
     )
     assert result.counts["traced"] == 1  # the current-quarter revenue still ties out
     assert result.counts["conflict"] == 0  # the forward-looking figures do not conflict
@@ -502,8 +502,8 @@ def test_trailing_label_is_attributed_to_its_own_figure():
         "$250 million to shareholders through buybacks."
     )
     doc, result, _, _ = svc.analyze_text(
-        tenant_id="meridian", text=text, title="Q1 FY2026 call",
-        kind=DocumentKind.SCRIPT, entity="MRDN", period="FY2026-Q1",
+        tenant_id="atlas", text=text, title="Q1 FY2026 call",
+        kind=DocumentKind.SCRIPT, entity="ATLS", period="FY2026-Q1",
     )
     by_text = {c.displayed_text.strip(): c.metric for c in doc.claims}
     assert by_text["$338 million"] == "operating_cash_flow"  # trailing label read
@@ -519,10 +519,10 @@ def test_segment_figure_prefers_its_segment_metric_over_a_generic_label():
     # untraced against the segment entity instead of tying out to the filed source.
     text = "Our Cloud segment was the standout, with revenue of $612 million."
     doc, result, _, _ = svc.analyze_text(
-        tenant_id="meridian", text=text, title="Q1 FY2026 call",
-        kind=DocumentKind.SCRIPT, entity="MRDN", period="FY2026-Q1",
+        tenant_id="atlas", text=text, title="Q1 FY2026 call",
+        kind=DocumentKind.SCRIPT, entity="ATLS", period="FY2026-Q1",
     )
     cloud = next(c for c in doc.claims if c.displayed_text.strip() == "$612 million")
-    assert cloud.metric == "cloud_revenue" and cloud.entity == "MRDN:Cloud"
+    assert cloud.metric == "cloud_revenue" and cloud.entity == "ATLS:Cloud"
     assert result.counts["traced"] == 1
     assert result.counts["conflict"] == 0
