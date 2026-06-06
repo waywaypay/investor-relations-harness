@@ -113,3 +113,27 @@ class AliasConfigRequest(BaseModel):
 class AliasConfigResponse(BaseModel):
     tenant_id: str
     aliases: dict[str, list[str]]
+
+
+class PriorPeriodIngestRequest(BaseModel):
+    """Request to auto-fetch a prior quarter's 8-K press release from EDGAR."""
+
+    entity: str = Field(description="issuer ticker symbol, e.g. 'MSFT'")
+    period: str = Field(description="current period, e.g. 'FY2026-Q2'; prior quarter is derived automatically")
+    cik: str | None = Field(default=None, description="10-digit SEC CIK; resolved from ticker if omitted")
+
+
+class PriorPeriodExhibit(BaseModel):
+    accession: str
+    filing_date: str
+    label: str
+    ingested: int
+    skipped: int
+
+
+class PriorPeriodIngestResponse(BaseModel):
+    """Summary of a prior-period EDGAR fetch-and-ingest run."""
+
+    prior_period: str | None = Field(description="the derived prior fiscal period, e.g. 'FY2026-Q1'")
+    exhibits: list[PriorPeriodExhibit]
+    total_ingested: int

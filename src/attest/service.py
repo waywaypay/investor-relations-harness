@@ -24,6 +24,7 @@ from attest.ingestion.base import IngestionReport
 from attest.ingestion.edgar import EdgarClient, EdgarConnector, EdgarUnavailable
 from attest.ingestion.edgar_xbrl import XBRLConnector
 from attest.ingestion.guidance import DisclosureConnector, GuidanceConnector
+from attest.ingestion.prior_period import EdgarHttpClient, FetchedExhibit, PriorPeriodFetcher, prior_period as _prior_period
 from attest.verification.engine import VerificationEngine, VerificationResult
 from attest.verification.rules import check_cross_document_consistency
 
@@ -423,6 +424,58 @@ class AttestService:
             tenant_id=tenant_id,
             payload={"document_id": document_id, "scope": scope},
         )
+
+    # -- prior-period auto-fetch ---------------------------------------------
+
+    def fetch_prior_period(
+        self,
+        *,
+        tenant_id: str,
+        entity: str,
+        period: str,
+        cik: str | None = None,
+        edgar_client: EdgarHttpClient | None = None,
+        actor: str = "system:prior-period-fetch",
+    ) -> tuple[list[IngestionReport], str | None, list[FetchedExhibit]]:
+        """Auto-fetch and ingest the prior quarter's 8-K press release from EDGAR.
+
+        Derives the prior fiscal quarter from ``period``, searches EDGAR for the
+        matching earnings 8-K, fetches Exhibit 99.1, and ingests each exhibit via
+        :class:`GuidanceConnector`. Extracted figures are added to the fact store
+        with full provenance so later drafts can trace cross-period references.
+
+        Returns ``(reports, prior_period_str, exhibits)``. When no filing is found
+        ``reports`` and ``exhibits`` are empty and ``prior_period_str`` is still
+        set so the caller can surface an informative "no prior period data found"
+        message.
+
+        ``edgar_client`` is injected in tests to avoid real network calls.
+        """
+        prev = _prior_period(period)
+        fetcher = PriorPeriodFetcher(client=edgar_client)
+        exhibits = fetcher.fetch_exhibits(ticker=entity, period=period, cik=cik)
+
+        reports: list[IngestionReport] = []
+        for exhibit in exhibits:
+            facts, report = GuidanceConnector(self.registry).fetch(
+                text=exhibit.text,
+                tenant_id=tenant_id,
+                entity=entity,
+                accession=exhibit.accession,
+                base_period=prev,
+                as_of=exhibit.filing_date,
+                label=exhibit.label,
+            )
+            self.store.add_many(facts)
+            self.audit_log.append(
+                actor=actor,
+                type=EventType.INGEST,
+                tenant_id=tenant_id,
+                payload=report.model_dump(),
+            )
+            reports.append(report)
+
+        return reports, prev, exhibits
 
     # -- audit ---------------------------------------------------------------
 
