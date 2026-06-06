@@ -48,6 +48,10 @@ attest = [
     "eval/golden/*.json",
     "eval/restatement_fixtures/*.json",
     "api/static/*.html",
+    # The Postgres backend reads this DDL at import time; without it a non-editable
+    # install (the Dockerfile runs `pip install .`) crashes with FileNotFoundError
+    # the moment ATTEST_DATABASE_URL is set — the documented production setup.
+    "storage/*.sql",
 ]
 
 [tool.pytest.ini_options]
