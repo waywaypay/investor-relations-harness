@@ -137,3 +137,59 @@ class PriorPeriodIngestResponse(BaseModel):
     prior_period: str | None = Field(description="the derived prior fiscal period, e.g. 'FY2026-Q1'")
     exhibits: list[PriorPeriodExhibit]
     total_ingested: int
+
+
+class HistoricalSearchRequest(BaseModel):
+    """Search the web (via Exa) for an issuer's historical earnings documents."""
+
+    entity: str = Field(min_length=1, description="ticker or company name, e.g. 'PANW'")
+    doc_types: list[str] = Field(
+        default=["release", "transcript"],
+        description="which document classes to search: 'release' and/or 'transcript'",
+    )
+    limit: int = Field(default=8, ge=1, le=20, description="max candidates to return")
+
+
+class HistoricalCandidate(BaseModel):
+    """One reviewable search hit (no full text until ingested)."""
+
+    url: str
+    title: str
+    published_date: str
+    source: str
+    snippet: str
+    doc_type: str
+
+
+class HistoricalSearchResponse(BaseModel):
+    candidates: list[HistoricalCandidate]
+
+
+class HistoricalIngestItem(BaseModel):
+    """A reviewed candidate the user chose to load."""
+
+    url: str = Field(min_length=1)
+    title: str | None = None
+    period: str | None = Field(
+        default=None, description="optional fiscal period to anchor figures, e.g. 'FY2026-Q1'"
+    )
+
+
+class HistoricalIngestRequest(BaseModel):
+    entity: str = Field(min_length=1, description="issuer entity to scope facts under, e.g. 'PANW'")
+    items: list[HistoricalIngestItem]
+
+
+class HistoricalIngestDoc(BaseModel):
+    url: str
+    title: str
+    published_date: str
+    ingested: int
+    skipped: int
+
+
+class HistoricalIngestResponse(BaseModel):
+    """Summary of an Exa fetch-and-ingest run over the selected documents."""
+
+    documents: list[HistoricalIngestDoc]
+    total_ingested: int

@@ -24,6 +24,12 @@ from attest.api.schemas import (
     EditRequest,
     EdgarIngestRequest,
     GuidanceIngestRequest,
+    HistoricalCandidate,
+    HistoricalIngestDoc,
+    HistoricalIngestRequest,
+    HistoricalIngestResponse,
+    HistoricalSearchRequest,
+    HistoricalSearchResponse,
     IngestResponse,
     OverrideRequest,
     PriorPeriodExhibit,
@@ -36,6 +42,7 @@ from attest.domain.document import Document, DocumentKind
 from attest.extraction.claims import infer_entity_ticker
 from attest.extraction.text import extract_text
 from attest.ingestion.edgar import EdgarUnavailable
+from attest.ingestion.exa import ExaNotConfigured, ExaUnavailable
 from attest.service import AttestService
 from attest.verification.engine import VerificationResult
 
@@ -275,6 +282,78 @@ def create_app(service: AttestService | None = None) -> FastAPI:
             prior_period=prev,
             exhibits=exhibit_summaries,
             total_ingested=sum(r.ingested for r in reports),
+        )
+
+    @app.post("/tenants/{tenant_id}/historical/search", response_model=HistoricalSearchResponse)
+    def historical_search(
+        tenant_id: str, req: HistoricalSearchRequest, svc: AttestService = Depends(get_service)
+    ) -> HistoricalSearchResponse:
+        """Search the web (via Exa) for an issuer's historical earnings documents.
+
+        SEC-independent discovery: returns auto-titled candidates (earnings
+        releases and/or call transcripts, newest first) for the user to review
+        before any are ingested. Nothing is stored — this is a pure lookup.
+
+        Returns 503 when Exa isn't configured (no ``EXA_API_KEY``) and 502 when
+        it can't be reached; an empty ``candidates`` list means simply "nothing
+        found".
+        """
+        try:
+            candidates = svc.search_historical(
+                entity=req.entity, doc_types=tuple(req.doc_types), limit=req.limit
+            )
+        except ExaNotConfigured as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except ExaUnavailable as exc:
+            raise HTTPException(status_code=502, detail=f"Historical search failed: {exc}") from exc
+        return HistoricalSearchResponse(
+            candidates=[
+                HistoricalCandidate(
+                    url=c.url,
+                    title=c.title,
+                    published_date=c.published_date,
+                    source=c.source,
+                    snippet=c.snippet,
+                    doc_type=c.doc_type,
+                )
+                for c in candidates
+            ]
+        )
+
+    @app.post("/tenants/{tenant_id}/historical/ingest", response_model=HistoricalIngestResponse)
+    def historical_ingest(
+        tenant_id: str, req: HistoricalIngestRequest, svc: AttestService = Depends(get_service)
+    ) -> HistoricalIngestResponse:
+        """Fetch the selected web documents and ingest them as prior disclosures.
+
+        Pulls each reviewed candidate's full text via Exa and runs it through the
+        same disclosure connector a manually uploaded transcript takes, so every
+        figure lands as a cited ``PRIOR_DISCLOSURE`` reference (web source, not a
+        filing). Returns a per-document ingest summary.
+        """
+        try:
+            results = svc.ingest_historical(
+                tenant_id=tenant_id,
+                entity=req.entity,
+                items=[it.model_dump() for it in req.items],
+            )
+        except ExaNotConfigured as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except ExaUnavailable as exc:
+            raise HTTPException(status_code=502, detail=f"Historical fetch failed: {exc}") from exc
+        documents = [
+            HistoricalIngestDoc(
+                url=doc.url,
+                title=doc.title,
+                published_date=doc.published_date,
+                ingested=report.ingested,
+                skipped=report.skipped,
+            )
+            for doc, report in results
+        ]
+        return HistoricalIngestResponse(
+            documents=documents,
+            total_ingested=sum(r.ingested for _, r in results),
         )
 
 

@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { useStore } from "../store";
 import { Scrim } from "./FigureModal";
 import { detectTicker } from "../lib/ticker";
+import type { HistoricalCandidate } from "../api/client";
 import type { DocKind, LibraryDoc } from "../types";
 
 const KIND_OPTIONS: { value: DocKind; label: string; hint: string }[] = [
@@ -43,8 +44,15 @@ export function UploadModal({
   const [drag, setDrag] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // In reference mode the user picks whether to upload a file or pull from EDGAR.
-  const [sourceMode, setSourceMode] = useState<"file" | "edgar">(isReference ? "edgar" : "file");
+  // In reference mode the user picks where the prior disclosure comes from: pull
+  // structured facts from EDGAR, search the web for historical docs, or upload a file.
+  const [sourceMode, setSourceMode] = useState<"edgar" | "historical" | "file">(
+    isReference ? "edgar" : "file"
+  );
+  // Historical (web search) mode: the reviewed candidates and the user's selection.
+  const [candidates, setCandidates] = useState<HistoricalCandidate[]>([]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [searching, setSearching] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const pickFile = (f: File | null) => {
@@ -66,11 +74,49 @@ export function UploadModal({
   };
 
   const edgarMode = isReference && sourceMode === "edgar";
+  const historicalMode = isReference && sourceMode === "historical";
+  // The file/paste inputs show for drafts, new versions, and the file source mode.
+  const fileMode = !edgarMode && !historicalMode;
+
+  const chooseMode = (m: "edgar" | "historical" | "file") => {
+    setSourceMode(m);
+    setError(null);
+  };
+
+  const runSearch = async () => {
+    const ent = ticker.trim();
+    if (!ent || searching) return;
+    setSearching(true);
+    setError(null);
+    try {
+      const results = await store.searchHistorical(ent);
+      setCandidates(results);
+      setSelected(new Set(results.map((r) => r.url))); // pre-select all for one-click load
+      if (results.length === 0) setError("No historical documents found for that company.");
+    } catch (e) {
+      setCandidates([]);
+      setSelected(new Set());
+      setError(e instanceof Error ? e.message : "Search failed.");
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const toggleSelect = (url: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(url)) next.delete(url);
+      else next.add(url);
+      return next;
+    });
+
   const canSubmit =
     !busy &&
     (edgarMode
       ? ticker.trim().length > 0
-      : file != null || text.trim().length > 0);
+      : historicalMode
+        ? selected.size > 0
+        : file != null || text.trim().length > 0);
 
   const submit = async () => {
     if (!canSubmit) return;
@@ -81,6 +127,14 @@ export function UploadModal({
         const sym = ticker.trim().toUpperCase();
         await store.ingestEdgar(sym);
         if (period.trim()) await store.fetchPriorPeriod(sym, period.trim());
+        onClose();
+        return;
+      }
+      if (historicalMode) {
+        const items = candidates
+          .filter((c) => selected.has(c.url))
+          .map((c) => ({ url: c.url, title: c.title }));
+        await store.ingestHistorical(ticker.trim(), items);
         onClose();
         return;
       }
@@ -113,9 +167,11 @@ export function UploadModal({
           ? e.message
           : edgarMode
             ? "EDGAR fetch failed."
-            : isReference
-              ? "Could not file disclosure."
-              : "Upload failed."
+            : historicalMode
+              ? "Could not load documents."
+              : isReference
+                ? "Could not file disclosure."
+                : "Upload failed."
       );
     } finally {
       setBusy(false);
@@ -153,18 +209,99 @@ export function UploadModal({
             <button
               type="button"
               className={`upsrc ${sourceMode === "edgar" ? "active" : ""}`}
-              onClick={() => setSourceMode("edgar")}
+              onClick={() => chooseMode("edgar")}
             >
               Pull from EDGAR
             </button>
             <button
               type="button"
+              className={`upsrc ${sourceMode === "historical" ? "active" : ""}`}
+              onClick={() => chooseMode("historical")}
+            >
+              Fetch historical
+            </button>
+            <button
+              type="button"
               className={`upsrc ${sourceMode === "file" ? "active" : ""}`}
-              onClick={() => setSourceMode("file")}
+              onClick={() => chooseMode("file")}
             >
               Upload a file
             </button>
           </div>
+        )}
+
+        {historicalMode && (
+          <>
+            <label className="upfield">
+              <span className="upcap">Company name or ticker</span>
+              <div className="uphsearch">
+                <input
+                  className="upinput"
+                  type="text"
+                  placeholder="e.g. PANW or Palo Alto Networks"
+                  value={ticker}
+                  onChange={(e) => setTicker(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") { e.preventDefault(); runSearch(); }
+                  }}
+                  spellCheck={false}
+                  autoFocus
+                />
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={runSearch}
+                  disabled={searching || !ticker.trim()}
+                >
+                  {searching ? "Searching…" : "Search"}
+                </button>
+              </div>
+              <span className="upcap upopt" style={{ textTransform: "none", letterSpacing: 0 }}>
+                Finds historical earnings releases &amp; call transcripts on the web — review and
+                load the ones you want. Loaded as reference (web source, not a filing).
+              </span>
+            </label>
+
+            {candidates.length > 0 && (
+              <div className="uphlist">
+                <div className="uphlist-h">
+                  <span>{selected.size} of {candidates.length} selected</span>
+                  <button
+                    type="button"
+                    className="uphall"
+                    onClick={() =>
+                      setSelected(
+                        selected.size === candidates.length
+                          ? new Set()
+                          : new Set(candidates.map((c) => c.url))
+                      )
+                    }
+                  >
+                    {selected.size === candidates.length ? "Clear all" : "Select all"}
+                  </button>
+                </div>
+                {candidates.map((c) => (
+                  <label key={c.url} className={`uphrow ${selected.has(c.url) ? "on" : ""}`}>
+                    <input
+                      type="checkbox"
+                      checked={selected.has(c.url)}
+                      onChange={() => toggleSelect(c.url)}
+                    />
+                    <span className="uphrow-main">
+                      <span className="uphrow-t">{c.title}</span>
+                      <span className="uphrow-m">
+                        <span className={`uphtag ${c.doc_type}`}>
+                          {c.doc_type === "transcript" ? "Transcript" : "Release"}
+                        </span>
+                        <span className="uphsrc">{c.source}</span>
+                      </span>
+                      {c.snippet && <span className="uphrow-s">{c.snippet}</span>}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            )}
+          </>
         )}
 
         {edgarMode && (
@@ -234,7 +371,7 @@ export function UploadModal({
             onClick, and a wrapping <label> would *also* forward the click to the
             contained <input>, firing the file picker twice (pick a file, hit
             Open, and the picker reappears). */}
-        {!edgarMode && <div className="upfield">
+        {fileMode && <div className="upfield">
           <span className="upcap">Upload a file</span>
           <div
             className={`dropzone ${drag ? "drag" : ""}`}
@@ -260,7 +397,7 @@ export function UploadModal({
           />
         </div>}
 
-        {!edgarMode && (
+        {fileMode && (
           <>
             {/* Revealed only once a file is chosen: the title seeds from the filename
                 and the ticker is auto-detected from the document text (override either). */}
@@ -312,8 +449,12 @@ export function UploadModal({
           <button className="btn" onClick={onClose} disabled={busy}>Cancel</button>
           <button className="btn go" onClick={submit} disabled={!canSubmit}>
             {busy
-              ? edgarMode ? "Fetching…" : isReference ? "Filing…" : "Analyzing…"
-              : edgarMode ? "Load from EDGAR" : isReference ? "File as reference" : isVersion ? "Analyze & file version" : "Analyze & add"}
+              ? edgarMode ? "Fetching…" : historicalMode ? "Loading…" : isReference ? "Filing…" : "Analyzing…"
+              : edgarMode
+                ? "Load from EDGAR"
+                : historicalMode
+                  ? selected.size ? `Load ${selected.size} selected` : "Load selected"
+                  : isReference ? "File as reference" : isVersion ? "Analyze & file version" : "Analyze & add"}
           </button>
         </div>
       </div>
