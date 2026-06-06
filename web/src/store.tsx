@@ -106,16 +106,31 @@ function saveUploads(data: PersistedUploads): void {
   }
 }
 
-export function StoreProvider({ children }: { children: React.ReactNode }) {
+export function StoreProvider({
+  children,
+  seedDemo = false,
+}: {
+  children: React.ReactNode;
+  /** Seed the bundled sample close pack (the Atlas release / script / Q&A and
+   *  the figures, narratives, and commitments behind it) into the workspace.
+   *  Off by default so the app loads empty of demo content and shows only what
+   *  the user has actually uploaded; tests opt in to exercise the
+   *  document-rendering features against the reference pack. */
+  seedDemo?: boolean;
+}) {
   const persisted = loadUploads();
   const [figures, setFigures] = useState<FigureMap>(() => ({
-    ...clone(FIGURES),
+    ...(seedDemo ? clone(FIGURES) : {}),
     ...persisted.figures,
   }));
-  const [narratives, setNarratives] = useState<NarrativeMap>(() => clone(NARRATIVES));
-  const [commitments, setCommitments] = useState<Commitment[]>(() => clone(COMMITMENTS));
+  const [narratives, setNarratives] = useState<NarrativeMap>(() =>
+    seedDemo ? clone(NARRATIVES) : {}
+  );
+  const [commitments, setCommitments] = useState<Commitment[]>(() =>
+    seedDemo ? clone(COMMITMENTS) : []
+  );
   const [library, setLibrary] = useState<LibraryDoc[]>(() => [
-    ...clone(DEMO_LIBRARY),
+    ...(seedDemo ? clone(DEMO_LIBRARY) : []),
     ...persisted.docs,
   ]);
   const [toast, setToast] = useState<string | null>(null);
