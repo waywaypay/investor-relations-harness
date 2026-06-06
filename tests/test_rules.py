@@ -15,12 +15,12 @@ from attest.verification.rules import (
 )
 
 
-def _doc(doc_id, text, claims, tenant="meridian"):
+def _doc(doc_id, text, claims, tenant="atlas"):
     return Document(id=doc_id, tenant_id=tenant, title=doc_id, kind=DocumentKind.OTHER,
                     text=text, claims=tuple(claims))
 
 
-def _claim(metric, text, entity="MRDN", period="FY2026-Q1", doc="d", span=None):
+def _claim(metric, text, entity="ATLS", period="FY2026-Q1", doc="d", span=None):
     return FigureClaim(claim_id=metric, document_id=doc, entity=entity, metric=metric,
                        period=period, displayed_text=text, span=span)
 
@@ -137,7 +137,7 @@ def test_derived_recompute_flags_stale_growth():
     # claim of 31% is a recomputation mismatch — caught at the math level.
     service = seeded_service()
     doc = _doc("g", "Cloud grew 31% year over year.",
-               [_claim("cloud_growth_yoy", "31%", entity="MRDN:Cloud")])
+               [_claim("cloud_growth_yoy", "31%", entity="ATLS:Cloud")])
     findings = check_derived_consistency(doc, DEFAULT_REGISTRY, service.store)
     assert any(f.rule == "derived.recomputation_mismatch" for f in findings)
 
@@ -145,7 +145,7 @@ def test_derived_recompute_flags_stale_growth():
 def test_derived_recompute_ok_for_corrected_value():
     service = seeded_service()
     doc = _doc("g", "Cloud grew 29% year over year.",
-               [_claim("cloud_growth_yoy", "29%", entity="MRDN:Cloud")])
+               [_claim("cloud_growth_yoy", "29%", entity="ATLS:Cloud")])
     findings = check_derived_consistency(doc, DEFAULT_REGISTRY, service.store)
     assert not any(f.rule == "derived.recomputation_mismatch" for f in findings)
 
@@ -153,7 +153,7 @@ def test_derived_recompute_ok_for_corrected_value():
 def test_derived_recompute_skips_when_base_facts_absent():
     # No underlying facts -> nothing to recompute against -> never guess.
     store = InMemoryFactStore()
-    doc = _doc("g", "Cloud grew 31%.", [_claim("cloud_growth_yoy", "31%", entity="MRDN:Cloud")])
+    doc = _doc("g", "Cloud grew 31%.", [_claim("cloud_growth_yoy", "31%", entity="ATLS:Cloud")])
     assert check_derived_consistency(doc, DEFAULT_REGISTRY, store) == []
 
 
@@ -180,7 +180,7 @@ def test_reg_g_reconciliation_arithmetic_flags_broken_bridge():
     # GAAP 0.87 + SBC 0.18 + amortization 0.07 = 1.12. If the non-GAAP figure is
     # booked as 1.20, the reconciliation bridge does not add up.
     store = InMemoryFactStore()
-    common = dict(tenant_id="meridian", entity="MRDN", period="FY2026-Q1",
+    common = dict(tenant_id="atlas", entity="ATLS", period="FY2026-Q1",
                   unit=Unit.CURRENCY, source_type=SourceType.FILING_LINE, as_of="2026-04-28")
     store.add_many([
         Fact(id="g", metric="gaap_diluted_eps", value=Decimal("0.87"), **common),

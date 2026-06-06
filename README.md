@@ -21,7 +21,7 @@ model is the replaceable component; this spine is the company.
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 
-attest demo          # ingest the Meridian filing, verify the close pack, print a report
+attest verify        # verify the reference close pack, print a report
 attest verify --use-llm  # same close pack, claims proposed by the LLM edge (see "v2" below)
 attest ingest-edgar PANW # pull a real issuer's filed facts from SEC EDGAR (see "live EDGAR" below)
 pytest               # run the suite, including the eval regression gate
@@ -46,7 +46,7 @@ script / Q&A, the engine renders one of four verdicts per figure:
 | `conflict` | bound to a source but the value differs, **including cross-filing restatements** |
 | `untraced` | no source could be bound |
 
-The bundled `attest demo` reproduces the prototype's Meridian Systems case: the
+The bundled `attest verify` reproduces the reference close pack: the
 release ties out, the `31%` cloud-growth figure is caught as a **restatement
 conflict** (the prior-year base was restated `$467.0M → $474.3M`, so the correct
 figure is `29%`), guidance is routed to human sign-off, the script trips Reg G
@@ -91,7 +91,7 @@ src/attest/
     sheets_bridge.py  loads the corpus workbook's 02_Facts CSV export into facts
   api/             stateless FastAPI surface over the service
   service.py       composition root shared by the API and CLI
-  cli.py           `attest demo` / `attest verify [--use-llm]` / `attest serve` / `attest synth`
+  cli.py           `attest verify [--use-llm]` / `attest serve` / `attest synth`
 ```
 
 ### How the design-doc principles show up in code
@@ -163,7 +163,7 @@ attest synth                                            # from the bundled fixtu
 GET  /                                           the upload & verify web UI
 POST /tenants/{tenant}/ingest/xbrl              ingest an XBRL instance
 POST /tenants/{tenant}/ingest/guidance          extract forward guidance from 8-K EX-99.1 prose
-POST /tenants/{tenant}/ingest/demo              seed the bundled Meridian filing
+
 POST /tenants/{tenant}/ingest/edgar             pull an issuer's real filed facts from SEC EDGAR by ticker
 GET  /tenants/{tenant}/facts                    list facts-with-provenance
 GET  /tenants/{tenant}/extraction/aliases       the tenant's metric synonyms
@@ -205,7 +205,7 @@ starts from a default `AliasConfig` and layers its own synonyms over it via
 UI):
 
 ```bash
-curl -X PUT .../tenants/meridian/extraction/aliases \
+curl -X PUT .../tenants/{tenant}/extraction/aliases \
   -H 'content-type: application/json' \
   -d '{"aliases": {"total_revenue": ["topline", "net sales"]}, "replace": false}'
 ```
@@ -227,9 +227,9 @@ guarantee applied to the figure that is otherwise unverifiable: *here is the
 number management gave, and here is the line it came from.*
 
 ```bash
-curl -X POST .../tenants/meridian/ingest/guidance \
+curl -X POST .../tenants/{tenant}/ingest/guidance \
   -H 'content-type: application/json' \
-  -d '{"text": "<EX-99.1 prose>", "entity": "MRDN",
+  -d '{"text": "<EX-99.1 prose>", "entity": "ATLS",
        "accession": "0001047469-26-001200", "base_period": "FY2026-Q1"}'
 ```
 
@@ -245,7 +245,7 @@ ties out to the exact published sentence.
 
 ### Tie out to real SEC filings (live EDGAR)
 
-The demo seeds one hand-shaped fixture; real use needs the issuer's *actual* filed
+The reference fixture seeds one hand-shaped set of facts; real use needs the issuer's *actual* filed
 numbers. `src/attest/ingestion/edgar.py` is the live sibling of the XBRL adapter:
 given a ticker it resolves the CIK, pulls the issuer's machine-tagged `us-gaap`
 facts from SEC's public `companyconcept` API, and lands them as `EDGAR_XBRL`

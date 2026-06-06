@@ -53,9 +53,9 @@ def conn():
 
 
 def _fact(fid: str, *, metric="cloud_revenue", period="FY2026-Q1", value="612000000",
-          as_of="2026-04-28", entity="MRDN:Cloud", source=SourceType.EDGAR_XBRL) -> Fact:
+          as_of="2026-04-28", entity="ATLS:Cloud", source=SourceType.EDGAR_XBRL) -> Fact:
     return Fact(
-        id=fid, tenant_id="meridian", entity=entity, metric=metric, period=period,
+        id=fid, tenant_id="atlas", entity=entity, metric=metric, period=period,
         value=Decimal(value), unit=Unit.CURRENCY, quantum=Decimal("1000000"),
         source_type=source, source_ref="acc#tag", as_of=as_of, confidence=Confidence.HIGH,
     )
@@ -79,9 +79,9 @@ def test_versions_ordered_and_latest_is_newest(conn):
     # Insert out of as_of order to prove ordering is by as_of, not insertion.
     store.add(_fact("f_new", value="474300000", as_of="2025-09-15"))
     store.add(_fact("f_old", value="467000000", as_of="2025-04-28"))
-    versions = store.versions("meridian", "MRDN:Cloud", "cloud_revenue", "FY2026-Q1")
+    versions = store.versions("atlas", "ATLS:Cloud", "cloud_revenue", "FY2026-Q1")
     assert [v.as_of for v in versions] == ["2025-04-28", "2025-09-15"]
-    latest = store.latest("meridian", "MRDN:Cloud", "cloud_revenue", "FY2026-Q1")
+    latest = store.latest("atlas", "ATLS:Cloud", "cloud_revenue", "FY2026-Q1")
     assert latest.value == Decimal("474300000")
 
 
@@ -111,17 +111,17 @@ def test_matches_inmemory_contract(conn):
     facts = [
         _fact("a", value="467000000", as_of="2025-04-28"),
         _fact("b", value="474300000", as_of="2025-09-15"),
-        _fact("c", metric="total_revenue", entity="MRDN", value="1241300000"),
+        _fact("c", metric="total_revenue", entity="ATLS", value="1241300000"),
     ]
     pg = PostgresFactStore(conn)
     mem = InMemoryFactStore()
     pg.add_many(facts)
     mem.add_many(facts)
 
-    scope = ("meridian", "MRDN:Cloud", "cloud_revenue", "FY2026-Q1")
+    scope = ("atlas", "ATLS:Cloud", "cloud_revenue", "FY2026-Q1")
     assert pg.versions(*scope) == mem.versions(*scope)
     assert pg.latest(*scope) == mem.latest(*scope)
-    assert sorted(f.id for f in pg.all("meridian")) == sorted(f.id for f in mem.all("meridian"))
+    assert sorted(f.id for f in pg.all("atlas")) == sorted(f.id for f in mem.all("atlas"))
 
 
 # --------------------------------------------------------------------------- #
@@ -131,8 +131,8 @@ def test_matches_inmemory_contract(conn):
 
 def test_audit_chain_verifies_and_is_contiguous(conn):
     log = PostgresAuditLog(conn)
-    log.append(actor="sys", type=EventType.INGEST, tenant_id="meridian", payload={"n": 1})
-    log.append(actor="cfo", type=EventType.SIGN_OFF, tenant_id="meridian", payload={"doc": "r"})
+    log.append(actor="sys", type=EventType.INGEST, tenant_id="atlas", payload={"n": 1})
+    log.append(actor="cfo", type=EventType.SIGN_OFF, tenant_id="atlas", payload={"doc": "r"})
     events = log.events()
     assert [e.seq for e in events] == [0, 1]
     assert events[1].prev_hash == events[0].hash
@@ -144,8 +144,8 @@ def test_audit_hashes_match_inmemory_backend(conn):
     pg = PostgresAuditLog(conn)
     mem = InMemoryAuditLog()
     events = [
-        ("sys", EventType.INGEST, "meridian", {"ingested": 15}, "2026-05-30T00:00:00+00:00"),
-        ("eng", EventType.VERDICT, "meridian", {"verdict": "traced"}, "2026-05-30T00:01:00+00:00"),
+        ("sys", EventType.INGEST, "atlas", {"ingested": 15}, "2026-05-30T00:00:00+00:00"),
+        ("eng", EventType.VERDICT, "atlas", {"verdict": "traced"}, "2026-05-30T00:01:00+00:00"),
     ]
     for actor, type_, tid, payload, ts in events:
         p = pg.append(actor=actor, type=type_, tenant_id=tid, payload=payload, timestamp=ts)
@@ -156,8 +156,8 @@ def test_audit_hashes_match_inmemory_backend(conn):
 
 def test_audit_tamper_is_detected(conn):
     log = PostgresAuditLog(conn)
-    log.append(actor="sys", type=EventType.INGEST, tenant_id="meridian", payload={"n": 1})
-    log.append(actor="x", type=EventType.OVERRIDE, tenant_id="meridian", payload={"n": 2})
+    log.append(actor="sys", type=EventType.INGEST, tenant_id="atlas", payload={"n": 1})
+    log.append(actor="x", type=EventType.OVERRIDE, tenant_id="atlas", payload={"n": 2})
     # Retroactively edit a persisted payload — the chain must catch it.
     with conn.cursor() as cur:
         cur.execute("""UPDATE audit_events SET payload = '{"n": 999}' WHERE seq = 0""")
@@ -167,9 +167,9 @@ def test_audit_tamper_is_detected(conn):
 
 def test_audit_tenant_filter(conn):
     log = PostgresAuditLog(conn)
-    log.append(actor="sys", type=EventType.INGEST, tenant_id="meridian", payload={})
+    log.append(actor="sys", type=EventType.INGEST, tenant_id="atlas", payload={})
     log.append(actor="sys", type=EventType.INGEST, tenant_id="acme", payload={})
-    assert [e.tenant_id for e in log.events("meridian")] == ["meridian"]
+    assert [e.tenant_id for e in log.events("atlas")] == ["atlas"]
     assert len(log.events()) == 2
 
 
@@ -197,7 +197,7 @@ def test_cache_serves_reads_and_invalidates_on_write(conn, redis_client):
 
     inner = PostgresFactStore(conn)
     cached = CachingFactStore(inner, redis_client)
-    scope = ("meridian", "MRDN:Cloud", "cloud_revenue", "FY2026-Q1")
+    scope = ("atlas", "ATLS:Cloud", "cloud_revenue", "FY2026-Q1")
 
     cached.add(_fact("a", value="467000000", as_of="2025-04-28"))
     assert len(cached.versions(*scope)) == 1  # populates the cache
@@ -226,7 +226,7 @@ def test_postgres_backed_service_matches_inmemory(conn):
     )
     mem_service = AttestService()
     for svc in (pg_service, mem_service):
-        svc.ingest_xbrl(load_fixture("meridian_q1_fy2026"), tenant_id="meridian")
+        svc.ingest_xbrl(load_fixture("atlas_q1_fy2026"), tenant_id="atlas")
 
     docs = build_documents()
     pg_results, pg_consistency = pg_service.verify_close_pack(docs)

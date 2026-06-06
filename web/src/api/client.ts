@@ -110,19 +110,19 @@ export const apiBaseUrl: string =
 
 // --- live client -----------------------------------------------------------
 
-const TENANT = "meridian";
+const TENANT = "atlas";
 
-// UI figure id -> the backend's canonical (metric, period, entity) scope, matching
-// what attest.demo ingests for the Meridian close pack.
+// UI figure id -> the backend's canonical (metric, period, entity) scope for the
+// reference close pack.
 const SCOPE: Record<string, { metric: string; period: string; entity: string }> = {
-  rev: { metric: "total_revenue", period: "FY2026-Q1", entity: "MRDN" },
-  gaapeps: { metric: "gaap_diluted_eps", period: "FY2026-Q1", entity: "MRDN" },
-  nongaapeps: { metric: "non_gaap_diluted_eps", period: "FY2026-Q1", entity: "MRDN" },
-  cloudrev: { metric: "cloud_revenue", period: "FY2026-Q1", entity: "MRDN:Cloud" },
-  cloudgrowth: { metric: "cloud_growth_yoy", period: "FY2026-Q1", entity: "MRDN:Cloud" },
-  ocf: { metric: "operating_cash_flow", period: "FY2026-Q1", entity: "MRDN" },
-  buyback: { metric: "share_repurchases", period: "FY2026-Q1", entity: "MRDN" },
-  guidance: { metric: "q2_revenue_guidance", period: "FY2026-Q2", entity: "MRDN" },
+  rev: { metric: "total_revenue", period: "FY2026-Q1", entity: "ATLS" },
+  gaapeps: { metric: "gaap_diluted_eps", period: "FY2026-Q1", entity: "ATLS" },
+  nongaapeps: { metric: "non_gaap_diluted_eps", period: "FY2026-Q1", entity: "ATLS" },
+  cloudrev: { metric: "cloud_revenue", period: "FY2026-Q1", entity: "ATLS:Cloud" },
+  cloudgrowth: { metric: "cloud_growth_yoy", period: "FY2026-Q1", entity: "ATLS:Cloud" },
+  ocf: { metric: "operating_cash_flow", period: "FY2026-Q1", entity: "ATLS" },
+  buyback: { metric: "share_repurchases", period: "FY2026-Q1", entity: "ATLS" },
+  guidance: { metric: "q2_revenue_guidance", period: "FY2026-Q2", entity: "ATLS" },
 };
 
 // Backend verdict vocabulary -> the UI's single-letter states.

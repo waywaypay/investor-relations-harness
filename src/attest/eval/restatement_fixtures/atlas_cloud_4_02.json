@@ -1,6 +1,6 @@
 {
-  "tenant": "meridian",
-  "filer": "Meridian Systems, Inc.",
+  "tenant": "atlas",
+  "filer": "Atlas Systems, Inc.",
   "accession": "0001047469-25-004500",
   "form": "10-K",
   "item_4_02": {
@@ -8,7 +8,7 @@
     "summary": "Non-reliance on previously issued financials: prior-year cloud segment revenue was reclassified under a revenue-recognition correction.",
     "non_reliance": true
   },
-  "entity": "MRDN:Cloud",
+  "entity": "ATLS:Cloud",
   "metric": "cloud_revenue",
   "period": "FY2025-Q1",
   "unit": "currency",

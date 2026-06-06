@@ -1,13 +1,13 @@
 {
-  "sample_text": "Meridian Systems Reports First Quarter Fiscal 2026 Results\n\nMeridian Systems reported total revenue of $1.24 billion, up 18% year over year. The company delivered GAAP diluted EPS of $0.87 and non-GAAP diluted EPS of $1.12. Cloud segment revenue reached $612 million, up 31% from the prior-year period. Operating cash flow was $338 million. Meridian repurchased $250 million of common stock. For the second quarter, the company expects total revenue in the range of $1.31 to $1.34 billion.",
+  "sample_text": "Atlas Systems Reports First Quarter Fiscal 2026 Results\n\nAtlas Systems reported total revenue of $1.24 billion, up 18% year over year. The company delivered GAAP diluted EPS of $0.87 and non-GAAP diluted EPS of $1.12. Cloud segment revenue reached $612 million, up 31% from the prior-year period. Operating cash flow was $338 million. The company repurchased $250 million of common stock. For the second quarter, the company expects total revenue in the range of $1.31 to $1.34 billion.",
   "ingested": 15,
   "unseeded": {
-    "document_id": "release",
+    "document_id": "release-54bad92e3ef4",
     "verdicts": [
       {
-        "claim_id": "release-c2",
-        "document_id": "release",
-        "entity": "MRDN",
+        "claim_id": "release-54bad92e3ef4-c2",
+        "document_id": "release-54bad92e3ef4",
+        "entity": "ATLS",
         "metric": "total_revenue",
         "period": "FY2026-Q1",
         "displayed_text": "$1.24 billion",
@@ -18,9 +18,9 @@
         "as_of": null
       },
       {
-        "claim_id": "release-c3",
-        "document_id": "release",
-        "entity": "MRDN",
+        "claim_id": "release-54bad92e3ef4-c3",
+        "document_id": "release-54bad92e3ef4",
+        "entity": "ATLS",
         "metric": "unidentified",
         "period": "FY2026-Q1",
         "displayed_text": "18%",
@@ -31,9 +31,9 @@
         "as_of": null
       },
       {
-        "claim_id": "release-c4",
-        "document_id": "release",
-        "entity": "MRDN",
+        "claim_id": "release-54bad92e3ef4-c4",
+        "document_id": "release-54bad92e3ef4",
+        "entity": "ATLS",
         "metric": "gaap_diluted_eps",
         "period": "FY2026-Q1",
         "displayed_text": "$0.87",
@@ -44,9 +44,9 @@
         "as_of": null
       },
       {
-        "claim_id": "release-c5",
-        "document_id": "release",
-        "entity": "MRDN",
+        "claim_id": "release-54bad92e3ef4-c5",
+        "document_id": "release-54bad92e3ef4",
+        "entity": "ATLS",
         "metric": "non_gaap_diluted_eps",
         "period": "FY2026-Q1",
         "displayed_text": "$1.12",
@@ -57,9 +57,9 @@
         "as_of": null
       },
       {
-        "claim_id": "release-c6",
-        "document_id": "release",
-        "entity": "MRDN",
+        "claim_id": "release-54bad92e3ef4-c6",
+        "document_id": "release-54bad92e3ef4",
+        "entity": "ATLS",
         "metric": "cloud_revenue",
         "period": "FY2026-Q1",
         "displayed_text": "$612 million",
@@ -70,9 +70,9 @@
         "as_of": null
       },
       {
-        "claim_id": "release-c7",
-        "document_id": "release",
-        "entity": "MRDN",
+        "claim_id": "release-54bad92e3ef4-c7",
+        "document_id": "release-54bad92e3ef4",
+        "entity": "ATLS",
         "metric": "cloud_growth_yoy",
         "period": "FY2026-Q1",
         "displayed_text": "31%",
@@ -83,9 +83,9 @@
         "as_of": null
       },
       {
-        "claim_id": "release-c8",
-        "document_id": "release",
-        "entity": "MRDN",
+        "claim_id": "release-54bad92e3ef4-c8",
+        "document_id": "release-54bad92e3ef4",
+        "entity": "ATLS",
         "metric": "operating_cash_flow",
         "period": "FY2026-Q1",
         "displayed_text": "$338 million",
@@ -96,9 +96,9 @@
         "as_of": null
       },
       {
-        "claim_id": "release-c9",
-        "document_id": "release",
-        "entity": "MRDN",
+        "claim_id": "release-54bad92e3ef4-c9",
+        "document_id": "release-54bad92e3ef4",
+        "entity": "ATLS",
         "metric": "share_repurchases",
         "period": "FY2026-Q1",
         "displayed_text": "$250 million",
@@ -109,9 +109,9 @@
         "as_of": null
       },
       {
-        "claim_id": "release-c1",
-        "document_id": "release",
-        "entity": "MRDN",
+        "claim_id": "release-54bad92e3ef4-c1",
+        "document_id": "release-54bad92e3ef4",
+        "entity": "ATLS",
         "metric": "q2_revenue_guidance",
         "period": "FY2026-Q2",
         "displayed_text": "$1.31 to $1.34 billion",
@@ -126,7 +126,7 @@
       {
         "rule": "reg_g.reconciliation_required",
         "severity": "block",
-        "document_id": "release",
+        "document_id": "release-54bad92e3ef4",
         "metric": "non_gaap_diluted_eps",
         "message": "No reconciliation source found bridging 'Non-GAAP diluted EPS' to its GAAP counterpart for FY2026-Q1.",
         "detail": "A GAAP-to-non-GAAP reconciliation must be disclosed."
@@ -134,7 +134,7 @@
       {
         "rule": "forward_looking.safe_harbor_required",
         "severity": "block",
-        "document_id": "release",
+        "document_id": "release-54bad92e3ef4",
         "metric": null,
         "message": "Forward-looking statements present without safe-harbor language.",
         "detail": "Detected forward-looking language. Attach safe-harbor language before this document can publish."
@@ -149,124 +149,124 @@
     "publishable": false,
     "title": "Pasted document",
     "kind": "release",
-    "entity": "MRDN",
+    "entity": "ATLS",
     "period": "FY2026-Q1",
-    "text": "Meridian Systems Reports First Quarter Fiscal 2026 Results\n\nMeridian Systems reported total revenue of $1.24 billion, up 18% year over year. The company delivered GAAP diluted EPS of $0.87 and non-GAAP diluted EPS of $1.12. Cloud segment revenue reached $612 million, up 31% from the prior-year period. Operating cash flow was $338 million. Meridian repurchased $250 million of common stock. For the second quarter, the company expects total revenue in the range of $1.31 to $1.34 billion.",
+    "text": "Atlas Systems Reports First Quarter Fiscal 2026 Results\n\nAtlas Systems reported total revenue of $1.24 billion, up 18% year over year. The company delivered GAAP diluted EPS of $0.87 and non-GAAP diluted EPS of $1.12. Cloud segment revenue reached $612 million, up 31% from the prior-year period. Operating cash flow was $338 million. The company repurchased $250 million of common stock. For the second quarter, the company expects total revenue in the range of $1.31 to $1.34 billion.",
     "claims": [
       {
-        "claim_id": "release-c2",
-        "document_id": "release",
-        "entity": "MRDN",
+        "claim_id": "release-54bad92e3ef4-c2",
+        "document_id": "release-54bad92e3ef4",
+        "entity": "ATLS",
         "metric": "total_revenue",
         "period": "FY2026-Q1",
         "displayed_text": "$1.24 billion",
         "span": [
-          103,
-          116
+          97,
+          110
         ],
         "detect_confidence": "high"
       },
       {
-        "claim_id": "release-c3",
-        "document_id": "release",
-        "entity": "MRDN",
+        "claim_id": "release-54bad92e3ef4-c3",
+        "document_id": "release-54bad92e3ef4",
+        "entity": "ATLS",
         "metric": "unidentified",
         "period": "FY2026-Q1",
         "displayed_text": "18%",
         "span": [
-          121,
-          124
+          115,
+          118
         ],
         "detect_confidence": "low"
       },
       {
-        "claim_id": "release-c4",
-        "document_id": "release",
-        "entity": "MRDN",
+        "claim_id": "release-54bad92e3ef4-c4",
+        "document_id": "release-54bad92e3ef4",
+        "entity": "ATLS",
         "metric": "gaap_diluted_eps",
         "period": "FY2026-Q1",
         "displayed_text": "$0.87",
         "span": [
-          183,
-          189
+          177,
+          183
         ],
         "detect_confidence": "high"
       },
       {
-        "claim_id": "release-c5",
-        "document_id": "release",
-        "entity": "MRDN",
+        "claim_id": "release-54bad92e3ef4-c5",
+        "document_id": "release-54bad92e3ef4",
+        "entity": "ATLS",
         "metric": "non_gaap_diluted_eps",
         "period": "FY2026-Q1",
         "displayed_text": "$1.12",
         "span": [
-          217,
-          222
+          211,
+          216
         ],
         "detect_confidence": "high"
       },
       {
-        "claim_id": "release-c6",
-        "document_id": "release",
-        "entity": "MRDN",
+        "claim_id": "release-54bad92e3ef4-c6",
+        "document_id": "release-54bad92e3ef4",
+        "entity": "ATLS",
         "metric": "cloud_revenue",
         "period": "FY2026-Q1",
         "displayed_text": "$612 million",
         "span": [
-          254,
-          266
+          248,
+          260
         ],
         "detect_confidence": "high"
       },
       {
-        "claim_id": "release-c7",
-        "document_id": "release",
-        "entity": "MRDN",
+        "claim_id": "release-54bad92e3ef4-c7",
+        "document_id": "release-54bad92e3ef4",
+        "entity": "ATLS",
         "metric": "cloud_growth_yoy",
         "period": "FY2026-Q1",
         "displayed_text": "31%",
         "span": [
-          271,
-          274
+          265,
+          268
         ],
         "detect_confidence": "high"
       },
       {
-        "claim_id": "release-c8",
-        "document_id": "release",
-        "entity": "MRDN",
+        "claim_id": "release-54bad92e3ef4-c8",
+        "document_id": "release-54bad92e3ef4",
+        "entity": "ATLS",
         "metric": "operating_cash_flow",
         "period": "FY2026-Q1",
         "displayed_text": "$338 million",
         "span": [
-          327,
-          339
+          321,
+          333
         ],
         "detect_confidence": "high"
       },
       {
-        "claim_id": "release-c9",
-        "document_id": "release",
-        "entity": "MRDN",
+        "claim_id": "release-54bad92e3ef4-c9",
+        "document_id": "release-54bad92e3ef4",
+        "entity": "ATLS",
         "metric": "share_repurchases",
         "period": "FY2026-Q1",
         "displayed_text": "$250 million",
         "span": [
-          362,
-          374
+          359,
+          371
         ],
         "detect_confidence": "high"
       },
       {
-        "claim_id": "release-c1",
-        "document_id": "release",
-        "entity": "MRDN",
+        "claim_id": "release-54bad92e3ef4-c1",
+        "document_id": "release-54bad92e3ef4",
+        "entity": "ATLS",
         "metric": "q2_revenue_guidance",
         "period": "FY2026-Q2",
         "displayed_text": "$1.31 to $1.34 billion",
         "span": [
-          466,
-          488
+          463,
+          485
         ],
         "detect_confidence": "high"
       }
@@ -274,12 +274,12 @@
     "warnings": []
   },
   "seeded": {
-    "document_id": "release",
+    "document_id": "release-29752cdef0c5",
     "verdicts": [
       {
-        "claim_id": "release-c2",
-        "document_id": "release",
-        "entity": "MRDN",
+        "claim_id": "release-29752cdef0c5-c2",
+        "document_id": "release-29752cdef0c5",
+        "entity": "ATLS",
         "metric": "total_revenue",
         "period": "FY2026-Q1",
         "displayed_text": "$1.24 billion",
@@ -295,9 +295,9 @@
         "as_of": "2026-04-28"
       },
       {
-        "claim_id": "release-c3",
-        "document_id": "release",
-        "entity": "MRDN",
+        "claim_id": "release-29752cdef0c5-c3",
+        "document_id": "release-29752cdef0c5",
+        "entity": "ATLS",
         "metric": "unidentified",
         "period": "FY2026-Q1",
         "displayed_text": "18%",
@@ -308,9 +308,9 @@
         "as_of": null
       },
       {
-        "claim_id": "release-c4",
-        "document_id": "release",
-        "entity": "MRDN",
+        "claim_id": "release-29752cdef0c5-c4",
+        "document_id": "release-29752cdef0c5",
+        "entity": "ATLS",
         "metric": "gaap_diluted_eps",
         "period": "FY2026-Q1",
         "displayed_text": "$0.87",
@@ -326,9 +326,9 @@
         "as_of": "2026-04-28"
       },
       {
-        "claim_id": "release-c5",
-        "document_id": "release",
-        "entity": "MRDN",
+        "claim_id": "release-29752cdef0c5-c5",
+        "document_id": "release-29752cdef0c5",
+        "entity": "ATLS",
         "metric": "non_gaap_diluted_eps",
         "period": "FY2026-Q1",
         "displayed_text": "$1.12",
@@ -344,9 +344,9 @@
         "as_of": "2026-04-28"
       },
       {
-        "claim_id": "release-c6",
-        "document_id": "release",
-        "entity": "MRDN:Cloud",
+        "claim_id": "release-29752cdef0c5-c6",
+        "document_id": "release-29752cdef0c5",
+        "entity": "ATLS:Cloud",
         "metric": "cloud_revenue",
         "period": "FY2026-Q1",
         "displayed_text": "$612 million",
@@ -354,7 +354,7 @@
         "reason": "Matched the as-filed source within the rounding policy.",
         "provenance": {
           "source_type": "edgar_xbrl",
-          "ref": "0001047469-26-001234#mrdn:CloudSegmentRevenue",
+          "ref": "0001047469-26-001234#atls:CloudSegmentRevenue",
           "label": "Form 10-Q \u00b7 Note 14, Segment Information \u00b7 p.27",
           "excerpt": "Cloud segment revenue was $611.8 million for the quarter."
         },
@@ -362,9 +362,9 @@
         "as_of": "2026-04-28"
       },
       {
-        "claim_id": "release-c7",
-        "document_id": "release",
-        "entity": "MRDN:Cloud",
+        "claim_id": "release-29752cdef0c5-c7",
+        "document_id": "release-29752cdef0c5",
+        "entity": "ATLS:Cloud",
         "metric": "cloud_growth_yoy",
         "period": "FY2026-Q1",
         "displayed_text": "31%",
@@ -380,9 +380,9 @@
         "as_of": "2025-09-15"
       },
       {
-        "claim_id": "release-c8",
-        "document_id": "release",
-        "entity": "MRDN",
+        "claim_id": "release-29752cdef0c5-c8",
+        "document_id": "release-29752cdef0c5",
+        "entity": "ATLS",
         "metric": "operating_cash_flow",
         "period": "FY2026-Q1",
         "displayed_text": "$338 million",
@@ -398,9 +398,9 @@
         "as_of": "2026-04-28"
       },
       {
-        "claim_id": "release-c9",
-        "document_id": "release",
-        "entity": "MRDN",
+        "claim_id": "release-29752cdef0c5-c9",
+        "document_id": "release-29752cdef0c5",
+        "entity": "ATLS",
         "metric": "share_repurchases",
         "period": "FY2026-Q1",
         "displayed_text": "$250 million",
@@ -416,9 +416,9 @@
         "as_of": "2026-04-28"
       },
       {
-        "claim_id": "release-c1",
-        "document_id": "release",
-        "entity": "MRDN",
+        "claim_id": "release-29752cdef0c5-c1",
+        "document_id": "release-29752cdef0c5",
+        "entity": "ATLS",
         "metric": "q2_revenue_guidance",
         "period": "FY2026-Q2",
         "displayed_text": "$1.31 to $1.34 billion",
@@ -438,7 +438,7 @@
       {
         "rule": "forward_looking.safe_harbor_required",
         "severity": "block",
-        "document_id": "release",
+        "document_id": "release-29752cdef0c5",
         "metric": null,
         "message": "Forward-looking statements present without safe-harbor language.",
         "detail": "Detected forward-looking language and guidance figures (q2_revenue_guidance). Attach safe-harbor language before this document can publish."
@@ -446,7 +446,7 @@
       {
         "rule": "derived.recomputation_mismatch",
         "severity": "block",
-        "document_id": "release",
+        "document_id": "release-29752cdef0c5",
         "metric": "cloud_growth_yoy",
         "message": "'Cloud growth, YoY' is stated as 31% but recomputes to 29% from cloud_revenue.",
         "detail": "Recomputed from FY2025-Q1 $474300000 (FY2025 Form 10-K \u00b7 Note 2 (restated prior-year cloud revenue)) to FY2026-Q1 $611800000 (Form 10-Q \u00b7 Note 14, Segment Information \u00b7 p.27)."
@@ -461,124 +461,124 @@
     "publishable": false,
     "title": "Pasted document",
     "kind": "release",
-    "entity": "MRDN",
+    "entity": "ATLS",
     "period": "FY2026-Q1",
-    "text": "Meridian Systems Reports First Quarter Fiscal 2026 Results\n\nMeridian Systems reported total revenue of $1.24 billion, up 18% year over year. The company delivered GAAP diluted EPS of $0.87 and non-GAAP diluted EPS of $1.12. Cloud segment revenue reached $612 million, up 31% from the prior-year period. Operating cash flow was $338 million. Meridian repurchased $250 million of common stock. For the second quarter, the company expects total revenue in the range of $1.31 to $1.34 billion.",
+    "text": "Atlas Systems Reports First Quarter Fiscal 2026 Results\n\nAtlas Systems reported total revenue of $1.24 billion, up 18% year over year. The company delivered GAAP diluted EPS of $0.87 and non-GAAP diluted EPS of $1.12. Cloud segment revenue reached $612 million, up 31% from the prior-year period. Operating cash flow was $338 million. The company repurchased $250 million of common stock. For the second quarter, the company expects total revenue in the range of $1.31 to $1.34 billion.",
     "claims": [
       {
-        "claim_id": "release-c2",
-        "document_id": "release",
-        "entity": "MRDN",
+        "claim_id": "release-29752cdef0c5-c2",
+        "document_id": "release-29752cdef0c5",
+        "entity": "ATLS",
         "metric": "total_revenue",
         "period": "FY2026-Q1",
         "displayed_text": "$1.24 billion",
         "span": [
-          103,
-          116
+          97,
+          110
         ],
         "detect_confidence": "high"
       },
       {
-        "claim_id": "release-c3",
-        "document_id": "release",
-        "entity": "MRDN",
+        "claim_id": "release-29752cdef0c5-c3",
+        "document_id": "release-29752cdef0c5",
+        "entity": "ATLS",
         "metric": "unidentified",
         "period": "FY2026-Q1",
         "displayed_text": "18%",
         "span": [
-          121,
-          124
+          115,
+          118
         ],
         "detect_confidence": "low"
       },
       {
-        "claim_id": "release-c4",
-        "document_id": "release",
-        "entity": "MRDN",
+        "claim_id": "release-29752cdef0c5-c4",
+        "document_id": "release-29752cdef0c5",
+        "entity": "ATLS",
         "metric": "gaap_diluted_eps",
         "period": "FY2026-Q1",
         "displayed_text": "$0.87",
         "span": [
-          183,
-          189
+          177,
+          183
         ],
         "detect_confidence": "high"
       },
       {
-        "claim_id": "release-c5",
-        "document_id": "release",
-        "entity": "MRDN",
+        "claim_id": "release-29752cdef0c5-c5",
+        "document_id": "release-29752cdef0c5",
+        "entity": "ATLS",
         "metric": "non_gaap_diluted_eps",
         "period": "FY2026-Q1",
         "displayed_text": "$1.12",
         "span": [
-          217,
-          222
+          211,
+          216
         ],
         "detect_confidence": "high"
       },
       {
-        "claim_id": "release-c6",
-        "document_id": "release",
-        "entity": "MRDN:Cloud",
+        "claim_id": "release-29752cdef0c5-c6",
+        "document_id": "release-29752cdef0c5",
+        "entity": "ATLS:Cloud",
         "metric": "cloud_revenue",
         "period": "FY2026-Q1",
         "displayed_text": "$612 million",
         "span": [
-          254,
-          266
+          248,
+          260
         ],
         "detect_confidence": "high"
       },
       {
-        "claim_id": "release-c7",
-        "document_id": "release",
-        "entity": "MRDN:Cloud",
+        "claim_id": "release-29752cdef0c5-c7",
+        "document_id": "release-29752cdef0c5",
+        "entity": "ATLS:Cloud",
         "metric": "cloud_growth_yoy",
         "period": "FY2026-Q1",
         "displayed_text": "31%",
         "span": [
-          271,
-          274
+          265,
+          268
         ],
         "detect_confidence": "high"
       },
       {
-        "claim_id": "release-c8",
-        "document_id": "release",
-        "entity": "MRDN",
+        "claim_id": "release-29752cdef0c5-c8",
+        "document_id": "release-29752cdef0c5",
+        "entity": "ATLS",
         "metric": "operating_cash_flow",
         "period": "FY2026-Q1",
         "displayed_text": "$338 million",
         "span": [
-          327,
-          339
+          321,
+          333
         ],
         "detect_confidence": "high"
       },
       {
-        "claim_id": "release-c9",
-        "document_id": "release",
-        "entity": "MRDN",
+        "claim_id": "release-29752cdef0c5-c9",
+        "document_id": "release-29752cdef0c5",
+        "entity": "ATLS",
         "metric": "share_repurchases",
         "period": "FY2026-Q1",
         "displayed_text": "$250 million",
         "span": [
-          362,
-          374
+          359,
+          371
         ],
         "detect_confidence": "high"
       },
       {
-        "claim_id": "release-c1",
-        "document_id": "release",
-        "entity": "MRDN",
+        "claim_id": "release-29752cdef0c5-c1",
+        "document_id": "release-29752cdef0c5",
+        "entity": "ATLS",
         "metric": "q2_revenue_guidance",
         "period": "FY2026-Q2",
         "displayed_text": "$1.31 to $1.34 billion",
         "span": [
-          466,
-          488
+          463,
+          485
         ],
         "detect_confidence": "high"
       }

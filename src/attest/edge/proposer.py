@@ -44,7 +44,7 @@ class ClaimProposer:
             f"can; if none fits, use your best guess and set confidence='low'):\n"
             f"{self._vocabulary()}\n\n"
             f"Default entity: {document.tenant_id!r} issuer. Use segment-qualified "
-            "entities (e.g. 'MRDN:Cloud') when the prose attributes a figure to a "
+            "entities (e.g. 'ATLS:Cloud') when the prose attributes a figure to a "
             "segment.\n\n"
             f"Draft document (id={document.id!r}, kind={document.kind.value}):\n"
             f"---\n{document.text}\n---"

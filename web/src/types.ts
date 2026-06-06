@@ -121,7 +121,7 @@ export interface DocVersion {
   note?: string; // optional free-text note the user attaches to the version
 }
 
-// A single document in the workspace library. The bundled Meridian close pack is
+// A single document in the workspace library. The bundled reference close pack is
 // seeded as `demo` documents; anything a user uploads (or pastes) becomes an
 // `upload` document with the same shape, so the renderer treats them uniformly.
 //

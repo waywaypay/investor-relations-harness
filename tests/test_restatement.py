@@ -15,7 +15,7 @@ from attest.domain.verdicts import Verdict
 
 
 def test_fixture_yields_original_conflict_and_restated_traced():
-    rec = load_restatement_fixture("meridian_cloud_4_02")
+    rec = load_restatement_fixture("atlas_cloud_4_02")
     cases = cases_from_restatement(rec)
     by_verdict = {c.expected: c for c in cases}
     assert Verdict.CONFLICT in by_verdict
@@ -29,7 +29,7 @@ def test_fixture_yields_original_conflict_and_restated_traced():
 
 
 def test_cases_tagged_edgar_restatement():
-    cases = cases_from_restatement(load_restatement_fixture("meridian_cloud_4_02"))
+    cases = cases_from_restatement(load_restatement_fixture("atlas_cloud_4_02"))
     assert cases
     assert all(isinstance(c, RestatementCase) for c in cases)
     assert all(c.label_source == "edgar_restatement" for c in cases)
@@ -43,7 +43,7 @@ def test_engine_agrees_with_harvested_labels():
     from attest.service import AttestService
     from attest.domain.verdicts import FigureClaim
 
-    rec = load_restatement_fixture("meridian_cloud_4_02")
+    rec = load_restatement_fixture("atlas_cloud_4_02")
     cases = cases_from_restatement(rec)
     svc = AttestService()
     build_store_from_restatement(rec, svc)

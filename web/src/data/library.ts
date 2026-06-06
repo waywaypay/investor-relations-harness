@@ -1,6 +1,6 @@
 // The workspace document library.
 //
-// The bundled Meridian close pack (release / script / Q&A) is seeded as `demo`
+// The bundled reference close pack (release / script / Q&A) is seeded as
 // documents so the workspace is explorable the moment it loads. Anything a user
 // uploads is appended as an `upload` document with the same shape (see
 // lib/buildDoc.ts), and the two are rendered and managed uniformly.
@@ -27,10 +27,10 @@ export function collectFigureIds(blocks: Block[]): string[] {
   return ids;
 }
 
-// Map the hand-authored demo documents into library entries. Each demo document
+// Map the hand-authored reference documents into library entries. Each document
 // seeds a single "As filed" version so it lives in the version model uniformly;
 // its figures use the shared global ids (rev, gaapeps, …), so they are never
-// pruned when a demo document is removed in-session.
+// pruned when a document is removed in-session.
 export const DEMO_LIBRARY: LibraryDoc[] = DOCS.map((d) => {
   const versionId = `${d.id}__v1`;
   return {

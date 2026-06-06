@@ -1,8 +1,9 @@
-"""The Meridian Systems Q1 FY2026 demo close pack.
+"""Atlas Systems Q1 FY2026 close pack fixture.
 
-Reconstructs the three documents from the prototype (release, prepared remarks,
-Q&A prep) as :class:`Document` objects with the figure claims the edge would
-propose. Used to seed the API, drive the CLI demo, and anchor tests.
+Reconstructs the three documents from the reference implementation (release,
+prepared remarks, Q&A prep) as :class:`Document` objects with the figure claims
+the edge would propose. Used to seed the API, drive the CLI verify command, and
+anchor tests.
 """
 
 from __future__ import annotations
@@ -12,9 +13,9 @@ from attest.domain.verdicts import FigureClaim
 from attest.ingestion.edgar_xbrl import load_fixture
 from attest.service import AttestService
 
-TENANT = "meridian"
-ENTITY = "MRDN"
-CLOUD = "MRDN:Cloud"
+TENANT = "atlas"
+ENTITY = "ATLS"
+CLOUD = "ATLS:Cloud"
 Q1 = "FY2026-Q1"
 Q2 = "FY2026-Q2"
 
@@ -30,13 +31,13 @@ def build_documents() -> list[Document]:
     release = Document(
         id="release",
         tenant_id=TENANT,
-        title="Meridian Systems Reports First Quarter Fiscal 2026 Results",
+        title="Atlas Systems Reports First Quarter Fiscal 2026 Results",
         kind=DocumentKind.RELEASE,
         text=(
-            "Meridian Systems reported total revenue of $1.24 billion, up 18% year over year. "
+            "Atlas Systems reported total revenue of $1.24 billion, up 18% year over year. "
             "The company delivered GAAP diluted EPS of $0.87 and non-GAAP diluted EPS of $1.12. "
             "Cloud segment revenue reached $612 million, up 31% from the prior-year period. "
-            "Operating cash flow was $338 million. Meridian repurchased $250 million of common "
+            "Operating cash flow was $338 million. The company repurchased $250 million of common "
             "stock. For the second quarter, the company expects total revenue in the range of "
             "$1.31 to $1.34 billion."
         ),
@@ -102,14 +103,14 @@ def build_documents() -> list[Document]:
 
 
 def seeded_service(*, edge=None) -> AttestService:
-    """An AttestService with the Meridian filing ingested and ready to verify."""
+    """An AttestService with the Atlas Q1 FY2026 filing ingested and ready to verify."""
     service = AttestService(edge=edge)
-    service.ingest_xbrl(load_fixture("meridian_q1_fy2026"), tenant_id=TENANT)
+    service.ingest_xbrl(load_fixture("atlas_q1_fy2026"), tenant_id=TENANT)
     return service
 
 
 def _claims_as_figures(document: Document) -> dict:
-    """Render a demo document's claims in the proposer's tool-input shape."""
+    """Render a document's claims in the proposer's tool-input shape."""
     return {
         "figures": [
             {
@@ -124,13 +125,13 @@ def _claims_as_figures(document: Document) -> dict:
     }
 
 
-def demo_edge_service():
-    """An :class:`EdgeService` over a scripted fake client for offline LLM runs.
+def scripted_edge_service():
+    """An :class:`EdgeService` over a scripted client for offline LLM runs.
 
-    The fake proposer reproduces each demo document's own claims (so the LLM path
+    The scripted proposer reproduces each document's own claims (so the LLM path
     yields byte-for-byte the same verdicts as the deterministic path), and the
-    fake narrator emits no flags. This is what `attest verify --use-llm` falls back
-    to when no ``ANTHROPIC_API_KEY`` is set, and what the edge tests run against.
+    scripted narrator emits no flags. This is what `attest verify --use-llm` falls
+    back to when no ``ANTHROPIC_API_KEY`` is set, and what the edge tests run against.
     """
     from attest.edge.client import FakeLLMClient, LLMResult
     from attest.edge.service import EdgeService
@@ -147,3 +148,7 @@ def demo_edge_service():
         return LLMResult(tool_inputs=({"flags": []},))
 
     return EdgeService(FakeLLMClient(handler=handler))
+
+
+# Backward-compatible alias used by CLI and tests.
+demo_edge_service = scripted_edge_service

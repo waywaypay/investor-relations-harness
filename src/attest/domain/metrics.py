@@ -85,8 +85,8 @@ class MetricRegistry:
         return metric_id in self._by_id
 
 
-# A default registry covering the Meridian Systems demo close pack. In production
-# this is tenant-configurable; the shape stays the same.
+# Default registry. In production this is tenant-configurable; the shape stays
+# the same.
 DEFAULT_REGISTRY = MetricRegistry(
     [
         MetricSpec(
@@ -94,8 +94,7 @@ DEFAULT_REGISTRY = MetricRegistry(
             label="Total revenue",
             unit=Unit.CURRENCY,
             # The current standard tag is listed first so it wins for issuers that
-            # report under ASC 606; ``Revenues`` is the legacy fallback (and what
-            # the Meridian fixture uses).
+            # report under ASC 606; ``Revenues`` is the legacy fallback.
             xbrl_tags=(
                 "us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax",
                 "us-gaap:Revenues",
@@ -106,7 +105,7 @@ DEFAULT_REGISTRY = MetricRegistry(
             id="cloud_revenue",
             label="Cloud segment revenue",
             unit=Unit.CURRENCY,
-            xbrl_tags=("mrdn:CloudSegmentRevenue",),
+            xbrl_tags=("atls:CloudSegmentRevenue",),
         ),
         MetricSpec(
             id="cloud_growth_yoy",
@@ -148,10 +147,10 @@ DEFAULT_REGISTRY = MetricRegistry(
             unit=Unit.CURRENCY,
             xbrl_tags=("us-gaap:NetCashProvidedByUsedInOperatingActivities",),
         ),
-        # General income-statement / balance-sheet metrics, so a draft analyzed
+        # General income-statement / balance-sheet metrics so a draft analyzed
         # against a real EDGAR filing (see attest.ingestion.edgar) ties out beyond
-        # the Meridian demo's vocabulary. Each carries the us-gaap tag the connector
-        # fetches; the unit is what the engine compares in.
+        # the reference fixture's vocabulary. Each carries the us-gaap tag the
+        # connector fetches; the unit is what the engine compares in.
         MetricSpec(
             id="net_income",
             label="Net income",

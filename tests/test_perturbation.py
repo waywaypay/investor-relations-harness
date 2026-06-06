@@ -15,7 +15,7 @@ from attest.domain.verdicts import Verdict
 from attest.eval.perturbation import SyntheticCase, perturb_fact
 
 REV = Fact(
-    id="f1", tenant_id="t", entity="MRDN", metric="total_revenue", period="FY2026-Q1",
+    id="f1", tenant_id="t", entity="ATLS", metric="total_revenue", period="FY2026-Q1",
     value=Decimal("1241300000"), unit=Unit.CURRENCY, quantum=Decimal("100000"),
     source_type=SourceType.EDGAR_XBRL, source_ref="acc#rev", as_of="2026-04-28",
 )

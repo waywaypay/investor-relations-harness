@@ -36,11 +36,8 @@ from attest.domain.document import Document, DocumentKind
 from attest.extraction.claims import infer_entity_ticker
 from attest.extraction.text import extract_text
 from attest.ingestion.edgar import EdgarUnavailable
-from attest.ingestion.edgar_xbrl import load_fixture
 from attest.service import AttestService
 from attest.verification.engine import VerificationResult
-
-_DEMO_FIXTURE = "meridian_q1_fy2026"
 
 
 def _to_verify_response(result: VerificationResult) -> VerifyResponse:
@@ -53,7 +50,7 @@ def _to_verify_response(result: VerificationResult) -> VerifyResponse:
     )
 
 
-def create_app(service: AttestService | None = None, *, seed_demo: bool = False) -> FastAPI:
+def create_app(service: AttestService | None = None) -> FastAPI:
     app = FastAPI(
         title="Attest API",
         version="0.1.0",
@@ -68,19 +65,6 @@ def create_app(service: AttestService | None = None, *, seed_demo: bool = False)
         from attest.storage.factory import edgar_client_from_env
 
         service = AttestService(edgar=edgar_client_from_env(default_enabled=False))
-
-        # ATTEST_SEED_DEMO ships the ready-to-explore Meridian instance — the
-        # bundled filing is ingested so the front-end ties its figures out the
-        # moment the page loads, with no separate ingest step. Layered onto the
-        # EDGAR-enabled service above (not seeded_service(), which wires no EDGAR)
-        # so the seeded demo can *also* tie out real ticker-tagged uploads.
-        env_seed = os.environ.get("ATTEST_SEED_DEMO", "").strip().lower() in {
-            "1", "true", "yes", "on",
-        }
-        if seed_demo or env_seed:
-            from attest.demo import TENANT
-
-            service.ingest_xbrl(load_fixture(_DEMO_FIXTURE), tenant_id=TENANT)
     app.state.service = service
 
     # CORS so the web workspace (Vite dev server on :5173) can call the API
@@ -293,28 +277,6 @@ def create_app(service: AttestService | None = None, *, seed_demo: bool = False)
             total_ingested=sum(r.ingested for r in reports),
         )
 
-    @app.post("/tenants/{tenant_id}/ingest/demo", response_model=IngestResponse)
-    def ingest_demo(tenant_id: str, svc: AttestService = Depends(get_service)) -> IngestResponse:
-        """Convenience: ingest the bundled Meridian filing so an upload has filed
-        sources to tie out against, straight from the UI.
-
-        Idempotent: re-seeding a tenant that already has the demo filing is a no-op
-        (every figure was already ingested), so clicking "seed" twice — or seeding a
-        tenant the server already seeded at startup — never errors."""
-        fixture = load_fixture(_DEMO_FIXTURE)
-        accession = fixture.get("accession", "")
-        already = sum(1 for f in svc.store.all(tenant_id) if f.id.startswith(f"{accession}:"))
-        if already:
-            return IngestResponse(
-                source=f"edgar_xbrl:{accession}", ingested=0, skipped=already, skipped_tags=[]
-            )
-        report = svc.ingest_xbrl(fixture, tenant_id=tenant_id)
-        return IngestResponse(
-            source=report.source,
-            ingested=report.ingested,
-            skipped=report.skipped,
-            skipped_tags=list(report.skipped_tags),
-        )
 
     @app.get("/tenants/{tenant_id}/extraction/aliases", response_model=AliasConfigResponse)
     def get_aliases(tenant_id: str, svc: AttestService = Depends(get_service)) -> AliasConfigResponse:
