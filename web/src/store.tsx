@@ -39,6 +39,10 @@ interface Store {
   /** File a prior disclosure (past release / transcript / deck) as the reference
    *  corpus future drafts are checked against. Returns the number of figures filed. */
   ingestDisclosure: (input: DisclosureInput) => Promise<number>;
+  /** Pull XBRL-tagged facts for a ticker from SEC EDGAR. Returns figures ingested. */
+  ingestEdgar: (ticker: string, maxYears?: number) => Promise<number>;
+  /** Auto-fetch the prior quarter's 8-K press release from EDGAR. Returns figures ingested. */
+  fetchPriorPeriod: (ticker: string, period: string) => Promise<number>;
   removeDoc: (id: string) => void;
   /** Make a stored version the one the document renders. */
   setActiveVersion: (docId: string, versionId: string) => void;
@@ -398,6 +402,33 @@ export function StoreProvider({
     [showToast]
   );
 
+  const ingestEdgar = useCallback(
+    async (ticker: string, maxYears?: number): Promise<number> => {
+      const result = await client.ingestEdgar(ticker, maxYears);
+      showToast(
+        result.ingested
+          ? `Loaded ${result.ingested} EDGAR fact${result.ingested > 1 ? "s" : ""} for ${ticker.toUpperCase()}.`
+          : `No XBRL facts found for ${ticker.toUpperCase()} — nothing loaded.`
+      );
+      return result.ingested;
+    },
+    [showToast]
+  );
+
+  const fetchPriorPeriod = useCallback(
+    async (ticker: string, period: string): Promise<number> => {
+      const result = await client.fetchPriorPeriod(ticker, period);
+      const priorLabel = result.prior_period ?? "prior period";
+      showToast(
+        result.total_ingested
+          ? `Fetched ${result.total_ingested} figure${result.total_ingested > 1 ? "s" : ""} from ${ticker.toUpperCase()} ${priorLabel} 8-K.`
+          : `No press-release figures found for ${ticker.toUpperCase()} ${priorLabel}.`
+      );
+      return result.total_ingested;
+    },
+    [showToast]
+  );
+
   const removeDoc = useCallback(
     (id: string) => {
       const doc = library.find((d) => d.id === id);
@@ -480,12 +511,14 @@ export function StoreProvider({
       figures, narratives, commitments, library, toast,
       showToast, editFigure, bindFigure, resolveFigure, restoreFigure,
       removeFigure, addFigure, resolveNarrative, addressCommitment,
-      uploadDocument, ingestDisclosure, removeDoc, setActiveVersion, removeVersion, renameDoc,
+      uploadDocument, ingestDisclosure, ingestEdgar, fetchPriorPeriod,
+      removeDoc, setActiveVersion, removeVersion, renameDoc,
     }),
     [
       figures, narratives, commitments, library, toast, showToast, editFigure, bindFigure,
       resolveFigure, restoreFigure, removeFigure, addFigure, resolveNarrative, addressCommitment,
-      uploadDocument, ingestDisclosure, removeDoc, setActiveVersion, removeVersion, renameDoc,
+      uploadDocument, ingestDisclosure, ingestEdgar, fetchPriorPeriod,
+      removeDoc, setActiveVersion, removeVersion, renameDoc,
     ]
   );
 
