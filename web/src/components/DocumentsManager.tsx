@@ -4,8 +4,8 @@ import type { DocKind, DocVersion, Figure, LibraryDoc } from "../types";
 
 // Plain-language category labels, matching the sidebar.
 const KIND_LABEL: Record<DocKind, string> = {
-  release: "Earnings releases",
-  script: "Call scripts",
+  release: "Press releases",
+  script: "Transcripts",
   qa: "Analyst Q&A",
   other: "Other documents",
 };
