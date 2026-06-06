@@ -11,7 +11,13 @@ import {
   newVersionId,
   type BuiltVersion,
 } from "./lib/buildDoc";
-import { apiBaseUrl, client, type AnalyzeInput, type DisclosureInput } from "./api/client";
+import {
+  apiBaseUrl,
+  client,
+  type AnalyzeInput,
+  type DisclosureInput,
+  type HistoricalCandidate,
+} from "./api/client";
 
 type FigureMap = Record<string, Figure>;
 type NarrativeMap = Record<string, Narrative>;
@@ -43,6 +49,10 @@ interface Store {
   ingestEdgar: (ticker: string, maxYears?: number) => Promise<number>;
   /** Auto-fetch the prior quarter's 8-K press release from EDGAR. Returns figures ingested. */
   fetchPriorPeriod: (ticker: string, period: string) => Promise<number>;
+  /** Search the web for an issuer's historical earnings docs to review before loading. */
+  searchHistorical: (entity: string, docTypes?: string[]) => Promise<HistoricalCandidate[]>;
+  /** Fetch + file the selected historical documents as reference. Returns figures filed. */
+  ingestHistorical: (entity: string, items: { url: string; title?: string }[]) => Promise<number>;
   removeDoc: (id: string) => void;
   /** Make a stored version the one the document renders. */
   setActiveVersion: (docId: string, versionId: string) => void;
@@ -429,6 +439,29 @@ export function StoreProvider({
     [showToast]
   );
 
+  const searchHistorical = useCallback(
+    async (entity: string, docTypes?: string[]): Promise<HistoricalCandidate[]> => {
+      // Pure lookup — no toast on success (the results render in the modal); a
+      // failure (e.g. Exa not configured) surfaces to the caller's catch.
+      return client.searchHistorical(entity, docTypes);
+    },
+    []
+  );
+
+  const ingestHistorical = useCallback(
+    async (entity: string, items: { url: string; title?: string }[]): Promise<number> => {
+      const result = await client.ingestHistorical(entity, items);
+      const docs = result.documents.length;
+      showToast(
+        result.total_ingested
+          ? `Filed ${result.total_ingested} reference figure${result.total_ingested > 1 ? "s" : ""} from ${docs} document${docs > 1 ? "s" : ""}.`
+          : `Loaded ${docs} document${docs > 1 ? "s" : ""} — no recognizable figures to reference.`
+      );
+      return result.total_ingested;
+    },
+    [showToast]
+  );
+
   const removeDoc = useCallback(
     (id: string) => {
       const doc = library.find((d) => d.id === id);
@@ -512,12 +545,14 @@ export function StoreProvider({
       showToast, editFigure, bindFigure, resolveFigure, restoreFigure,
       removeFigure, addFigure, resolveNarrative, addressCommitment,
       uploadDocument, ingestDisclosure, ingestEdgar, fetchPriorPeriod,
+      searchHistorical, ingestHistorical,
       removeDoc, setActiveVersion, removeVersion, renameDoc,
     }),
     [
       figures, narratives, commitments, library, toast, showToast, editFigure, bindFigure,
       resolveFigure, restoreFigure, removeFigure, addFigure, resolveNarrative, addressCommitment,
       uploadDocument, ingestDisclosure, ingestEdgar, fetchPriorPeriod,
+      searchHistorical, ingestHistorical,
       removeDoc, setActiveVersion, removeVersion, renameDoc,
     ]
   );

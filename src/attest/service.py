@@ -25,6 +25,7 @@ from attest.ingestion.base import IngestionReport
 from attest.ingestion.edgar import EdgarClient, EdgarConnector, EdgarUnavailable
 from attest.ingestion.edgar_xbrl import XBRLConnector
 from attest.ingestion.guidance import DisclosureConnector, GuidanceConnector
+from attest.ingestion.exa import ExaCandidate, ExaDocument, ExaHttpClient, HistoricalFetcher
 from attest.ingestion.prior_period import EdgarHttpClient, FetchedExhibit, PriorPeriodFetcher, prior_period as _prior_period
 from attest.verification.engine import VerificationEngine, VerificationResult
 from attest.verification.rules import check_cross_document_consistency
@@ -477,6 +478,79 @@ class AttestService:
             reports.append(report)
 
         return reports, prev, exhibits
+
+    def search_historical(
+        self,
+        *,
+        entity: str,
+        doc_types: tuple[str, ...] = ("release", "transcript"),
+        limit: int = 8,
+        exa_client: ExaHttpClient | None = None,
+    ) -> list[ExaCandidate]:
+        """Search the web (via Exa) for an issuer's historical earnings documents.
+
+        The discovery half of the SEC-independent path: returns auto-titled
+        candidates (release / transcript, newest first) the caller reviews before
+        ingesting any. Nothing is stored here — this is a pure lookup.
+
+        ``exa_client`` is injected in tests to avoid real network calls. Raises
+        :class:`~attest.ingestion.exa.ExaUnavailable` (or its ``ExaNotConfigured``
+        subclass) when Exa can't be reached, so the API can distinguish that from
+        an empty result.
+        """
+        fetcher = HistoricalFetcher(client=exa_client)
+        return fetcher.search(entity=entity, doc_types=list(doc_types), limit=limit)
+
+    def ingest_historical(
+        self,
+        *,
+        tenant_id: str,
+        entity: str,
+        items: list[dict],
+        exa_client: ExaHttpClient | None = None,
+        actor: str = "system:historical-fetch",
+    ) -> list[tuple[ExaDocument, IngestionReport]]:
+        """Fetch the selected web documents and ingest them as prior disclosures.
+
+        ``items`` are the reviewed candidates to load — each a mapping with a
+        ``url`` and optional ``title`` / ``period``. Their full text is fetched
+        via Exa, then run through the **same** :class:`DisclosureConnector` a
+        manually uploaded transcript takes, so each figure lands as a cited
+        ``PRIOR_DISCLOSURE`` reference fact (web source, not a filing). Like every
+        ingestion, each document writes an attributable audit event.
+
+        Returns ``(document, report)`` per successfully fetched document. A
+        candidate whose text can't be fetched is silently dropped (it simply
+        doesn't appear in the result), mirroring the connectors' never-guess rule.
+        """
+        fetcher = HistoricalFetcher(client=exa_client)
+        title_by_url = {it["url"]: it.get("title") for it in items if it.get("url")}
+        period_by_url = {it["url"]: it.get("period") for it in items if it.get("url")}
+        docs = fetcher.fetch_contents(urls=list(title_by_url))
+
+        results: list[tuple[ExaDocument, IngestionReport]] = []
+        for doc in docs:
+            facts, report = DisclosureConnector(
+                self.registry, self.store, self.aliases_for(tenant_id)
+            ).fetch(
+                text=doc.text,
+                tenant_id=tenant_id,
+                entity=entity,
+                period=period_by_url.get(doc.url),
+                as_of=doc.published_date or UNDATED_AS_OF,
+                source_ref=doc.url,
+                label=title_by_url.get(doc.url) or doc.title,
+            )
+            self.store.add_many(facts)
+            self.audit_log.append(
+                actor=actor,
+                type=EventType.INGEST,
+                tenant_id=tenant_id,
+                payload=report.model_dump(),
+            )
+            results.append((doc, report))
+
+        return results
 
     # -- audit ---------------------------------------------------------------
 

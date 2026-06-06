@@ -141,9 +141,30 @@ body{font-family:var(--ui);background:var(--paper);color:var(--ink);
 .upacts{display:flex;justify-content:flex-end;gap:10px;margin-top:4px}
 .upacts .btn{min-width:120px}
 .upsrctoggle{display:flex;gap:6px}
-.upsrc{flex:1;padding:8px 12px;font-size:12.5px;font-weight:600;font-family:var(--ui);border:1px solid var(--line-strong);border-radius:8px;background:#fff;cursor:pointer;color:var(--muted);transition:.15s}
+.upsrc{flex:1;padding:8px 10px;font-size:12px;font-weight:600;font-family:var(--ui);border:1px solid var(--line-strong);border-radius:8px;background:#fff;cursor:pointer;color:var(--muted);transition:.15s}
 .upsrc:hover{border-color:var(--accent);color:var(--accent)}
 .upsrc.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);background:var(--verified-bg);color:var(--accent)}
+
+/* historical (web search) reference mode */
+.uphsearch{display:flex;gap:8px}
+.uphsearch .upinput{flex:1}
+.uphsearch .btn{min-width:96px;white-space:nowrap}
+.uphlist{border:1px solid var(--line-strong);border-radius:10px;overflow:hidden;max-height:320px;overflow-y:auto}
+.uphlist-h{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--paper);border-bottom:1px solid var(--line);font-size:11px;font-weight:700;color:var(--faint);text-transform:uppercase;letter-spacing:.5px;position:sticky;top:0}
+.uphall{background:none;border:none;cursor:pointer;font-family:var(--ui);font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.5px}
+.uphrow{display:flex;gap:10px;align-items:flex-start;padding:11px 12px;border-bottom:1px solid var(--line);cursor:pointer;transition:.12s}
+.uphrow:last-child{border-bottom:none}
+.uphrow:hover{background:#FBFAF6}
+.uphrow.on{background:var(--verified-bg)}
+.uphrow input[type=checkbox]{margin-top:2px;accent-color:var(--accent);width:15px;height:15px;flex:none}
+.uphrow-main{display:flex;flex-direction:column;gap:3px;min-width:0}
+.uphrow-t{font-size:13px;font-weight:600;color:var(--ink);line-height:1.35}
+.uphrow-m{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.uphtag{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;padding:1px 6px;border-radius:4px;background:var(--line);color:var(--muted)}
+.uphtag.transcript{background:#e7eef6;color:#3b5b86}
+.uphtag.release{background:#eef1e7;color:#5a6a3b}
+.uphsrc{font-size:11px;color:var(--faint)}
+.uphrow-s{font-size:11.5px;color:var(--muted);line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 
 /* consensus + calendar shared */
 .cwrap{width:100%;max-width:680px}

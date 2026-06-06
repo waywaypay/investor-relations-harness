@@ -10,6 +10,11 @@
 # real contact in ATTEST_EDGAR_USER_AGENT. (Only as-filed GAAP facts tie out;
 # non-GAAP / operational figures have no filed source and stay untraced.)
 #
+# EXA_API_KEY enables "Fetch historical": web search (https://exa.ai) for an
+# issuer's past earnings releases and call transcripts, reachable from any cloud
+# host (unlike SEC, which throttles datacenter IPs). It's a secret, so it carries
+# `sync: false` — set its value in the Render dashboard, never in this file.
+#
 # In-memory state (fact store + audit log) means exactly one instance until a
 # persistent store is wired in. Reseeds fresh on each start/deploy.
 services:
@@ -32,3 +37,5 @@ services:
         value: "on"
       - key: ATTEST_EDGAR_USER_AGENT
         value: "Attest IR disclosure-verification (contact: max@deerpark.io)"
+      - key: EXA_API_KEY
+        sync: false   # secret — set in the Render dashboard, never committed

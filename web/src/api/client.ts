@@ -88,6 +88,22 @@ export interface PriorPeriodResult {
   exhibits: { accession: string; filing_date: string; label: string; ingested: number }[];
 }
 
+/** A reviewable historical-document search hit (no full text until ingested). */
+export interface HistoricalCandidate {
+  url: string;
+  title: string;
+  published_date: string;
+  source: string;
+  snippet: string;
+  doc_type: string; // "release" | "transcript"
+}
+
+/** Summary of ingesting selected historical documents found via web search. */
+export interface HistoricalIngestResult {
+  documents: { url: string; title: string; published_date: string; ingested: number }[];
+  total_ingested: number;
+}
+
 export interface AttestClient {
   /** Verify a figure's displayed text against its bound source. */
   verifyFigure(figureId: string, text: string): Promise<VerifyResult>;
@@ -99,6 +115,13 @@ export interface AttestClient {
   ingestEdgar(ticker: string, maxYears?: number): Promise<EdgarIngestResult>;
   /** Auto-fetch the prior quarter's 8-K press release from SEC EDGAR. */
   fetchPriorPeriod(ticker: string, period: string): Promise<PriorPeriodResult>;
+  /** Search the web (via Exa) for an issuer's historical earnings docs to review. */
+  searchHistorical(entity: string, docTypes?: string[]): Promise<HistoricalCandidate[]>;
+  /** Fetch + ingest the selected historical documents as prior-disclosure references. */
+  ingestHistorical(
+    entity: string,
+    items: { url: string; title?: string }[]
+  ): Promise<HistoricalIngestResult>;
 }
 
 /** Offline default. The mock UI verifies locally (src/lib/verify.ts); these throw
@@ -128,6 +151,16 @@ export const offlineClient: AttestClient = {
   async fetchPriorPeriod() {
     throw new Error(
       "offlineClient: set VITE_ATTEST_API to the FastAPI backend to fetch prior-period releases"
+    );
+  },
+  async searchHistorical() {
+    throw new Error(
+      "offlineClient: set VITE_ATTEST_API to the FastAPI backend to search historical documents"
+    );
+  },
+  async ingestHistorical() {
+    throw new Error(
+      "offlineClient: set VITE_ATTEST_API to the FastAPI backend to load historical documents"
     );
   },
 };
@@ -295,6 +328,38 @@ export function createLiveClient(baseUrl: string): AttestClient {
         throw new Error(`Prior-period fetch failed: ${detail}`);
       }
       return (await res.json()) as PriorPeriodResult;
+    },
+
+    async searchHistorical(entity, docTypes) {
+      const res = await fetch(`${base}/tenants/${TENANT}/historical/search`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          entity: entity.trim(),
+          ...(docTypes ? { doc_types: docTypes } : {}),
+        }),
+      });
+      if (!res.ok) {
+        let detail = `HTTP ${res.status}`;
+        try { const b = await res.json(); if (b?.detail) detail = b.detail; } catch { /**/ }
+        throw new Error(`Historical search failed: ${detail}`);
+      }
+      const body = (await res.json()) as { candidates: HistoricalCandidate[] };
+      return body.candidates;
+    },
+
+    async ingestHistorical(entity, items) {
+      const res = await fetch(`${base}/tenants/${TENANT}/historical/ingest`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ entity: entity.trim(), items }),
+      });
+      if (!res.ok) {
+        let detail = `HTTP ${res.status}`;
+        try { const b = await res.json(); if (b?.detail) detail = b.detail; } catch { /**/ }
+        throw new Error(`Historical fetch failed: ${detail}`);
+      }
+      return (await res.json()) as HistoricalIngestResult;
     },
   };
 }
