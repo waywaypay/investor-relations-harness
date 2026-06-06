@@ -357,3 +357,42 @@ def test_forward_looking_revenue_does_not_conflict_with_the_current_period():
     fwd = [c for c in doc.claims if c.metric == "total_revenue" and c.period == "FY2026-Q2"]
     assert fwd, "a forward-looking revenue figure should route to the guidance period"
     assert any(f.rule == "forward_looking.safe_harbor_required" for f in result.findings)
+
+
+# -- a label that trails its figure is attributed to its own figure -----------
+
+def test_trailing_label_is_attributed_to_its_own_figure():
+    svc = seeded_service()
+    # Spoken phrasing routinely puts the label *after* the figure ("$338 million of
+    # operating cash flow"). The figure must read its own trailing label, and the
+    # next figure ("returned $250 million … through buybacks") must not inherit it
+    # and assert a false conflict against the filed cash-flow value.
+    text = (
+        "We generated $338 million of operating cash flow and returned "
+        "$250 million to shareholders through buybacks."
+    )
+    doc, result, _, _ = svc.analyze_text(
+        tenant_id="meridian", text=text, title="Q1 FY2026 call",
+        kind=DocumentKind.SCRIPT, entity="MRDN", period="FY2026-Q1",
+    )
+    by_text = {c.displayed_text.strip(): c.metric for c in doc.claims}
+    assert by_text["$338 million"] == "operating_cash_flow"  # trailing label read
+    assert by_text["$250 million"] == "share_repurchases"    # not the prior label
+    assert result.counts["traced"] == 2
+    assert result.counts["conflict"] == 0
+
+
+def test_segment_figure_prefers_its_segment_metric_over_a_generic_label():
+    svc = seeded_service()
+    # A bare "revenue" beside a Cloud figure must bind to the segment's own metric
+    # (cloud_revenue), not the parent's total_revenue — which would leave the figure
+    # untraced against the segment entity instead of tying out to the filed source.
+    text = "Our Cloud segment was the standout, with revenue of $612 million."
+    doc, result, _, _ = svc.analyze_text(
+        tenant_id="meridian", text=text, title="Q1 FY2026 call",
+        kind=DocumentKind.SCRIPT, entity="MRDN", period="FY2026-Q1",
+    )
+    cloud = next(c for c in doc.claims if c.displayed_text.strip() == "$612 million")
+    assert cloud.metric == "cloud_revenue" and cloud.entity == "MRDN:Cloud"
+    assert result.counts["traced"] == 1
+    assert result.counts["conflict"] == 0
