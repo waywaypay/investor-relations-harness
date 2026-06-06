@@ -63,6 +63,13 @@ _RANGE_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Where a figure's own trailing label ends and the next clause begins. A trailing
+# label is a tight prepositional tail ("$338 million of operating cash flow"); once
+# we hit punctuation or a conjunction we are into the next clause's subject and must
+# not borrow it — the same caution the old 4-char lookahead enforced, now wide enough
+# to actually reach a trailing label.
+_CLAUSE_BREAK = re.compile(r"[.,;:\n]|\b(?:and|but|while|which|whereas)\b", re.IGNORECASE)
+
 _QUARTER_WORDS = {
     "first": 1, "1st": 1, "q1": 1, "second": 2, "2nd": 2, "q2": 2,
     "third": 3, "3rd": 3, "q3": 3, "fourth": 4, "4th": 4, "q4": 4,
@@ -207,23 +214,59 @@ class ClaimExtractor:
                 segments[keyword] = fact.entity
         return segments
 
-    def _match_metric(self, window: str, unit: Unit) -> tuple[str | None, bool]:
+    def _metrics_reported_for(self, tenant_id: str, entity: str) -> set[str]:
+        """The metric ids the store actually has facts for under ``entity``.
+
+        Used to bias attribution when a figure resolves to a *segment* entity: a
+        segment reports a known, narrow set of metrics, so a generic word like
+        "revenue" near a Cloud figure should resolve to ``cloud_revenue``, not the
+        parent's ``total_revenue``. Grounded in ingested facts, exactly as segment
+        entity resolution already is.
+        """
+        return {f.metric for f in self.store.all(tenant_id) if f.entity == entity}
+
+    def _match_metric(
+        self, before: str, after: str, unit: Unit, preferred: set[str] | None = None
+    ) -> tuple[str | None, bool, tuple[int, int] | None]:
         """Pick the best metric whose unit matches and whose alias sits nearest the
-        figure. Returns ``(metric_id, is_growth)``."""
-        best: tuple[int, int, str] | None = None  # (end_pos, alias_len, metric_id)
+        figure, looking *both* ways.
+
+        Disclosure prose usually leads with the label ("non-GAAP EPS of $1.12"),
+        but spoken transcripts just as often trail it ("$338 million of operating
+        cash flow"). So we score each alias by its gap to the figure in either the
+        preceding (``before``) or following (``after``) window and take the closest;
+        a segment-``preferred`` metric wins over a generic one at any gap, and on a
+        tie a leading label and the longer alias win.
+
+        Returns ``(metric_id, is_growth, trailing_span)`` where ``trailing_span`` is
+        ``(start, end)`` offsets into ``after`` when the winning label trailed the
+        figure (else ``None``) — so the caller can stop the *next* figure from
+        re-attributing this figure's own trailing label.
+        """
+        best_key: tuple[int, int, int, int] | None = None
+        best: tuple[str, tuple[int, int] | None] | None = None  # (metric_id, trailing_span)
         for view in self._views:
             if view.unit != unit:
                 continue
+            is_pref = 0 if (preferred and view.metric_id in preferred) else 1
             for alias in view.aliases:
-                pos = window.rfind(alias)
-                if pos < 0:
-                    continue
-                score = (pos + len(alias), len(alias), view.metric_id)
-                if best is None or score > best:
-                    best = score
-        metric_id = best[2] if best else None
-        is_growth = bool(metric_id and self.registry.get(metric_id) and self.registry.get(metric_id).derived_kind)
-        return metric_id, is_growth
+                b = before.rfind(alias)
+                if b >= 0:
+                    gap = len(before) - (b + len(alias))
+                    key = (is_pref, gap, 0, -len(alias))  # 0: leading label preferred on ties
+                    if best_key is None or key < best_key:
+                        best_key, best = key, (view.metric_id, None)
+                a = after.find(alias)
+                if a >= 0:
+                    key = (is_pref, a, 1, -len(alias))
+                    if best_key is None or key < best_key:
+                        best_key, best = key, (view.metric_id, (a, a + len(alias)))
+        if best is None:
+            return None, False, None
+        metric_id, trailing_span = best
+        spec = self.registry.get(metric_id)
+        is_growth = bool(spec and spec.derived_kind)
+        return metric_id, is_growth, trailing_span
 
     def extract(
         self,
@@ -263,27 +306,65 @@ class ClaimExtractor:
             consumed.append(span)
 
         # 2) Single figures.
-        for cand in detect_candidates(text):
-            if any(s <= cand.span[0] < e for s, e in consumed):
-                continue  # already captured inside a guidance range
+        figures = [
+            cand
+            for cand in detect_candidates(text)
+            if not any(s <= cand.span[0] < e for s, e in consumed)
+        ]
+        # Trailing labels a previous figure already claimed for itself. We blank just
+        # these spans out of later figures' preceding windows — without them, the
+        # off-by-one in "$338M of operating cash flow and returned $250M" gives both
+        # figures the cash-flow label. Masking (rather than truncating the window)
+        # keeps the rest of the leading context intact, e.g. the "cloud" that the
+        # very next "31%" needs to read as cloud growth.
+        claimed_labels: list[tuple[int, int]] = []
+        for i, cand in enumerate(figures):
             unit = _unit_of_candidate(cand.text, cand.quantity.unit if cand.quantity else None)
-            before = text[max(0, cand.span[0] - 90) : cand.span[0]].lower()
-            # In disclosure prose the label precedes the figure ("non-GAAP EPS of $1.12"),
-            # so attribute from the preceding context plus a short lookahead — never far
-            # enough to borrow the *next* sentence's subject.
-            ctx = before + " " + text[cand.span[1] : cand.span[1] + 4].lower()
+            # Preceding window: the usual 90 chars, with prior figures' trailing
+            # labels masked so they are not re-attributed here.
+            win_start = max(cand.span[0] - 90, 0)
+            before_chars = list(text[win_start : cand.span[0]].lower())
+            for ls, le in claimed_labels:
+                a, b = max(ls, win_start), min(le, cand.span[0])
+                for k in range(a - win_start, b - win_start):
+                    before_chars[k] = " "
+            before = "".join(before_chars)
+            # Following window: a short trailing tail, stopped at the next figure and
+            # at the first clause boundary so we read this figure's own label
+            # ("$338 million of operating cash flow") but never the next clause's.
+            after_end = cand.span[1] + 60
+            if i + 1 < len(figures):
+                after_end = min(after_end, figures[i + 1].span[0])
+            after = text[cand.span[1] : after_end]
+            if (brk := _CLAUSE_BREAK.search(after)) is not None:
+                after = after[: brk.start()]  # stop at the clause boundary
+            after = after.lower()
 
+            # Entity resolution stays leading-biased (a later "cloud" mention must not
+            # pull an EPS figure into the Cloud segment), with only a short lookahead.
+            ectx = before + " " + text[cand.span[1] : cand.span[1] + 4].lower()
             entity_for = entity
             for keyword, seg_entity in segments.items():
-                if keyword in ctx:
+                if keyword in ectx:
                     entity_for = seg_entity
                     break
 
-            metric, is_growth = self._match_metric(ctx, unit)
+            # A figure that resolved to a segment should attribute to a metric that
+            # segment actually reports, so a bare "revenue" near a Cloud figure binds
+            # to cloud_revenue rather than the parent's total_revenue.
+            preferred = (
+                self._metrics_reported_for(tenant_id, entity_for)
+                if entity_for != entity
+                else None
+            )
+
+            metric, is_growth, trailing_span = self._match_metric(
+                before, after, unit, preferred
+            )
             claim_period = period or ""
             confidence = Confidence.HIGH
 
-            if unit is Unit.PERCENT and is_growth and not _GROWTH_NEAR.search(before):
+            if unit is Unit.PERCENT and is_growth and not _GROWTH_NEAR.search(before + " " + after):
                 # A percent that matched a growth metric but reads like a level, not
                 # a change — demote to low confidence rather than assert a YoY claim.
                 confidence = Confidence.LOW
@@ -296,6 +377,17 @@ class ClaimExtractor:
             # to the guidance period so it binds (and trips safe-harbor) correctly.
             if guidance_period and metric != "unidentified" and _GUIDANCE_NEAR.search(before) and unit is Unit.CURRENCY and "guidance" in metric:
                 claim_period = guidance_period
+
+            # Record a trailing label this figure just consumed so later figures don't
+            # re-attribute it — but only when it sits closer to this figure than to the
+            # next, otherwise it is the next figure's leading label, left for it.
+            if trailing_span is not None:
+                start_gap, end_off = trailing_span
+                label_start = cand.span[1] + start_gap
+                label_end = cand.span[1] + end_off
+                next_start = figures[i + 1].span[0] if i + 1 < len(figures) else len(text)
+                if start_gap <= (next_start - label_end):
+                    claimed_labels.append((label_start, label_end))
 
             seq += 1
             claims.append(
