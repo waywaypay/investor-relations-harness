@@ -61,7 +61,7 @@ class SyntheticReport:
         }
 
 
-def run_synthetic_eval(fixture: str = "meridian_q1_fy2026", tenant: str = "meridian") -> SyntheticReport:
+def run_synthetic_eval(fixture: str = "atlas_q1_fy2026", tenant: str = "atlas") -> SyntheticReport:
     """Generate perturbations from a real fixture and score the engine on them."""
     service = AttestService()
     service.ingest_xbrl(load_fixture(fixture), tenant_id=tenant)

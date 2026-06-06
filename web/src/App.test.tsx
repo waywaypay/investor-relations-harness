@@ -8,7 +8,7 @@ describe("Attest workspace", () => {
   it("renders the brand and the release as the default document", () => {
     expect(screen.getByText("Attest")).toBeInTheDocument();
     expect(
-      screen.getByText(/Meridian Systems Reports First Quarter Fiscal 2026 Results/i)
+      screen.getByText(/Atlas Systems Reports First Quarter Fiscal 2026 Results/i)
     ).toBeInTheDocument();
   });
 

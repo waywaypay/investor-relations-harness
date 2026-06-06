@@ -1,7 +1,6 @@
 """Command-line entry point.
 
-    attest demo                # ingest the Meridian filing, verify the close pack, print a report
-    attest verify [--use-llm]  # verify the demo close pack, optionally via the LLM edge
+    attest verify [--use-llm]  # verify the reference close pack, optionally via the LLM edge
     attest serve               # run the API with uvicorn
     attest ingest-edgar TICKER # pull an issuer's real filed facts from SEC EDGAR
     attest synth               # generate synthetic perturbation cases (robustness coverage)
@@ -14,7 +13,7 @@ import argparse
 import os
 import sys
 
-from attest.demo import build_documents, demo_edge_service, seeded_service
+from attest.demo import build_documents, scripted_edge_service, seeded_service
 from attest.domain.verdicts import Verdict
 
 _GLYPH = {
@@ -25,17 +24,13 @@ _GLYPH = {
 }
 
 
-def _run_demo() -> int:
-    service = seeded_service()
-    documents = build_documents()
-    results, consistency = service.verify_close_pack(documents)
-    _print_close_pack(service, documents, results, consistency)
-    return 0
-
-
 def _run_verify(use_llm: bool) -> int:
     if not use_llm:
-        return _run_demo()
+        service = seeded_service()
+        documents = build_documents()
+        results, consistency = service.verify_close_pack(documents)
+        _print_close_pack(service, documents, results, consistency)
+        return 0
 
     if os.environ.get("ANTHROPIC_API_KEY"):
         from attest.edge.service import EdgeService
@@ -43,8 +38,8 @@ def _run_verify(use_llm: bool) -> int:
         edge = EdgeService.anthropic()
         note = "LLM edge: Anthropic (live)"
     else:
-        edge = demo_edge_service()
-        note = "LLM edge: scripted fake (no ANTHROPIC_API_KEY set)"
+        edge = scripted_edge_service()
+        note = "LLM edge: scripted (no ANTHROPIC_API_KEY set)"
 
     service = seeded_service(edge=edge)
     documents = build_documents()
@@ -55,7 +50,7 @@ def _run_verify(use_llm: bool) -> int:
 
 
 def _print_close_pack(service, documents, results, consistency) -> None:
-    print("Attest — Meridian Systems Q1 FY2026 close pack\n" + "=" * 56)
+    print("Attest — Q1 FY2026 close pack\n" + "=" * 40)
     for result in results:
         doc = next(d for d in documents if d.id == result.document_id)
         c = result.counts
@@ -87,16 +82,7 @@ def _run_serve(host: str, port: int) -> int:
     from attest.api.app import create_app
     from attest.storage import service_from_env
 
-    from attest.demo import TENANT
-    from attest.ingestion.edgar_xbrl import load_fixture
-
-    # Postgres/Redis when ATTEST_DATABASE_URL / ATTEST_REDIS_URL are set, else
-    # the in-memory reference stores — a constructor swap, no API change.
     service = service_from_env()
-    # Seed the bundled Meridian filing so the front-end at / has data on first
-    # load. Idempotent: skip when this tenant already has facts (e.g. a real DB).
-    if not service.store.all(TENANT):
-        service.ingest_xbrl(load_fixture("meridian_q1_fy2026"), tenant_id=TENANT)
     print(f"Attest UI:  http://{host}:{port}/        (interactive front-end)")
     print(f"API docs:   http://{host}:{port}/docs    (OpenAPI / Swagger)")
     uvicorn.run(create_app(service), host=host, port=port)
@@ -140,9 +126,9 @@ def _run_synth(csv_path: str | None, out_path: str | None) -> int:
         from attest.service import AttestService
 
         svc = AttestService()
-        svc.ingest_xbrl(load_fixture("meridian_q1_fy2026"), tenant_id="meridian")
-        cases = perturb_facts(svc.store.all("meridian"))
-        print(f"Generated {len(cases)} synthetic cases from the bundled Meridian fixture")
+        svc.ingest_xbrl(load_fixture("atlas_q1_fy2026"), tenant_id="atlas")
+        cases = perturb_facts(svc.store.all("atlas"))
+        print(f"Generated {len(cases)} synthetic cases from the bundled fixture")
 
     if out_path:
         payload = {
@@ -156,7 +142,6 @@ def _run_synth(csv_path: str | None, out_path: str | None) -> int:
             json.dump(payload, fh, indent=2)
         print(f"Wrote {out_path}")
 
-    # When driving from the bundled fixture we can also score the engine on them.
     if not csv_path:
         report = run_synthetic_eval()
         d = report.as_dict()
@@ -194,13 +179,12 @@ def _run_restatements(fixture: str, out_path: str | None) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="attest", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
-    sub.add_parser("demo", help="verify the bundled Meridian close pack")
-    verify = sub.add_parser("verify", help="verify the demo close pack")
+    verify = sub.add_parser("verify", help="verify the reference close pack")
     verify.add_argument(
         "--use-llm",
         action="store_true",
         help="propose claims and narrate via the LLM edge (falls back to a "
-        "scripted fake when ANTHROPIC_API_KEY is unset)",
+        "scripted client when ANTHROPIC_API_KEY is unset)",
     )
     serve = sub.add_parser("serve", help="run the API server")
     serve.add_argument("--host", default="127.0.0.1")
@@ -219,12 +203,10 @@ def main(argv: list[str] | None = None) -> int:
     rst = sub.add_parser(
         "restatements", help="harvest real conflict labels from an 8-K Item 4.02 record"
     )
-    rst.add_argument("--fixture", default="meridian_cloud_4_02", help="bundled restatement fixture")
+    rst.add_argument("--fixture", default="atlas_cloud_4_02", help="bundled restatement fixture")
     rst.add_argument("--out", help="write harvested cases to this JSON path")
 
     args = parser.parse_args(argv)
-    if args.command == "demo":
-        return _run_demo()
     if args.command == "verify":
         return _run_verify(args.use_llm)
     if args.command == "serve":

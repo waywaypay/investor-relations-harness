@@ -21,7 +21,7 @@ export const FIGURES: Record<string, Figure> = {
     snip: "Total revenue was <mark>$1,241.3 million</mark> for the three months ended March 31, 2026.",
     cite: "Form 10-Q · Statements of Operations · p.4",
     page:
-      '<div class="filing"><div class="fhd">MERIDIAN SYSTEMS, INC.</div><div class="fsub">Condensed Consolidated Statements of Operations (unaudited) — in thousands</div>' +
+      '<div class="filing"><div class="fhd">ATLAS SYSTEMS, INC.</div><div class="fsub">Condensed Consolidated Statements of Operations (unaudited) — in thousands</div>' +
       '<table class="ftable"><tr class="head"><td>Three months ended March 31,</td><td class="num">2026</td><td class="num">2025</td></tr>' +
       "<tr><td>Revenue:</td><td></td><td></td></tr>" +
       "<tr><td>&nbsp;&nbsp;Cloud</td><td class=\"num\">611,800</td><td class=\"num\">467,000</td></tr>" +
@@ -50,7 +50,7 @@ export const FIGURES: Record<string, Figure> = {
     snip: "Diluted net income per share was <mark>$0.87</mark> on 232.1M diluted shares.",
     cite: "Form 10-Q · Statements of Operations · p.5",
     page:
-      '<div class="filing"><div class="fhd">MERIDIAN SYSTEMS, INC.</div><div class="fsub">Net income per share (unaudited) — in thousands, except per-share</div>' +
+      '<div class="filing"><div class="fhd">ATLAS SYSTEMS, INC.</div><div class="fsub">Net income per share (unaudited) — in thousands, except per-share</div>' +
       '<table class="ftable"><tr class="head"><td>Three months ended March 31,</td><td class="num">2026</td><td class="num">2025</td></tr>' +
       "<tr><td>Net income</td><td class=\"num\">202,000</td><td class=\"num\">158,400</td></tr>" +
       "<tr><td>Diluted shares</td><td class=\"num\">232,100</td><td class=\"num\">235,400</td></tr>" +
@@ -156,7 +156,7 @@ export const FIGURES: Record<string, Figure> = {
     snip: "Net cash provided by operating activities was <mark>$338.2 million</mark>.",
     cite: "Form 10-Q · Statements of Cash Flows · p.7",
     page:
-      '<div class="filing"><div class="fhd">MERIDIAN SYSTEMS, INC.</div><div class="fsub">Condensed Statements of Cash Flows (unaudited) — in thousands</div>' +
+      '<div class="filing"><div class="fhd">ATLAS SYSTEMS, INC.</div><div class="fsub">Condensed Statements of Cash Flows (unaudited) — in thousands</div>' +
       '<table class="ftable"><tr class="head"><td>Three months ended March 31,</td><td class="num">2026</td></tr>' +
       "<tr><td>Net income</td><td class=\"num\">202,000</td></tr>" +
       "<tr><td>&nbsp;&nbsp;Depreciation &amp; amortization</td><td class=\"num\">88,400</td></tr>" +

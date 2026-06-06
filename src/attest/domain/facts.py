@@ -82,7 +82,7 @@ class Fact(BaseModel):
 
     id: str
     tenant_id: str
-    entity: str = Field(description="issuer or segment, e.g. 'MRDN' or 'MRDN:Cloud'")
+    entity: str = Field(description="issuer or segment, e.g. 'ATLS' or 'ATLS:Cloud'")
     metric: str = Field(description="canonical metric id, e.g. 'total_revenue'")
     period: str = Field(description="fiscal period, e.g. 'FY2026-Q1'")
 

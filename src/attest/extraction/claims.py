@@ -290,7 +290,7 @@ def infer_period(*texts: str) -> str | None:
 
 
 # An exchange-qualified ticker, the form earnings materials use to identify the
-# issuer: "Meridian Systems (NASDAQ: MRDN)", "(NYSE American: ABC.A)". Anchoring
+# issuer: "the company (NASDAQ: TICKER)", "(NYSE American: ABC.A)". Anchoring
 # on a known exchange keyword + colon keeps this from matching arbitrary
 # parentheticals or capitalised words. No IGNORECASE on the symbol: tickers are
 # upper-case, and that avoids matching lower-case prose after a stray colon.
@@ -360,7 +360,7 @@ class ClaimExtractor:
     def _segments(self, tenant_id: str, primary_entity: str) -> dict[str, str]:
         """keyword -> entity, learned from the tenant's own ingested segment facts.
 
-        e.g. an ingested fact for ``MRDN:Cloud`` teaches us that the word "cloud"
+        e.g. an ingested fact for ``ATLS:Cloud`` teaches us that the word "cloud"
         near a figure means the segment entity, not the parent issuer.
         """
         segments: dict[str, str] = {}

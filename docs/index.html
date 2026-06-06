@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Attest — disclosure verification (static demo)</title>
+<title>Attest — disclosure verification</title>
 <style>
   :root {
     --bg: #0b0f17; --panel: #121826; --panel2: #0e1421; --line: #24304a;
@@ -101,9 +101,9 @@
 </head>
 <body>
 <div class="demobar">
-  <b>Static demo.</b> The full Attest app runs a Python (FastAPI) backend that verifies any uploaded document.
-  GitHub Pages can't run that, so this page <b>replays real engine output</b> precomputed for the bundled
-  Meridian sample release — the verdicts, the restatement conflict, and the rule findings below are genuine.
+  The full Attest app runs a Python (FastAPI) backend that verifies any uploaded document.
+  This page <b>replays real engine output</b> precomputed for the bundled sample release —
+  the verdicts, the restatement conflict, and the rule findings below are genuine.
   To verify arbitrary documents, run it locally (<code>attest serve</code>). <a id="repolink" href="#">View source ›</a>
 </div>
 <header>
@@ -116,9 +116,9 @@
 <main>
   <section class="left">
     <label>Tenant</label>
-    <input id="tenant" value="meridian" />
+    <input id="tenant" value="atlas" />
     <div class="row">
-      <div><label>Issuer / ticker</label><input id="entity" placeholder="MRDN" value="MRDN" /></div>
+      <div><label>Issuer / ticker</label><input id="entity" placeholder="ATLS" value="ATLS" /></div>
       <div><label>Reporting period</label><input id="period" placeholder="FY2026-Q1" value="FY2026-Q1" /></div>
     </div>
     <label>Document type</label>
@@ -131,7 +131,7 @@
 
     <label>Custom terms <span style="text-transform:none;letter-spacing:0">— your house style (optional)</span></label>
     <textarea id="aliases" style="min-height:64px" placeholder="metric_id: synonym, synonym&#10;total_revenue: topline, net sales&#10;non_gaap_diluted_eps: adjusted eps"></textarea>
-    <p class="hint" style="margin-top:4px">Configured per tenant in the live app. Inert in this static demo.</p>
+    <p class="hint" style="margin-top:4px">Configured per tenant in the live app. Inert on this precomputed page.</p>
 
     <div class="drop" id="drop">
       <b>File upload</b> needs the backend<br />
@@ -146,15 +146,15 @@
       <button class="ghost" id="sample">Use sample release</button>
     </div>
     <div class="sep"></div>
-    <button class="ghost" id="seed" style="width:100%">Load Meridian demo filing (filed sources)</button>
-    <p class="hint">In this demo the sample release ties out against the bundled Meridian filing. Load the demo
-       filing to see <span class="traced">traced</span> figures and the restatement
+    <button class="ghost" id="seed" style="width:100%">Load sample filing (filed sources)</button>
+    <p class="hint">The sample release ties out against the bundled filing. Load the filing to see
+       <span class="traced">traced</span> figures and the restatement
        <span class="conflict">conflict</span>; analyze it <em>without</em> loading and every figure is honestly
        <span class="untraced">untraced</span> (the rules still run).</p>
   </section>
 
   <section class="right" id="out">
-    <div class="empty">Click <b>Use sample release</b>, optionally <b>Load Meridian demo filing</b>, then hit <b>Analyze</b>.</div>
+    <div class="empty">Click <b>Use sample release</b>, optionally <b>Load sample filing</b>, then hit <b>Analyze</b>.</div>
   </section>
 </main>
 
@@ -169,7 +169,7 @@ const esc = (s) => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>
 })();
 
 let DATA = null;       // loaded from demo-data.json (real engine output)
-let seeded = false;    // has "Load Meridian demo filing" been clicked?
+let seeded = false;    // has "Load sample filing" been clicked?
 
 const dataReady = fetch('demo-data.json')
   .then(r => r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)))
@@ -186,14 +186,14 @@ $('seed').onclick = async () => {
   await dataReady;
   if (!DATA) return;
   seeded = true;
-  toast(`Ingested <b>${DATA.ingested}</b> filed facts for <code>meridian</code>. Now analyze the sample release.`);
+  toast(`Ingested <b>${DATA.ingested}</b> filed facts for <code>atlas</code>. Now analyze the sample release.`);
 };
 
 $('analyze').onclick = async () => {
   await dataReady;
   if (!DATA) return;
   const text = $('text').value;
-  if (!norm(text)) { toast('Click <b>Use sample release</b> to load the demo document.'); return; }
+  if (!norm(text)) { toast('Click <b>Use sample release</b> to load the sample document.'); return; }
 
   if (norm(text) !== norm(DATA.sample_text)) {
     $('out').innerHTML = `<div class="banner info">This static demo replays precomputed results for the bundled
@@ -230,7 +230,7 @@ function render(d) {
 
   if (!seeded)
     h += `<div class="warn-box">No filed sources ingested — every figure is honestly <b>untraced</b>.
-      Click <b>Load Meridian demo filing</b>, then Analyze again to see figures tie out.</div>`;
+      Click <b>Load sample filing</b>, then Analyze again to see figures tie out.</div>`;
 
   h += `<div class="banner ${d.publishable ? 'ok' : 'no'}">${d.publishable
     ? '✓ Publishable — every figure traced and no blocking rule fired.'

@@ -4,13 +4,13 @@ A React + TypeScript port of the Attest disclosure-drafting workspace: the
 editor, figure-verification popovers/modals, narrative & commitment checks,
 Street consensus, and the earnings calendar.
 
-The workspace opens on the bundled Meridian close pack, but it's a **document
+The workspace opens on the bundled reference close pack, but it is a **document
 library**, not a fixed demo: use **+ Upload** in the sidebar to drop in (or
 paste) your own release / script / Q&A. Each upload is run through the engine,
 its figures are tied out and highlighted in place, and it's added to the library
 grouped by period — so you can keep and switch between multiple/historical
 documents, and remove uploads you no longer need. Uploads persist across reloads
-(localStorage); the demo close pack is always re-seeded as removable samples.
+(localStorage); the reference close pack is always re-seeded as removable samples.
 
 ### Versions & document management
 
@@ -86,10 +86,10 @@ run `attest serve` (or point `VITE_ATTEST_API` at a backend) for live tie-out.
 # 1. run the backend (from the repo root)
 attest serve                 # FastAPI on http://127.0.0.1:8000
 
-# 2. seed the Meridian filing into the running API
-curl -X POST http://127.0.0.1:8000/tenants/meridian/ingest/xbrl \
+# 2. seed the reference filing into the running API
+curl -X POST http://127.0.0.1:8000/tenants/atlas/ingest/xbrl \
   -H 'Content-Type: application/json' \
-  -d @src/attest/ingestion/fixtures/meridian_q1_fy2026.json
+  -d @src/attest/ingestion/fixtures/atlas_q1_fy2026.json
 
 # 3. point the web app at it
 cd web

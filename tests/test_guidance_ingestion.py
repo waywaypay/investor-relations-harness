@@ -25,15 +25,15 @@ from attest.domain.verdicts import FigureClaim, Verdict
 from attest.factstore.repository import InMemoryFactStore
 from attest.ingestion.guidance import GuidanceConnector, load_press_release
 
-PRESS_RELEASE = load_press_release("meridian_q1_fy2026_8k_ex99_1")
+PRESS_RELEASE = load_press_release("atlas_q1_fy2026_8k_ex99_1")
 ACCESSION = "0001047469-26-001200"
 
 
 def _ingest(text: str = PRESS_RELEASE):
     return GuidanceConnector().fetch(
         text=text,
-        tenant_id="meridian",
-        entity="MRDN",
+        tenant_id="atlas",
+        entity="ATLS",
         accession=ACCESSION,
         base_period="FY2026-Q1",
         as_of="2026-04-28",
@@ -113,7 +113,7 @@ def test_dedupes_repeated_guidance_for_a_scope():
         "of $1.31 to $1.34 billion."
     )
     facts, _ = GuidanceConnector().fetch(
-        text=text, tenant_id="t", entity="MRDN", accession="acc",
+        text=text, tenant_id="t", entity="ATLS", accession="acc",
         base_period="FY2026-Q1", as_of="2026-04-28",
     )
     scopes = [(f.metric, f.period) for f in facts]
@@ -124,21 +124,21 @@ def test_fact_ids_are_unique_and_storeable():
     facts, _ = _ingest()
     store = InMemoryFactStore()
     store.add_many(facts)  # would raise on a duplicate id
-    assert len(store.all("meridian")) == len(facts)
+    assert len(store.all("atlas")) == len(facts)
 
 
 # -- service + end-to-end ----------------------------------------------------
 
 def test_service_ingest_guidance_writes_facts_and_audits():
     svc = seeded_service()
-    before = len(svc.audit_export("meridian"))
+    before = len(svc.audit_export("atlas"))
     report = svc.ingest_guidance(
-        text=PRESS_RELEASE, tenant_id="meridian", entity="MRDN",
+        text=PRESS_RELEASE, tenant_id="atlas", entity="ATLS",
         accession=ACCESSION, base_period="FY2026-Q1", as_of="2026-04-28",
     )
     assert report.ingested == 4
-    assert svc.store.latest("meridian", "MRDN", "revenue_guidance", "FY2026-Q2") is not None
-    assert len(svc.audit_export("meridian")) == before + 1
+    assert svc.store.latest("atlas", "ATLS", "revenue_guidance", "FY2026-Q2") is not None
+    assert len(svc.audit_export("atlas")) == before + 1
     assert svc.audit_verify()
 
 
@@ -148,16 +148,16 @@ def test_a_draft_that_reaffirms_guidance_traces_to_the_cited_line():
     management gave, here is where it came from.'"""
     svc = seeded_service()
     svc.ingest_guidance(
-        text=PRESS_RELEASE, tenant_id="meridian", entity="MRDN",
+        text=PRESS_RELEASE, tenant_id="atlas", entity="ATLS",
         accession=ACCESSION, base_period="FY2026-Q1", as_of="2026-04-28",
     )
     draft = Document(
-        id="reaffirm", tenant_id="meridian", kind=DocumentKind.SCRIPT,
+        id="reaffirm", tenant_id="atlas", kind=DocumentKind.SCRIPT,
         title="Investor conference remarks",
         text="We continue to expect second-quarter revenue of approximately $1.33 billion.",
         claims=(
             FigureClaim(
-                claim_id="d1", document_id="reaffirm", entity="MRDN",
+                claim_id="d1", document_id="reaffirm", entity="ATLS",
                 metric="revenue_guidance", period="FY2026-Q2",
                 displayed_text="$1.33 billion",
             ),

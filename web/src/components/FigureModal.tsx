@@ -12,8 +12,8 @@ const STATUS_TEXT: Record<string, string> = {
 };
 
 const BIND_OPTIONS = [
-  { name: "MRDN 10-Q", ctx: "Statements of Operations" },
-  { name: "MRDN 8-K Ex.99.1", ctx: "Press-release reconciliation" },
+  { name: "ATLS 10-Q", ctx: "Statements of Operations" },
+  { name: "ATLS 8-K Ex.99.1", ctx: "Press-release reconciliation" },
   { name: "Prior-year 10-Q", ctx: "Comparative period" },
 ];
 

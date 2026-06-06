@@ -18,7 +18,7 @@ class GuidanceIngestRequest(BaseModel):
     """8-K Exhibit 99.1 press-release prose to extract forward guidance from."""
 
     text: str = Field(description="the EX-99.1 press-release text")
-    entity: str = Field(description="issuer entity, e.g. 'MRDN'")
+    entity: str = Field(description="issuer entity, e.g. 'ATLS'")
     accession: str = Field(description="the 8-K accession number, for the citation ref")
     base_period: str | None = Field(
         default=None, description="the filing's reported period, e.g. 'FY2026-Q1', anchoring period inference"

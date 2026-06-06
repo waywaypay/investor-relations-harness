@@ -46,7 +46,7 @@ REPORT_FIGURES_TOOL = {
                         },
                         "entity": {
                             "type": "string",
-                            "description": "issuer or segment, e.g. 'MRDN' or 'MRDN:Cloud'",
+                            "description": "issuer or segment, e.g. 'ATLS' or 'ATLS:Cloud'",
                         },
                         "period": {
                             "type": "string",

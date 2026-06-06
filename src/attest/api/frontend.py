@@ -23,9 +23,8 @@ from attest.demo import TENANT, build_documents
 
 _SPA_PATH = Path(__file__).parent / "static" / "index.html"
 
-# The demo close pack is embedded into the fallback page so the browser can POST
-# it to /verify-close-pack on load. The facts it ties out against are seeded into
-# the service at startup (see ``create_app(seed_demo=True)``).
+# The reference close pack is embedded into the fallback page so the browser can
+# POST it to /verify-close-pack on load.
 _DOCUMENTS_JSON = "[" + ",".join(d.model_dump_json() for d in build_documents()) + "]"
 
 
@@ -42,7 +41,7 @@ def spa_html() -> str:
 
 
 def index_html() -> str:
-    """The minimal fallback front-end, with the demo payload injected."""
+    """The minimal fallback front-end, with the reference close pack injected."""
     return _PAGE.replace("__TENANT__", json.dumps(TENANT)).replace(
         "__DOCUMENTS__", _DOCUMENTS_JSON
     )
