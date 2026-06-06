@@ -81,7 +81,7 @@ export function Sidebar({
   return (
     <aside className="sidebar">
       <div className="sb-org">
-        <div className="sb-org-name">Meridian Systems</div>
+        <div className="sb-org-name">Atlas Systems</div>
         <div className="sb-org-sub">Investor relations</div>
       </div>
 
