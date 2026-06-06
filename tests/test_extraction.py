@@ -45,6 +45,29 @@ def test_extract_html_strips_tags_and_unescapes():
     assert out.kind == "html"
     assert "$1.24" in out.text and "billion" in out.text
     assert "<" not in out.text and "var x" not in out.text  # tags and script gone
+    # &nbsp; (U+00A0) is normalised to an ordinary space, so the figure and its scale
+    # word read as "$1.24 billion" — not "$1.24\xa0billion", which would litter the
+    # display and (worse) break alias matching when a label is glued by &nbsp;.
+    assert "\xa0" not in out.text
+    assert "$1.24 billion" in out.text
+
+
+def test_html_nbsp_in_labels_does_not_break_attribution():
+    """Real IR HTML glues label words and number/scale with &nbsp;. Left as U+00A0
+    those defeat alias matching: a cloud-revenue figure gets mis-read as total
+    revenue. Normalising the non-breaking space keeps attribution correct."""
+    svc = seeded_service()
+    html = (
+        b"<html><body><p>Operating&nbsp;cash&nbsp;flow was $338&nbsp;million. "
+        b"Cloud&nbsp;segment&nbsp;revenue was $612&nbsp;million.</p></body></html>"
+    )
+    out = extract_text("r.html", html)
+    claims = ClaimExtractor(svc.registry, svc.store).extract(
+        out.text, document_id="d", tenant_id="meridian", entity="MRDN", period="FY2026-Q1"
+    )
+    by_text = {c.displayed_text: c for c in claims}
+    assert by_text["$338 million"].metric == "operating_cash_flow"
+    assert by_text["$612 million"].metric == "cloud_revenue"  # not total_revenue
 
 
 def test_extract_docx_reads_paragraphs():
