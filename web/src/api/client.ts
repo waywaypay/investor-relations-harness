@@ -120,7 +120,7 @@ export interface AttestClient {
   /** Fetch + ingest the selected historical documents as prior-disclosure references. */
   ingestHistorical(
     entity: string,
-    items: { url: string; title?: string }[]
+    items: { url: string; title?: string; period?: string }[]
   ): Promise<HistoricalIngestResult>;
 }
 

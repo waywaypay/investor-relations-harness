@@ -14,11 +14,18 @@ const KIND_OPTIONS: { value: DocKind; label: string; hint: string }[] = [
 
 const ACCEPT = ".txt,.md,.html,.htm,.pdf,.docx,text/plain";
 
+function toFiscalPeriod(isoDate: string): string | undefined {
+  const m = isoDate.match(/^(\d{4})-(\d{2})/);
+  if (!m) return undefined;
+  return `FY${m[1]}-Q${Math.ceil(parseInt(m[2]) / 3)}`;
+}
+
 export function UploadModal({
   onClose,
   onUploaded,
   target = null,
   initialRole = "draft",
+  initialSource,
 }: {
   onClose: () => void;
   onUploaded: (docId: string) => void;
@@ -26,6 +33,8 @@ export function UploadModal({
   target?: LibraryDoc | null;
   /** Which mode the modal opens in (the manager opens it straight to "reference"). */
   initialRole?: "draft" | "reference";
+  /** Which source tab opens first in reference mode. */
+  initialSource?: "edgar" | "historical" | "file";
 }) {
   const store = useStore();
   const isVersion = target != null;
@@ -47,7 +56,7 @@ export function UploadModal({
   // In reference mode the user picks where the prior disclosure comes from: pull
   // structured facts from EDGAR, search the web for historical docs, or upload a file.
   const [sourceMode, setSourceMode] = useState<"edgar" | "historical" | "file">(
-    isReference ? "edgar" : "file"
+    isReference ? (initialSource ?? "edgar") : "file"
   );
   // Historical (web search) mode: the reviewed candidates and the user's selection.
   const [candidates, setCandidates] = useState<HistoricalCandidate[]>([]);
@@ -133,7 +142,11 @@ export function UploadModal({
       if (historicalMode) {
         const items = candidates
           .filter((c) => selected.has(c.url))
-          .map((c) => ({ url: c.url, title: c.title }));
+          .map((c) => ({
+            url: c.url,
+            title: c.title,
+            ...(c.published_date ? { period: toFiscalPeriod(c.published_date) } : {}),
+          }));
         await store.ingestHistorical(ticker.trim(), items);
         onClose();
         return;
