@@ -74,6 +74,20 @@ export interface DisclosureResult {
   skipped: number;
 }
 
+/** Result of pulling a company's XBRL facts from SEC EDGAR. */
+export interface EdgarIngestResult {
+  source: string;
+  ingested: number;
+  skipped: number;
+}
+
+/** Result of auto-fetching the prior quarter's 8-K press release from EDGAR. */
+export interface PriorPeriodResult {
+  prior_period: string | null;
+  total_ingested: number;
+  exhibits: { accession: string; filing_date: string; label: string; ingested: number }[];
+}
+
 export interface AttestClient {
   /** Verify a figure's displayed text against its bound source. */
   verifyFigure(figureId: string, text: string): Promise<VerifyResult>;
@@ -81,6 +95,10 @@ export interface AttestClient {
   analyzeDocument(input: AnalyzeInput): Promise<AnalyzeResult>;
   /** File a prior disclosure as the reference corpus for consistency checks. */
   ingestDisclosure(input: DisclosureInput): Promise<DisclosureResult>;
+  /** Pull a company's machine-tagged XBRL facts from SEC EDGAR into the fact store. */
+  ingestEdgar(ticker: string, maxYears?: number): Promise<EdgarIngestResult>;
+  /** Auto-fetch the prior quarter's 8-K press release from SEC EDGAR. */
+  fetchPriorPeriod(ticker: string, period: string): Promise<PriorPeriodResult>;
 }
 
 /** Offline default. The mock UI verifies locally (src/lib/verify.ts); these throw
@@ -100,6 +118,16 @@ export const offlineClient: AttestClient = {
   async ingestDisclosure() {
     throw new Error(
       "offlineClient: set VITE_ATTEST_API to the FastAPI backend to file a prior disclosure"
+    );
+  },
+  async ingestEdgar() {
+    throw new Error(
+      "offlineClient: set VITE_ATTEST_API to the FastAPI backend to load EDGAR facts"
+    );
+  },
+  async fetchPriorPeriod() {
+    throw new Error(
+      "offlineClient: set VITE_ATTEST_API to the FastAPI backend to fetch prior-period releases"
     );
   },
 };
@@ -239,6 +267,34 @@ export function createLiveClient(baseUrl: string): AttestClient {
         throw new Error(`ingest disclosure failed: ${detail}`);
       }
       return (await res.json()) as DisclosureResult;
+    },
+
+    async ingestEdgar(ticker, maxYears = 3) {
+      const res = await fetch(`${base}/tenants/${TENANT}/ingest/edgar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ticker: ticker.toUpperCase(), max_years: maxYears }),
+      });
+      if (!res.ok) {
+        let detail = `HTTP ${res.status}`;
+        try { const b = await res.json(); if (b?.detail) detail = b.detail; } catch { /**/ }
+        throw new Error(`EDGAR ingest failed: ${detail}`);
+      }
+      return (await res.json()) as EdgarIngestResult;
+    },
+
+    async fetchPriorPeriod(ticker, period) {
+      const res = await fetch(`${base}/tenants/${TENANT}/ingest/prior-period`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ entity: ticker.toUpperCase(), period }),
+      });
+      if (!res.ok) {
+        let detail = `HTTP ${res.status}`;
+        try { const b = await res.json(); if (b?.detail) detail = b.detail; } catch { /**/ }
+        throw new Error(`Prior-period fetch failed: ${detail}`);
+      }
+      return (await res.json()) as PriorPeriodResult;
     },
   };
 }
