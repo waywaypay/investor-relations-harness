@@ -13,8 +13,11 @@
 # In-memory state (fact store + audit log) means exactly one instance until a
 # persistent store is wired in. Reseeds fresh on each start/deploy.
 services:
+  # The service name must match the EXISTING Render service so the Blueprint
+  # manages it (and keeps the same URL) instead of creating a second one.
+  # Render maps Blueprint services to dashboard services by this name.
   - type: web
-    name: attest
+    name: investor-relations-harness
     runtime: docker
     dockerfilePath: ./Dockerfile
     plan: free
