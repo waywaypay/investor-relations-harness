@@ -19,7 +19,7 @@ from pydantic import BaseModel, ConfigDict
 from attest.audit.log import AuditLog
 from attest.audit.events import EventType
 from attest.domain.document import Document
-from attest.domain.facts import Confidence, Fact, SourceType
+from attest.domain.facts import UNDATED_AS_OF, Confidence, Fact, SourceType
 from attest.domain.metrics import MetricRegistry
 from attest.domain.money import (
     DEFAULT_POLICY,
@@ -146,12 +146,13 @@ class VerificationEngine:
                     reason="Low detection confidence — routed for human review.",
                     fact=latest,
                 )
+            as_of_clause = "" if latest.as_of == UNDATED_AS_OF else f" as of {latest.as_of}"
             if draft_qty.matches(latest.quantity(), self.policy):
                 return self._verdict(
                     claim,
                     Verdict.NEEDS_REVIEW,
                     reason=f"Consistent with the prior disclosure "
-                    f"({latest.quantity().display()} as of {latest.as_of}); not a filed "
+                    f"({latest.quantity().display()}{as_of_clause}); not a filed "
                     f"source, so confirm before publish.",
                     fact=latest,
                 )
@@ -159,7 +160,7 @@ class VerificationEngine:
                 claim,
                 Verdict.CONFLICT,
                 reason=f"Contradicts a prior disclosure: previously stated "
-                f"{latest.quantity().display()} as of {latest.as_of}.",
+                f"{latest.quantity().display()}{as_of_clause}.",
                 fact=latest,
             )
 
