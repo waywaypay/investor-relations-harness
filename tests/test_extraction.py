@@ -45,6 +45,29 @@ def test_extract_html_strips_tags_and_unescapes():
     assert out.kind == "html"
     assert "$1.24" in out.text and "billion" in out.text
     assert "<" not in out.text and "var x" not in out.text  # tags and script gone
+    # &nbsp; (U+00A0) is normalised to an ordinary space, so the figure and its scale
+    # word read as "$1.24 billion" — not "$1.24\xa0billion", which would litter the
+    # display and (worse) break alias matching when a label is glued by &nbsp;.
+    assert "\xa0" not in out.text
+    assert "$1.24 billion" in out.text
+
+
+def test_html_nbsp_in_labels_does_not_break_attribution():
+    """Real IR HTML glues label words and number/scale with &nbsp;. Left as U+00A0
+    those defeat alias matching: a cloud-revenue figure gets mis-read as total
+    revenue. Normalising the non-breaking space keeps attribution correct."""
+    svc = seeded_service()
+    html = (
+        b"<html><body><p>Operating&nbsp;cash&nbsp;flow was $338&nbsp;million. "
+        b"Cloud&nbsp;segment&nbsp;revenue was $612&nbsp;million.</p></body></html>"
+    )
+    out = extract_text("r.html", html)
+    claims = ClaimExtractor(svc.registry, svc.store).extract(
+        out.text, document_id="d", tenant_id="meridian", entity="MRDN", period="FY2026-Q1"
+    )
+    by_text = {c.displayed_text: c for c in claims}
+    assert by_text["$338 million"].metric == "operating_cash_flow"
+    assert by_text["$612 million"].metric == "cloud_revenue"  # not total_revenue
 
 
 def test_extract_docx_reads_paragraphs():
@@ -202,6 +225,29 @@ def test_full_pipeline_reproduces_the_restatement_conflict():
     assert "derived.recomputation_mismatch" in rules
 
 
+@pytest.mark.parametrize(
+    "phrase",
+    ["grew 31%", "growing 31%", "grows 31%", "growth of 31%", "rising 31%",
+     "increasing 31%", "climbed 31%", "expanded 31%", "up 31%"],
+)
+def test_growth_phrasings_all_yield_the_restatement_conflict(phrase):
+    """The headline guarantee — catching the 31% cloud-growth restatement — must not
+    hinge on a single growth verb. Whatever inflection the prose uses, the figure
+    binds as a YoY change and surfaces as a conflict against the restated 29%, never
+    silently demoted to a review item by an unrecognised growth word."""
+    svc = seeded_service()
+    text = f"Cloud segment revenue {phrase} from the prior-year period."
+    _, result, _, _ = svc.analyze_text(
+        tenant_id="meridian", text=text, title="Q1 call",
+        kind=DocumentKind.SCRIPT, entity="MRDN", period="FY2026-Q1",
+    )
+    verdicts = {v.metric: v for v in result.verdicts}
+    assert "cloud_growth_yoy" in verdicts, f"{phrase!r} should map to the growth metric"
+    assert verdicts["cloud_growth_yoy"].verdict.value == "conflict", (
+        f"{phrase!r} should surface the restatement conflict, not a review item"
+    )
+
+
 # -- spoken / transcript figure dialect --------------------------------------
 
 # The same quarter as RELEASE, phrased the way an earnings-call transcript reads:
@@ -233,6 +279,27 @@ def test_candidate_detection_handles_spoken_figures():
     assert parse_quantity("87 cents") == parse_quantity("$0.87")
     # A bare year is not money: no scale word, no "$", no "dollars".
     assert not detect_candidates("In fiscal 2026 we expanded the platform.")
+
+
+def test_candidate_detection_handles_accounting_loss_notation():
+    from attest.verification.candidates import detect_candidates
+
+    # A loss written in parentheses must be detected *and* carry a negative value —
+    # not dropped (ships unverified) and not stripped to a positive (a wrong number).
+    def one(text):
+        cands = detect_candidates(text)
+        assert len(cands) == 1, f"{text!r} -> {[c.text for c in cands]}"
+        return cands[0]
+
+    assert one("GAAP diluted loss per share was $(0.12).").quantity.value < 0
+    assert one("GAAP diluted loss per share was ($0.12).").quantity.value < 0
+    assert one("Net loss of $(45.0) million.").quantity.value < 0
+    assert one("Net loss of ($45.0) million.").quantity.value < 0
+    # An unbalanced, grammatical paren is trimmed, not read as a sign, and the span
+    # tracks the trim so the highlight stays on the figure.
+    c = one("Non-GAAP EPS was ($1.12 adjusted)")
+    assert c.text == "$1.12" and c.quantity.value > 0
+    assert "Non-GAAP EPS was ($1.12 adjusted)"[c.span[0] : c.span[1]] == "$1.12"
 
 
 def test_full_pipeline_traces_a_spoken_transcript():
@@ -357,6 +424,69 @@ def test_forward_looking_revenue_does_not_conflict_with_the_current_period():
     fwd = [c for c in doc.claims if c.metric == "total_revenue" and c.period == "FY2026-Q2"]
     assert fwd, "a forward-looking revenue figure should route to the guidance period"
     assert any(f.rule == "forward_looking.safe_harbor_required" for f in result.findings)
+
+
+def test_reported_loss_ties_out_against_a_filed_negative_value():
+    """End to end: a company that reports a loss writes it in parentheses. The draft's
+    "$(0.12)" must tie out to a filed -0.12, and conflict with a filed +0.12 — never
+    silently read the loss as a positive (which would falsely bless a wrong number)."""
+    from decimal import Decimal
+
+    from attest.domain.facts import Confidence, Fact, SourceType
+    from attest.domain.money import Unit
+
+    def service_with_eps(value: str):
+        svc = seeded_service()
+        svc.store.add(
+            Fact(
+                id=f"loss-{value}", tenant_id="meridian", entity="MRDN",
+                metric="gaap_diluted_eps", period="FY2027-Q1",
+                value=Decimal(value), unit=Unit.CURRENCY, quantum=Decimal("0.01"),
+                source_type=SourceType.EDGAR_XBRL, source_ref="acc#eps",
+                source_label="10-Q", as_of="2026-09-01", confidence=Confidence.HIGH,
+            )
+        )
+        return svc
+
+    draft = "GAAP diluted loss per share was $(0.12) for the quarter."
+    # Filed value is the same loss -> traced.
+    _, traced, _, _ = service_with_eps("-0.12").analyze_text(
+        tenant_id="meridian", text=draft, title="Q1 FY2027 release",
+        kind=DocumentKind.RELEASE, entity="MRDN", period="FY2027-Q1",
+    )
+    eps = {v.metric: v for v in traced.verdicts}["gaap_diluted_eps"]
+    assert eps.verdict.value == "traced", eps.reason
+
+    # Filed value is a *gain* of +0.12 -> the loss must not be blessed as a match.
+    _, conflict, _, _ = service_with_eps("0.12").analyze_text(
+        tenant_id="meridian", text=draft, title="Q1 FY2027 release",
+        kind=DocumentKind.RELEASE, entity="MRDN", period="FY2027-Q1",
+    )
+    eps2 = {v.metric: v for v in conflict.verdicts}["gaap_diluted_eps"]
+    assert eps2.verdict.value != "traced", "a loss must not tie out to a filed gain"
+
+
+def test_retrospective_quarter_opener_does_not_misperiodize_current_figures():
+    """A press release that opens "results for the first quarter of fiscal 2026"
+    names the period *under report*, not guidance — the current-quarter revenue
+    figure that follows must stay in the current period and tie out, not get
+    shunted to the next quarter and come back untraced."""
+    svc = seeded_service()
+    text = (
+        "Meridian Systems today announced financial results for the first quarter "
+        "of fiscal 2026. Total revenue was $1.24 billion, up from the prior year."
+    )
+    doc, result, _, _ = svc.analyze_text(
+        tenant_id="meridian", text=text, title="Q1 FY2026 results",
+        kind=DocumentKind.RELEASE, entity="MRDN", period="FY2026-Q1",
+    )
+    rev = [c for c in doc.claims if c.metric == "total_revenue"]
+    assert rev, "the total revenue figure should be detected"
+    assert all(c.period == "FY2026-Q1" for c in rev), (
+        "a retrospective 'for the first quarter' opener must not reclassify the "
+        "current period's revenue as next-quarter guidance"
+    )
+    assert result.counts["traced"] >= 1 and result.counts["untraced"] == 0
 
 
 # -- a label that trails its figure is attributed to its own figure -----------

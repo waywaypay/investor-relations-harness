@@ -26,7 +26,11 @@ from attest.domain.money import (
 )
 from attest.domain.verdicts import RuleFinding, RuleSeverity
 
-_SEP = re.compile(r"\s*(?:to|through|[‒–—-])\s*", re.IGNORECASE)
+# Range separators, kept in sync with the detector (extraction._RANGE_RE): a
+# guidance range reads "$1.31 to $1.34 billion" or, just as often, "between $1.31
+# and $1.34 billion". Without "and" here the rule silently skips the and-phrased
+# range — so an inverted or wrong-midpoint range stated that way ships unflagged.
+_SEP = re.compile(r"\s*(?:to|through|and|[‒–—-])\s*", re.IGNORECASE)
 _SCALE_TAIL = re.compile(
     r"\b(billion|million|thousand|trillion|bn|mm|[bmkt])\b\s*$", re.IGNORECASE
 )

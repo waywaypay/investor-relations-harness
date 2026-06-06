@@ -15,6 +15,11 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from attest.domain.money import Quantity, Unit
 
+# A prior disclosure carries no real establishment date — it only needs to sort as
+# the *oldest* version so a later filed fact supersedes it. This epoch sentinel is
+# that "undated" marker; consumers should not render it to users as a real date.
+UNDATED_AS_OF = "1970-01-01"
+
 
 class SourceType(str, Enum):
     """Where a fact originated. Ordering encodes how "filed" a source is."""

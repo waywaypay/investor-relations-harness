@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from attest.domain.facts import Confidence
 from attest.domain.metrics import MetricRegistry
 from attest.domain.money import NOUN_WORDS, Unit
-from attest.domain.verdicts import FigureClaim
+from attest.domain.verdicts import UNIDENTIFIED_METRIC, FigureClaim
 from attest.factstore.repository import FactStore
 from attest.verification.candidates import detect_candidates
 
@@ -37,8 +37,12 @@ _ALIASES: dict[str, tuple[str, ...]] = {
     "total_revenue": ("total revenue", "total net revenue", "net revenue", "revenue", "net sales", "total sales", "sales"),
     "cloud_revenue": ("cloud segment revenue", "cloud revenue", "cloud segment", "cloud business"),
     "cloud_growth_yoy": ("cloud growth", "cloud segment revenue grew", "cloud revenue grew", "cloud"),
-    "gaap_diluted_eps": ("gaap diluted eps", "gaap eps", "gaap diluted earnings per share", "diluted eps", "diluted earnings per share", "earnings per share"),
-    "non_gaap_diluted_eps": ("non-gaap diluted eps", "non gaap diluted eps", "adjusted diluted eps", "non-gaap eps", "adjusted eps", "non-gaap diluted earnings per share"),
+    # "loss per share" is the same EPS line item when the period is a loss — a
+    # company in the red writes "diluted loss per share", never "earnings". Without
+    # these, the loss figure (already the most consequential number to verify) lands
+    # unidentified and ships untraced.
+    "gaap_diluted_eps": ("gaap diluted eps", "gaap eps", "gaap diluted earnings per share", "gaap diluted loss per share", "diluted eps", "diluted earnings per share", "diluted loss per share", "earnings per share", "loss per share", "net loss per share"),
+    "non_gaap_diluted_eps": ("non-gaap diluted eps", "non gaap diluted eps", "adjusted diluted eps", "non-gaap eps", "adjusted eps", "non-gaap diluted earnings per share", "non-gaap diluted loss per share", "adjusted diluted loss per share", "non-gaap loss per share", "adjusted loss per share"),
     "operating_cash_flow": ("operating cash flow", "cash flow from operations", "cash provided by operating activities", "cash from operations"),
     "net_income": ("net income", "net earnings"),
     "operating_income": ("operating income", "income from operations", "operating profit"),
@@ -49,12 +53,34 @@ _ALIASES: dict[str, tuple[str, ...]] = {
     "cash_and_equivalents": ("cash and cash equivalents", "cash and equivalents"),
     "share_repurchases": ("share repurchases", "repurchases of common stock", "repurchase of common stock", "repurchased", "stock buyback", "buyback"),
     "operating_margin": ("operating margin", "margin from operations"),
-    "operating_margin_change_bps": ("operating margin expanded", "operating margin improved", "margin expansion", "basis points"),
+    # A basis-points figure is the margin *change*. "basis points" alone can't anchor
+    # it (those words sit inside the figure span, not its context), so attribute on the
+    # margin verb that precedes it — in any inflection a real draft uses ("expanded",
+    # "expanding", "contracted", "declined", "improved", "widened", "narrowed").
+    "operating_margin_change_bps": (
+        "operating margin expanded", "operating margin expanding", "operating margin improved",
+        "operating margin improving", "operating margin contracted", "operating margin contracting",
+        "operating margin declined", "operating margin widened", "operating margin narrowed",
+        "margin expanded", "margin expanding", "margin contracted", "margin improved",
+        "margin expansion", "margin contraction", "basis points",
+    ),
     "q2_revenue_guidance": ("revenue in the range", "revenue guidance", "expects total revenue", "guidance"),
 }
 
-# Words that, near a percentage, signal a year-over-year growth figure.
-_GROWTH_NEAR = re.compile(r"\b(grew|growth|up|increase[d]?|higher|rose|gain|yoy|year[- ]over[- ]year)\b", re.IGNORECASE)
+# Words that, near a percentage, signal a year-over-year *change* (rather than a
+# level). Earnings prose phrases growth a dozen ways — "grew", "growing", "grows",
+# "rising", "increasing", "climbed", "expanded", "gained" — so cover the common
+# inflections/synonyms; under-coverage here silently demotes a real change figure
+# (and any restatement conflict it carries) to a low-confidence review item. This
+# only fires for a percent already mapped to a growth metric, so broader recall
+# here cannot turn a level into a spurious change claim.
+_GROWTH_NEAR = re.compile(
+    r"\b(grow\w*|grew|grown|ros\w*|rose|risen|ris\w*|"
+    r"increas\w*|decreas\w*|declin\w*|gain\w*|climb\w*|"
+    r"expand\w*|expansion|contract\w*|jump\w*|surg\w*|advanc\w*|"
+    r"(?:de|ac)celerat\w*|up|down|higher|lower|yoy|year[- ]over[- ]year)\b",
+    re.IGNORECASE,
+)
 
 # Where a figure's own trailing label ends and the next clause begins. A trailing
 # label is a tight prepositional tail ("$338 million of operating cash flow"); once
@@ -64,11 +90,46 @@ _GROWTH_NEAR = re.compile(r"\b(grew|growth|up|increase[d]?|higher|rose|gain|yoy|
 _CLAUSE_BREAK = re.compile(r"[.,;:\n]|\b(?:and|but|while|which|whereas)\b", re.IGNORECASE)
 
 # Forward-looking context that reclassifies a figure as guidance for a later period.
+# These verbs/phrases are unambiguously forward; the "for the Nth quarter" opener is
+# handled separately by :func:`_has_guidance_context` because it is only guidance
+# when the named quarter differs from the period under report (a retrospective
+# "results for the first quarter of fiscal 2026" names the *current* period).
 _GUIDANCE_NEAR = re.compile(
     r"\b(expects?|expect|anticipates?|outlook|guidance|we see|looking ahead|"
-    r"for the (?:first|second|third|fourth) quarter|full[- ]year|in the range of|range of)\b",
+    r"full[- ]year|in the range of|range of)\b",
     re.IGNORECASE,
 )
+
+# "For the second quarter, we expect …" — a bare quarter phrase, qualified against
+# the current reporting quarter by :func:`_has_guidance_context`.
+_FOR_THE_QUARTER = re.compile(r"for the (first|second|third|fourth) quarter", re.IGNORECASE)
+
+
+def _current_quarter(period: str | None) -> int | None:
+    if not period:
+        return None
+    m = re.match(r"FY\d{4}-Q([1-4])", period, re.IGNORECASE)
+    return int(m.group(1)) if m else None
+
+
+def _has_guidance_context(window: str, period: str | None) -> bool:
+    """True when ``window`` reads as forward-looking guidance.
+
+    Strong forward verbs/phrases (``_GUIDANCE_NEAR``) always qualify. A bare "for
+    the Nth quarter" qualifies only when the named quarter differs from the current
+    reporting quarter — otherwise it is the retrospective "results for the Nth
+    quarter" opener naming the period under report, which must not reclassify this
+    period's figures as a forecast for a later one. When the period is unknown the
+    quarter phrase is treated as guidance (the pre-existing, conservative default).
+    """
+    if _GUIDANCE_NEAR.search(window):
+        return True
+    current = _current_quarter(period)
+    for m in _FOR_THE_QUARTER.finditer(window):
+        q = _ORD_TO_Q.get(m.group(1).lower())
+        if q is not None and q != current:
+            return True
+    return False
 
 # A guidance range stated as a single span: "$1.31 to $1.34 billion", "$1.31–1.34B",
 # or — as transcripts phrase it — symbol-free "1.31 to 1.34 billion". When no "$"
@@ -382,7 +443,7 @@ class ClaimExtractor:
         for m in _RANGE_RE.finditer(text):
             span = (m.start(), m.end())
             window = text[max(0, span[0] - 90) : span[0]].lower()
-            if not _GUIDANCE_NEAR.search(window):
+            if not _has_guidance_context(window, period):
                 continue
             metric = "q2_revenue_guidance" if "q2_revenue_guidance" in self.registry else "revenue_guidance"
             seq += 1
@@ -476,7 +537,7 @@ class ClaimExtractor:
                 confidence = Confidence.LOW
 
             if metric is None:
-                metric = "unidentified"
+                metric = UNIDENTIFIED_METRIC
                 confidence = Confidence.LOW
 
             # A currency figure sitting in clearly forward-looking prose is a forecast
@@ -487,9 +548,9 @@ class ClaimExtractor:
             # revenue). The figure keeps its metric; only its period shifts.
             if (
                 guidance_period
-                and metric != "unidentified"
+                and metric != UNIDENTIFIED_METRIC
                 and unit is Unit.CURRENCY
-                and _GUIDANCE_NEAR.search(before)
+                and _has_guidance_context(before, period)
             ):
                 claim_period = guidance_period
 

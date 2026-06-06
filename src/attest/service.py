@@ -15,6 +15,7 @@ from attest.audit.log import AuditLog, InMemoryAuditLog
 from collections.abc import Iterable, Mapping
 
 from attest.domain.document import Document, DocumentKind
+from attest.domain.facts import UNDATED_AS_OF
 from attest.domain.metrics import DEFAULT_REGISTRY, MetricRegistry
 from attest.domain.money import DEFAULT_POLICY, RoundingPolicy
 from attest.extraction.claims import DEFAULT_ALIASES, AliasConfig, ClaimExtractor, infer_period
@@ -82,7 +83,7 @@ class AttestService:
         entity: str,
         accession: str,
         base_period: str | None = None,
-        as_of: str = "1970-01-01",
+        as_of: str = UNDATED_AS_OF,
         label: str | None = None,
         actor: str = "system:ingestion",
     ) -> IngestionReport:
@@ -118,7 +119,7 @@ class AttestService:
         tenant_id: str,
         entity: str,
         period: str | None = None,
-        as_of: str = "1970-01-01",
+        as_of: str = UNDATED_AS_OF,
         source_ref: str = "prior-disclosure",
         label: str | None = None,
         actor: str = "system:ingestion",

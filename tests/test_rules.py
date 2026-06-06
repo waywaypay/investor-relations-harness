@@ -81,6 +81,22 @@ def test_consistency_clean_on_matching_values():
     assert check_cross_document_consistency(docs) == []
 
 
+def test_consistency_ignores_unidentified_figures():
+    from attest.verification.rules import check_intra_document_consistency
+
+    # Two figures the edge couldn't attribute (e.g. distinct reconciliation
+    # adjustments $0.18 and $0.07) both carry metric "unidentified". They are NOT the
+    # same metric, so neither the intra- nor cross-document check may flag them.
+    intra = _doc("d", "adjustments of $0.18 and $0.07", [
+        _claim("unidentified", "$0.18"), _claim("unidentified", "$0.07"),
+    ])
+    assert check_intra_document_consistency(intra) == []
+
+    d1 = _doc("release", "x $0.18", [_claim("unidentified", "$0.18", doc="release")])
+    d2 = _doc("script", "x $0.07", [_claim("unidentified", "$0.07", doc="script")])
+    assert check_cross_document_consistency([d1, d2]) == []
+
+
 def test_reg_g_flags_non_gaap_presented_before_gaap():
     # Reg G requires the GAAP measure with equal-or-greater prominence. Using claim
     # spans as a position proxy: the non-GAAP figure must not appear before its GAAP

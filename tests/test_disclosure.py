@@ -32,6 +32,20 @@ def test_draft_contradicting_prior_disclosure_is_flagged():
     v = _verdicts(svc, "In Q1 fiscal 2025, total revenue of $1.30 billion.")["total_revenue"]
     assert v.verdict.value == "conflict"
     assert "prior disclosure" in v.reason.lower()
+    # An undated prior disclosure (the default) must not surface the epoch sentinel
+    # as a real date in the user-facing reason.
+    assert "1970" not in v.reason
+
+
+def test_dated_prior_disclosure_shows_the_date():
+    svc = AttestService()
+    svc.ingest_disclosure(
+        text=_PRIOR, tenant_id="acme", entity="ACME", period="FY2025-Q1",
+        as_of="2025-02-15", label="Q1 FY2025 release",
+    )
+    v = _verdicts(svc, "In Q1 fiscal 2025, total revenue of $1.30 billion.")["total_revenue"]
+    assert v.verdict.value == "conflict"
+    assert "as of 2025-02-15" in v.reason
 
 
 def test_draft_restating_prior_disclosure_is_consistent():

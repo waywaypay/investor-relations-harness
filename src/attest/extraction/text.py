@@ -29,7 +29,14 @@ _HTML_EXTS = {"html", "htm", "xhtml"}
 
 _TAG_RE = re.compile(r"<[^>]+>")
 _SCRIPT_STYLE_RE = re.compile(r"<(script|style)[^>]*>.*?</\1>", re.IGNORECASE | re.DOTALL)
-_WS_RUN_RE = re.compile(r"[ \t\f\v]+")
+# Collapse any run of horizontal whitespace — crucially including the non-breaking
+# space (U+00A0, from HTML &nbsp;) and other Unicode spaces — to a single ASCII
+# space, while preserving newlines. Real IR HTML/Word peppers &nbsp; between a
+# label's words and between a number and its scale word ("Operating&nbsp;cash&nbsp;
+# flow", "$1.24&nbsp;billion"); left as U+00A0 those break alias matching (a figure
+# is mis-attributed) and litter the displayed text. ``[^\S\n]`` is "whitespace that
+# is not a newline", so paragraph structure survives.
+_WS_RUN_RE = re.compile(r"[^\S\n]+")
 _BLANKLINES_RE = re.compile(r"\n\s*\n\s*\n+")
 
 
