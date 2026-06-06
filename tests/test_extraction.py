@@ -28,11 +28,9 @@ RELEASE = (
     "$1.31 to $1.34 billion."
 )
 
-# A spoken-earnings-call transcript: unlike the release above, the metric label
-# routinely *trails* the figure ("$338 million of operating cash flow") rather than
-# leading it. This is the phrasing that broke attribution before — each case below
-# is a figure whose label does not sit immediately to its left.
-TRANSCRIPT = (
+# A written-format transcript with trailing labels and $ symbols — the phrasing
+# that broke attribution before; each figure's label sits to its right.
+TRAILING_LABEL_TRANSCRIPT = (
     "Total revenue was $1.24 billion. Our Cloud segment was the standout, with "
     "revenue of $612 million, up 31% year over year. We generated $338 million of "
     "operating cash flow and returned $250 million to shareholders through buybacks. "
@@ -181,7 +179,7 @@ def test_extractor_attributes_trailing_labels_in_transcript_prose():
     # The edge must read a figure's label whether it leads or trails the number.
     svc = seeded_service()
     claims = ClaimExtractor(svc.registry, svc.store).extract(
-        TRANSCRIPT, document_id="call", tenant_id="meridian", entity="MRDN", period="FY2026-Q1"
+        TRAILING_LABEL_TRANSCRIPT, document_id="call", tenant_id="atlas", entity="ATLS", period="FY2026-Q1"
     )
     by_text = {c.displayed_text: c for c in claims}
 
@@ -192,7 +190,7 @@ def test_extractor_attributes_trailing_labels_in_transcript_prose():
     assert by_text["$250 million"].metric == "share_repurchases"
     # A bare "revenue" beside a segment figure resolves to the segment's own metric.
     cloud = by_text["$612 million"]
-    assert cloud.metric == "cloud_revenue" and cloud.entity == "MRDN:Cloud"
+    assert cloud.metric == "cloud_revenue" and cloud.entity == "ATLS:Cloud"
     # Adjacent GAAP / non-GAAP EPS are kept distinct, not swapped or cross-bound.
     assert by_text["$0.87"].metric == "gaap_diluted_eps"
     assert by_text["$1.12"].metric == "non_gaap_diluted_eps"
@@ -205,10 +203,10 @@ def test_transcript_pipeline_ties_out_every_filed_figure():
     # the genuine 31% cloud-growth restatement — no false conflicts from mis-attribution.
     svc = seeded_service()
     _, result, entity, period = svc.analyze_text(
-        tenant_id="meridian", text=TRANSCRIPT, title="Q1 FY2026 earnings call",
-        kind=DocumentKind.SCRIPT, entity="MRDN", period="FY2026-Q1",
+        tenant_id="atlas", text=TRAILING_LABEL_TRANSCRIPT, title="Q1 FY2026 earnings call",
+        kind=DocumentKind.SCRIPT, entity="ATLS", period="FY2026-Q1",
     )
-    assert (entity, period) == ("MRDN", "FY2026-Q1")
+    assert (entity, period) == ("ATLS", "FY2026-Q1")
     assert result.counts["traced"] == 6     # revenue, cloud rev, OCF, buybacks, both EPS
     assert result.counts["conflict"] == 1   # the 31% cloud-growth restatement
     assert result.counts["untraced"] == 0   # nothing mis-binds to the wrong metric
