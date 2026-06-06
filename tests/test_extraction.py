@@ -63,7 +63,7 @@ def test_html_nbsp_in_labels_does_not_break_attribution():
     )
     out = extract_text("r.html", html)
     claims = ClaimExtractor(svc.registry, svc.store).extract(
-        out.text, document_id="d", tenant_id="meridian", entity="MRDN", period="FY2026-Q1"
+        out.text, document_id="d", tenant_id="atlas", entity="ATLS", period="FY2026-Q1"
     )
     by_text = {c.displayed_text: c for c in claims}
     assert by_text["$338 million"].metric == "operating_cash_flow"
@@ -238,8 +238,8 @@ def test_growth_phrasings_all_yield_the_restatement_conflict(phrase):
     svc = seeded_service()
     text = f"Cloud segment revenue {phrase} from the prior-year period."
     _, result, _, _ = svc.analyze_text(
-        tenant_id="meridian", text=text, title="Q1 call",
-        kind=DocumentKind.SCRIPT, entity="MRDN", period="FY2026-Q1",
+        tenant_id="atlas", text=text, title="Q1 call",
+        kind=DocumentKind.SCRIPT, entity="ATLS", period="FY2026-Q1",
     )
     verdicts = {v.metric: v for v in result.verdicts}
     assert "cloud_growth_yoy" in verdicts, f"{phrase!r} should map to the growth metric"
@@ -439,7 +439,7 @@ def test_reported_loss_ties_out_against_a_filed_negative_value():
         svc = seeded_service()
         svc.store.add(
             Fact(
-                id=f"loss-{value}", tenant_id="meridian", entity="MRDN",
+                id=f"loss-{value}", tenant_id="atlas", entity="ATLS",
                 metric="gaap_diluted_eps", period="FY2027-Q1",
                 value=Decimal(value), unit=Unit.CURRENCY, quantum=Decimal("0.01"),
                 source_type=SourceType.EDGAR_XBRL, source_ref="acc#eps",
@@ -451,16 +451,16 @@ def test_reported_loss_ties_out_against_a_filed_negative_value():
     draft = "GAAP diluted loss per share was $(0.12) for the quarter."
     # Filed value is the same loss -> traced.
     _, traced, _, _ = service_with_eps("-0.12").analyze_text(
-        tenant_id="meridian", text=draft, title="Q1 FY2027 release",
-        kind=DocumentKind.RELEASE, entity="MRDN", period="FY2027-Q1",
+        tenant_id="atlas", text=draft, title="Q1 FY2027 release",
+        kind=DocumentKind.RELEASE, entity="ATLS", period="FY2027-Q1",
     )
     eps = {v.metric: v for v in traced.verdicts}["gaap_diluted_eps"]
     assert eps.verdict.value == "traced", eps.reason
 
     # Filed value is a *gain* of +0.12 -> the loss must not be blessed as a match.
     _, conflict, _, _ = service_with_eps("0.12").analyze_text(
-        tenant_id="meridian", text=draft, title="Q1 FY2027 release",
-        kind=DocumentKind.RELEASE, entity="MRDN", period="FY2027-Q1",
+        tenant_id="atlas", text=draft, title="Q1 FY2027 release",
+        kind=DocumentKind.RELEASE, entity="ATLS", period="FY2027-Q1",
     )
     eps2 = {v.metric: v for v in conflict.verdicts}["gaap_diluted_eps"]
     assert eps2.verdict.value != "traced", "a loss must not tie out to a filed gain"
@@ -477,8 +477,8 @@ def test_retrospective_quarter_opener_does_not_misperiodize_current_figures():
         "of fiscal 2026. Total revenue was $1.24 billion, up from the prior year."
     )
     doc, result, _, _ = svc.analyze_text(
-        tenant_id="meridian", text=text, title="Q1 FY2026 results",
-        kind=DocumentKind.RELEASE, entity="MRDN", period="FY2026-Q1",
+        tenant_id="atlas", text=text, title="Q1 FY2026 results",
+        kind=DocumentKind.RELEASE, entity="ATLS", period="FY2026-Q1",
     )
     rev = [c for c in doc.claims if c.metric == "total_revenue"]
     assert rev, "the total revenue figure should be detected"
