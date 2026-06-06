@@ -202,6 +202,29 @@ def test_full_pipeline_reproduces_the_restatement_conflict():
     assert "derived.recomputation_mismatch" in rules
 
 
+@pytest.mark.parametrize(
+    "phrase",
+    ["grew 31%", "growing 31%", "grows 31%", "growth of 31%", "rising 31%",
+     "increasing 31%", "climbed 31%", "expanded 31%", "up 31%"],
+)
+def test_growth_phrasings_all_yield_the_restatement_conflict(phrase):
+    """The headline guarantee — catching the 31% cloud-growth restatement — must not
+    hinge on a single growth verb. Whatever inflection the prose uses, the figure
+    binds as a YoY change and surfaces as a conflict against the restated 29%, never
+    silently demoted to a review item by an unrecognised growth word."""
+    svc = seeded_service()
+    text = f"Cloud segment revenue {phrase} from the prior-year period."
+    _, result, _, _ = svc.analyze_text(
+        tenant_id="meridian", text=text, title="Q1 call",
+        kind=DocumentKind.SCRIPT, entity="MRDN", period="FY2026-Q1",
+    )
+    verdicts = {v.metric: v for v in result.verdicts}
+    assert "cloud_growth_yoy" in verdicts, f"{phrase!r} should map to the growth metric"
+    assert verdicts["cloud_growth_yoy"].verdict.value == "conflict", (
+        f"{phrase!r} should surface the restatement conflict, not a review item"
+    )
+
+
 # -- spoken / transcript figure dialect --------------------------------------
 
 # The same quarter as RELEASE, phrased the way an earnings-call transcript reads:
@@ -357,3 +380,26 @@ def test_forward_looking_revenue_does_not_conflict_with_the_current_period():
     fwd = [c for c in doc.claims if c.metric == "total_revenue" and c.period == "FY2026-Q2"]
     assert fwd, "a forward-looking revenue figure should route to the guidance period"
     assert any(f.rule == "forward_looking.safe_harbor_required" for f in result.findings)
+
+
+def test_retrospective_quarter_opener_does_not_misperiodize_current_figures():
+    """A press release that opens "results for the first quarter of fiscal 2026"
+    names the period *under report*, not guidance — the current-quarter revenue
+    figure that follows must stay in the current period and tie out, not get
+    shunted to the next quarter and come back untraced."""
+    svc = seeded_service()
+    text = (
+        "Meridian Systems today announced financial results for the first quarter "
+        "of fiscal 2026. Total revenue was $1.24 billion, up from the prior year."
+    )
+    doc, result, _, _ = svc.analyze_text(
+        tenant_id="meridian", text=text, title="Q1 FY2026 results",
+        kind=DocumentKind.RELEASE, entity="MRDN", period="FY2026-Q1",
+    )
+    rev = [c for c in doc.claims if c.metric == "total_revenue"]
+    assert rev, "the total revenue figure should be detected"
+    assert all(c.period == "FY2026-Q1" for c in rev), (
+        "a retrospective 'for the first quarter' opener must not reclassify the "
+        "current period's revenue as next-quarter guidance"
+    )
+    assert result.counts["traced"] >= 1 and result.counts["untraced"] == 0

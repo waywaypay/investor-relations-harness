@@ -53,15 +53,62 @@ _ALIASES: dict[str, tuple[str, ...]] = {
     "q2_revenue_guidance": ("revenue in the range", "revenue guidance", "expects total revenue", "guidance"),
 }
 
-# Words that, near a percentage, signal a year-over-year growth figure.
-_GROWTH_NEAR = re.compile(r"\b(grew|growth|up|increase[d]?|higher|rose|gain|yoy|year[- ]over[- ]year)\b", re.IGNORECASE)
-
-# Forward-looking context that reclassifies a figure as guidance for a later period.
-_GUIDANCE_NEAR = re.compile(
-    r"\b(expects?|expect|anticipates?|outlook|guidance|we see|looking ahead|"
-    r"for the (?:first|second|third|fourth) quarter|full[- ]year|in the range of|range of)\b",
+# Words that, near a percentage, signal a year-over-year *change* (rather than a
+# level). Earnings prose phrases growth a dozen ways — "grew", "growing", "grows",
+# "rising", "increasing", "climbed", "expanded", "gained" — so cover the common
+# inflections/synonyms; under-coverage here silently demotes a real change figure
+# (and any restatement conflict it carries) to a low-confidence review item. This
+# only fires for a percent already mapped to a growth metric, so broader recall
+# here cannot turn a level into a spurious change claim.
+_GROWTH_NEAR = re.compile(
+    r"\b(grow\w*|grew|grown|ros\w*|rose|risen|ris\w*|"
+    r"increas\w*|decreas\w*|declin\w*|gain\w*|climb\w*|"
+    r"expand\w*|expansion|contract\w*|jump\w*|surg\w*|advanc\w*|"
+    r"(?:de|ac)celerat\w*|up|down|higher|lower|yoy|year[- ]over[- ]year)\b",
     re.IGNORECASE,
 )
+
+# Forward-looking context that reclassifies a figure as guidance for a later period.
+# These verbs/phrases are unambiguously forward; the "for the Nth quarter" opener is
+# handled separately by :func:`_has_guidance_context` because it is only guidance
+# when the named quarter differs from the period under report (a retrospective
+# "results for the first quarter of fiscal 2026" names the *current* period).
+_GUIDANCE_NEAR = re.compile(
+    r"\b(expects?|expect|anticipates?|outlook|guidance|we see|looking ahead|"
+    r"full[- ]year|in the range of|range of)\b",
+    re.IGNORECASE,
+)
+
+# "For the second quarter, we expect …" — a bare quarter phrase, qualified against
+# the current reporting quarter by :func:`_has_guidance_context`.
+_FOR_THE_QUARTER = re.compile(r"for the (first|second|third|fourth) quarter", re.IGNORECASE)
+
+
+def _current_quarter(period: str | None) -> int | None:
+    if not period:
+        return None
+    m = re.match(r"FY\d{4}-Q([1-4])", period, re.IGNORECASE)
+    return int(m.group(1)) if m else None
+
+
+def _has_guidance_context(window: str, period: str | None) -> bool:
+    """True when ``window`` reads as forward-looking guidance.
+
+    Strong forward verbs/phrases (``_GUIDANCE_NEAR``) always qualify. A bare "for
+    the Nth quarter" qualifies only when the named quarter differs from the current
+    reporting quarter — otherwise it is the retrospective "results for the Nth
+    quarter" opener naming the period under report, which must not reclassify this
+    period's figures as a forecast for a later one. When the period is unknown the
+    quarter phrase is treated as guidance (the pre-existing, conservative default).
+    """
+    if _GUIDANCE_NEAR.search(window):
+        return True
+    current = _current_quarter(period)
+    for m in _FOR_THE_QUARTER.finditer(window):
+        q = _ORD_TO_Q.get(m.group(1).lower())
+        if q is not None and q != current:
+            return True
+    return False
 
 # A guidance range stated as a single span: "$1.31 to $1.34 billion", "$1.31–1.34B",
 # or — as transcripts phrase it — symbol-free "1.31 to 1.34 billion". When no "$"
@@ -339,7 +386,7 @@ class ClaimExtractor:
         for m in _RANGE_RE.finditer(text):
             span = (m.start(), m.end())
             window = text[max(0, span[0] - 90) : span[0]].lower()
-            if not _GUIDANCE_NEAR.search(window):
+            if not _has_guidance_context(window, period):
                 continue
             metric = "q2_revenue_guidance" if "q2_revenue_guidance" in self.registry else "revenue_guidance"
             seq += 1
@@ -414,7 +461,7 @@ class ClaimExtractor:
                 guidance_period
                 and metric != "unidentified"
                 and unit is Unit.CURRENCY
-                and _GUIDANCE_NEAR.search(before)
+                and _has_guidance_context(before, period)
             ):
                 claim_period = guidance_period
 
