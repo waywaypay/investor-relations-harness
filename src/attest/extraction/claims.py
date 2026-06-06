@@ -358,11 +358,28 @@ class ClaimExtractor:
             consumed.append(span)
 
         # 2) Single figures.
-        for cand in detect_candidates(text):
+        all_cands = list(detect_candidates(text))
+        cand_units = [
+            _unit_of_candidate(c.text, c.quantity.unit if c.quantity else None) for c in all_cands
+        ]
+        for idx, cand in enumerate(all_cands):
             if any(s <= cand.span[0] < e for s, e in consumed):
                 continue  # already captured inside a guidance range
-            unit = _unit_of_candidate(cand.text, cand.quantity.unit if cand.quantity else None)
-            before = text[max(0, cand.span[0] - 90) : cand.span[0]].lower()
+            unit = cand_units[idx]
+            # A label belongs to its own figure. Bound the look-back at the nearest
+            # preceding figure *of the same unit*, so a currency label is never stolen
+            # across another currency figure ("Operating cash flow was $338M, and we
+            # returned $250M…" must not bind $250M to operating_cash_flow). Looking
+            # past a different-unit figure is fine and necessary — a percent between a
+            # subject and its currency figure ("RPO grew 23% to $16.0 billion") still
+            # resolves. Without this, the borrowed label produces a confident false
+            # conflict; bounded, the figure falls to low confidence and human review.
+            same_unit_end = max(
+                (all_cands[j].span[1] for j in range(idx) if cand_units[j] == unit),
+                default=0,
+            )
+            lo = max(cand.span[0] - 90, same_unit_end)
+            before = text[lo : cand.span[0]].lower()
             # In disclosure prose the label precedes the figure ("non-GAAP EPS of $1.12"),
             # so attribute from the preceding context plus a short lookahead — never far
             # enough to borrow the *next* sentence's subject.
@@ -387,9 +404,18 @@ class ClaimExtractor:
                 metric = "unidentified"
                 confidence = Confidence.LOW
 
-            # A non-guidance figure sitting in clearly forward-looking prose is routed
-            # to the guidance period so it binds (and trips safe-harbor) correctly.
-            if guidance_period and metric != "unidentified" and _GUIDANCE_NEAR.search(before) and unit is Unit.CURRENCY and "guidance" in metric:
+            # A currency figure sitting in clearly forward-looking prose is a forecast
+            # for a *later* period, not a restatement of this one — route it to the
+            # guidance period so it binds there (and trips safe-harbor) instead of
+            # being asserted against the current period and producing a false conflict
+            # ("we expect Q2 revenue of $1.31 billion" must not conflict with filed Q1
+            # revenue). The figure keeps its metric; only its period shifts.
+            if (
+                guidance_period
+                and metric != "unidentified"
+                and unit is Unit.CURRENCY
+                and _GUIDANCE_NEAR.search(before)
+            ):
                 claim_period = guidance_period
 
             seq += 1

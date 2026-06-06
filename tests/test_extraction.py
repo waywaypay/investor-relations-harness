@@ -299,3 +299,61 @@ def test_count_ranges_are_not_read_as_currency_guidance():
     # No bogus q2_revenue_guidance claim from an operating-metric range.
     assert all(c.metric != "q2_revenue_guidance" for c in doc.claims)
     assert result.counts["needs_review"] == 0
+
+
+# -- a currency label is not stolen across another currency figure ------------
+
+def test_label_not_borrowed_across_a_same_unit_figure():
+    svc = seeded_service()
+    # The buyback figure follows a cash-flow figure in the same sentence. Its own
+    # clause ("we returned $250 million") carries no metric label, so it must NOT
+    # borrow "operating cash flow" from the *previous* currency figure and assert a
+    # confident conflict against the filed cash-flow value.
+    text = (
+        "Operating cash flow was a healthy $338 million, and we returned "
+        "$250 million to shareholders through buybacks."
+    )
+    doc, result, _, _ = svc.analyze_text(
+        tenant_id="meridian", text=text, title="Q1 FY2026 call",
+        kind=DocumentKind.SCRIPT, entity="MRDN", period="FY2026-Q1",
+    )
+    by_text = {c.displayed_text.strip(): c for c in doc.claims}
+    assert by_text["$338 million"].metric == "operating_cash_flow"  # still attributed
+    # The $250M figure is not asserted against cash flow — no false conflict.
+    assert by_text["$250 million"].metric != "operating_cash_flow"
+    assert result.counts["conflict"] == 0
+
+
+def test_subject_resolves_across_an_intervening_percent():
+    svc = seeded_service()
+    # The look-back may still cross a *different-unit* figure: "RPO grew 23% to
+    # $16.0 billion" — the percent between the subject and the currency figure must
+    # not block attribution. (Guards against over-correcting the rule above.)
+    text = "Total revenue was $1.24 billion. Cloud revenue grew 31% to $612 million."
+    doc, _, _, _ = svc.analyze_text(
+        tenant_id="meridian", text=text, title="Q1 FY2026 call",
+        kind=DocumentKind.SCRIPT, entity="MRDN", period="FY2026-Q1",
+    )
+    by_text = {c.displayed_text.strip(): c.metric for c in doc.claims}
+    assert by_text["$612 million"] == "cloud_revenue"  # "cloud" resolved past the 31%
+
+
+def test_forward_looking_revenue_does_not_conflict_with_the_current_period():
+    svc = seeded_service()
+    # Next-quarter guidance, phrased per-figure ("between $X and $Y"), must not be
+    # asserted against the *current* period's filed revenue and flagged a conflict.
+    text = (
+        "Total revenue was $1.24 billion this quarter. Looking ahead, for the second "
+        "quarter we expect total revenue between $1.31 billion and $1.34 billion."
+    )
+    doc, result, _, _ = svc.analyze_text(
+        tenant_id="meridian", text=text, title="Q1 FY2026 call",
+        kind=DocumentKind.SCRIPT, entity="MRDN", period="FY2026-Q1",
+    )
+    assert result.counts["traced"] == 1  # the current-quarter revenue still ties out
+    assert result.counts["conflict"] == 0  # the forward-looking figures do not conflict
+    # The forward-looking revenue figure is attributed to the *next* period, and the
+    # document is flagged as containing forward-looking statements.
+    fwd = [c for c in doc.claims if c.metric == "total_revenue" and c.period == "FY2026-Q2"]
+    assert fwd, "a forward-looking revenue figure should route to the guidance period"
+    assert any(f.rule == "forward_looking.safe_harbor_required" for f in result.findings)
