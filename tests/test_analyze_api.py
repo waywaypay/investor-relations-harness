@@ -46,6 +46,35 @@ def test_ingest_demo_seeds_filed_sources(client):
     assert len(facts) == 15
 
 
+def test_ingest_demo_is_idempotent(client):
+    _seed_demo(client)
+    # Re-seeding the same tenant is a no-op, not a 500 — clicking "seed" twice or
+    # seeding a tenant the server already seeded at startup must not error.
+    r = client.post("/tenants/meridian/ingest/demo")
+    assert r.status_code == 200
+    assert r.json()["ingested"] == 0
+    assert len(client.get("/tenants/meridian/facts").json()) == 15
+
+
+def test_ingest_demo_isolated_across_tenants(client):
+    # The same filing seeds independently into multiple tenants (no cross-tenant
+    # fact-id collision), each keeping its own copy.
+    for tenant in ("alpha", "beta"):
+        r = client.post(f"/tenants/{tenant}/ingest/demo")
+        assert r.status_code == 200 and r.json()["ingested"] == 15
+    assert len(client.get("/tenants/alpha/facts").json()) == 15
+    assert len(client.get("/tenants/beta/facts").json()) == 15
+
+
+def test_reingest_same_xbrl_returns_409_not_500(client):
+    from attest.ingestion.edgar_xbrl import load_fixture
+    instance = load_fixture("meridian_q1_fy2026")
+    assert client.post("/tenants/acme/ingest/xbrl", json=instance).status_code == 200
+    r = client.post("/tenants/acme/ingest/xbrl", json=instance)
+    assert r.status_code == 409
+    assert "duplicate" in r.json()["detail"].lower()
+
+
 def test_analyze_pasted_text_ties_out_against_filed_sources(client):
     _seed_demo(client)
     r = client.post(
@@ -215,6 +244,21 @@ def test_analyze_records_verdicts_in_audit_chain(client):
     audit = client.get("/tenants/meridian/audit").json()
     assert any(e["type"] == "verdict" for e in audit)
     assert client.get("/audit/verify").json()["intact"] is True
+
+
+def test_analyze_assigns_unique_document_ids(client):
+    # Two distinct uploads of the same kind must be separately attributable: a
+    # shared id ("release") would conflate their verdict/sign-off/override events.
+    _seed_demo(client)
+    ids = set()
+    for _ in range(3):
+        r = client.post("/tenants/meridian/analyze",
+                        data={"text": RELEASE, "kind": "release",
+                              "entity": "MRDN", "period": "FY2026-Q1"})
+        assert r.status_code == 200
+        ids.add(r.json()["document_id"])
+    assert len(ids) == 3
+    assert all(i.startswith("release-") for i in ids)
 
 
 # -- EDGAR tie-out: upload a real transcript, tie out to filed SEC facts -------

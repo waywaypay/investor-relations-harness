@@ -126,7 +126,10 @@ def create_app(service: AttestService | None = None, *, seed_demo: bool = False)
     ) -> IngestResponse:
         if "facts" not in instance:
             raise HTTPException(status_code=422, detail="instance missing 'facts'")
-        report = svc.ingest_xbrl(instance, tenant_id=tenant_id)
+        try:
+            report = svc.ingest_xbrl(instance, tenant_id=tenant_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         return IngestResponse(
             source=report.source,
             ingested=report.ingested,
@@ -219,6 +222,8 @@ def create_app(service: AttestService | None = None, *, seed_demo: bool = False)
             report = svc.ingest_edgar(req.ticker, tenant_id, max_years=req.max_years)
         except EdgarUnavailable as exc:
             raise HTTPException(status_code=502, detail=f"EDGAR unreachable: {exc}") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         return IngestResponse(
             source=report.source,
             ingested=report.ingested,
@@ -248,8 +253,19 @@ def create_app(service: AttestService | None = None, *, seed_demo: bool = False)
     @app.post("/tenants/{tenant_id}/ingest/demo", response_model=IngestResponse)
     def ingest_demo(tenant_id: str, svc: AttestService = Depends(get_service)) -> IngestResponse:
         """Convenience: ingest the bundled Meridian filing so an upload has filed
-        sources to tie out against, straight from the UI."""
-        report = svc.ingest_xbrl(load_fixture(_DEMO_FIXTURE), tenant_id=tenant_id)
+        sources to tie out against, straight from the UI.
+
+        Idempotent: re-seeding a tenant that already has the demo filing is a no-op
+        (every figure was already ingested), so clicking "seed" twice — or seeding a
+        tenant the server already seeded at startup — never errors."""
+        fixture = load_fixture(_DEMO_FIXTURE)
+        accession = fixture.get("accession", "")
+        already = sum(1 for f in svc.store.all(tenant_id) if f.id.startswith(f"{accession}:"))
+        if already:
+            return IngestResponse(
+                source=f"edgar_xbrl:{accession}", ingested=0, skipped=already, skipped_tags=[]
+            )
+        report = svc.ingest_xbrl(fixture, tenant_id=tenant_id)
         return IngestResponse(
             source=report.source,
             ingested=report.ingested,

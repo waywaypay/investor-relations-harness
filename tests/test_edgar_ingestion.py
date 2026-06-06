@@ -184,3 +184,59 @@ def test_ensure_issuer_facts_degrades_honestly_on_outage():
 def test_ensure_issuer_facts_warns_when_ticker_has_no_filings():
     warnings = AttestService(edgar=panw_client()).ensure_issuer_facts("acme", "ZZZZ")
     assert warnings and "No EDGAR filings found" in warnings[0]
+
+
+@pytest.mark.parametrize("status", [403, 429, 500, 503])
+def test_http_client_wraps_non_404_errors_as_unavailable(monkeypatch, status):
+    """SEC throttling (403/429) or an outage (5xx) must surface as EdgarUnavailable
+    so the upload path degrades to an honest warning instead of crashing — a bare
+    HTTPError would escape `except EdgarUnavailable` and 500 the whole request."""
+    import urllib.error
+    import urllib.request
+
+    from attest.ingestion.edgar import HttpEdgarClient
+
+    def _raise(*_a, **_k):
+        raise urllib.error.HTTPError("https://sec.gov/x", status, "blocked", {}, None)
+
+    monkeypatch.setattr(urllib.request, "urlopen", _raise)
+    with pytest.raises(EdgarUnavailable):
+        HttpEdgarClient(user_agent="test test@example.com").resolve_cik("PANW")
+
+
+def test_http_client_treats_404_as_not_reported(monkeypatch):
+    """A 404 is "this issuer doesn't report this tag", not an outage — it returns
+    None so the connector simply skips that metric."""
+    import urllib.error
+    import urllib.request
+
+    from attest.ingestion.edgar import HttpEdgarClient
+
+    def _raise(*_a, **_k):
+        raise urllib.error.HTTPError("https://sec.gov/x", 404, "missing", {}, None)
+
+    monkeypatch.setattr(urllib.request, "urlopen", _raise)
+    assert HttpEdgarClient(user_agent="t t@example.com").company_concept(1, "us-gaap", "X") is None
+
+
+def test_analyze_with_ticker_survives_edgar_outage():
+    """A draft tagged with a ticker must still analyze (figures honestly untraced)
+    when EDGAR is unreachable — the outage is a warning, never a 500."""
+    from attest.ingestion.edgar import EdgarUnavailable
+
+    class _Down:
+        def resolve_cik(self, ticker):
+            raise EdgarUnavailable("HTTP 403 from sec.gov")
+
+        def fiscal_year_end(self, cik):  # pragma: no cover - not reached
+            return None
+
+        def company_concept(self, cik, taxonomy, tag):  # pragma: no cover
+            return None
+
+    svc = AttestService(edgar=_Down())
+    _doc, result, _e, _p = svc.analyze_text(
+        tenant_id="acme", text="Total revenue was $2.59 billion.",
+        kind=DocumentKind.RELEASE, entity="PANW", period="FY2026-Q2",
+    )
+    assert result.counts.get("untraced", 0) >= 1
