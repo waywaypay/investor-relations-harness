@@ -44,8 +44,8 @@ const ICON_CALENDAR =
 // from any document name, so a first-time user reads the workspace at a glance.
 const KIND_ORDER: DocKind[] = ["release", "script", "qa", "other"];
 const KIND_META: Record<DocKind, { label: string; icon: string }> = {
-  release: { label: "Earnings releases", icon: ICON_RELEASE },
-  script: { label: "Call scripts", icon: ICON_SCRIPT },
+  release: { label: "Press releases", icon: ICON_RELEASE },
+  script: { label: "Transcripts", icon: ICON_SCRIPT },
   qa: { label: "Analyst Q&A", icon: ICON_QA },
   other: { label: "Other documents", icon: ICON_OTHER },
 };
@@ -76,7 +76,7 @@ export function Sidebar({
   // Bucket documents by category, preserving library order within each.
   const byKind: Record<DocKind, LibraryDoc[]> = { release: [], script: [], qa: [], other: [] };
   for (const d of store.library) (byKind[d.kind] ?? byKind.other).push(d);
-  const categories = KIND_ORDER.filter((k) => byKind[k].length > 0);
+  const categories = KIND_ORDER;
 
   return (
     <aside className="sidebar">
@@ -138,10 +138,6 @@ export function Sidebar({
           );
         })}
       </div>
-
-      <button className="sb-manageall" onClick={() => onManage()}>
-        Manage all documents ›
-      </button>
 
       <div className="sb-cap">Tools</div>
       <div className="sb-cats">
