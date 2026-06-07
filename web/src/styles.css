@@ -149,6 +149,7 @@ body{font-family:var(--ui);background:var(--paper);color:var(--ink);
 .uphsearch{display:flex;gap:8px}
 .uphsearch .upinput{flex:1}
 .uphsearch .btn{min-width:96px;white-space:nowrap}
+.upquarters{flex:none;border:1px solid var(--line-strong);border-radius:8px;background:var(--paper);color:var(--ink);font-family:var(--ui);font-size:12.5px;padding:0 10px;cursor:pointer}
 .uphlist{border:1px solid var(--line-strong);border-radius:10px;overflow:hidden;max-height:320px;overflow-y:auto}
 .uphlist-h{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--paper);border-bottom:1px solid var(--line);font-size:11px;font-weight:700;color:var(--faint);text-transform:uppercase;letter-spacing:.5px;position:sticky;top:0}
 .uphall{background:none;border:none;cursor:pointer;font-family:var(--ui);font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.5px}

@@ -300,7 +300,7 @@ def create_app(service: AttestService | None = None) -> FastAPI:
         """
         try:
             candidates = svc.search_historical(
-                entity=req.entity, doc_types=tuple(req.doc_types), limit=req.limit
+                entity=req.entity, doc_types=tuple(req.doc_types), quarters=req.quarters
             )
         except ExaNotConfigured as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc

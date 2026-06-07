@@ -117,6 +117,20 @@ describe("historical reference: grouping and category placement", () => {
     expect(within(scripts).queryByText("PANW Q3 release")).not.toBeInTheDocument();
   });
 
+  it("passes the chosen number of quarters back to the search", async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Fetch historical" }));
+    fireEvent.change(screen.getByPlaceholderText(/PANW or Palo Alto Networks/i), {
+      target: { value: "PANW" },
+    });
+    fireEvent.change(screen.getByLabelText(/how many quarters back/i), {
+      target: { value: "8" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+
+    await waitFor(() => expect(mock.searchHistorical).toHaveBeenCalled());
+    expect(mock.searchHistorical.mock.calls[0][2]).toBe(8);
+  });
+
   it("recovers the category of legacy entries saved without a kind", () => {
     // A pre-upgrade payload: entries persisted before reference docs carried a
     // category. The transcript entry must still land under Transcripts, not be

@@ -147,7 +147,10 @@ class HistoricalSearchRequest(BaseModel):
         default=["release", "transcript"],
         description="which document classes to search: 'release' and/or 'transcript'",
     )
-    limit: int = Field(default=8, ge=1, le=20, description="max candidates to return")
+    quarters: int = Field(
+        default=4, ge=1, le=12,
+        description="how many recent fiscal periods to return per type (one result per period)",
+    )
 
 
 class HistoricalCandidate(BaseModel):

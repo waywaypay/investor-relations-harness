@@ -59,6 +59,9 @@ export function UploadModal({
   const [candidates, setCandidates] = useState<HistoricalCandidate[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [searching, setSearching] = useState(false);
+  // How many quarters back the search reaches — one result per period, so this is
+  // literally the number of periods returned per type.
+  const [quarters, setQuarters] = useState(4);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const pickFile = (f: File | null) => {
@@ -105,7 +108,7 @@ export function UploadModal({
     setSearching(true);
     setError(null);
     try {
-      const results = await store.searchHistorical(ent, initialDocTypes);
+      const results = await store.searchHistorical(ent, initialDocTypes, quarters);
       setCandidates(results);
       setSelected(new Set(results.map((r) => r.url))); // pre-select all for one-click load
       if (results.length === 0) setError("No historical documents found for that company.");
@@ -268,6 +271,16 @@ export function UploadModal({
                   spellCheck={false}
                   autoFocus
                 />
+                <select
+                  className="upquarters"
+                  aria-label="How many quarters back"
+                  value={quarters}
+                  onChange={(e) => setQuarters(Number(e.target.value))}
+                >
+                  {[2, 4, 6, 8, 12].map((n) => (
+                    <option key={n} value={n}>Last {n} quarters</option>
+                  ))}
+                </select>
                 <button
                   type="button"
                   className="btn"

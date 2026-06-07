@@ -66,7 +66,7 @@ interface Store {
   /** Auto-fetch the prior quarter's 8-K press release from EDGAR. Returns figures ingested. */
   fetchPriorPeriod: (ticker: string, period: string) => Promise<number>;
   /** Search the web for an issuer's historical earnings docs to review before loading. */
-  searchHistorical: (entity: string, docTypes?: string[]) => Promise<HistoricalCandidate[]>;
+  searchHistorical: (entity: string, docTypes?: string[], quarters?: number) => Promise<HistoricalCandidate[]>;
   /** Fetch + file the selected historical documents as reference. Returns figures filed. */
   ingestHistorical: (entity: string, items: { url: string; title?: string; period?: string; doc_type?: string }[]) => Promise<number>;
   removeDoc: (id: string) => void;
@@ -506,10 +506,10 @@ export function StoreProvider({
   );
 
   const searchHistorical = useCallback(
-    async (entity: string, docTypes?: string[]): Promise<HistoricalCandidate[]> => {
+    async (entity: string, docTypes?: string[], quarters?: number): Promise<HistoricalCandidate[]> => {
       // Pure lookup — no toast on success (the results render in the modal); a
       // failure (e.g. Exa not configured) surfaces to the caller's catch.
-      return client.searchHistorical(entity, docTypes);
+      return client.searchHistorical(entity, docTypes, quarters);
     },
     []
   );
