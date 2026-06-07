@@ -15,7 +15,6 @@ from attest.ingestion.exa import (
     ExaNotConfigured,
     HistoricalFetcher,
     LiveExaClient,
-    calendar_quarter,
 )
 from attest.service import AttestService
 
@@ -25,13 +24,13 @@ SEARCH = {
     "results": [
         {
             "url": "https://www.businesswire.com/panw-q1",
-            "title": "Palo Alto Networks Reports Q1 Results",
+            "title": "Palo Alto Networks Reports First Quarter Fiscal 2026 Results",
             "publishedDate": "2026-01-28T00:00:00.000Z",
             "highlights": ["Total revenue grew 14% year over year."],
         },
         {
             "url": "https://www.fool.com/panw-q1-transcript",
-            "title": "Palo Alto Networks Q1 Earnings Call Transcript",
+            "title": "Palo Alto Networks (PANW) Q1 2026 Earnings Call Transcript",
             "publishedDate": "2026-01-29T12:00:00Z",
             "highlights": ["Prepared remarks from the CEO."],
         },
@@ -73,28 +72,6 @@ class _StubExa:
         return {}
 
 
-# -- pure helpers ------------------------------------------------------------
-
-
-@pytest.mark.parametrize(
-    "date,expected",
-    [
-        ("2026-01-28", "2026-Q1"),
-        ("2026-03-31", "2026-Q1"),
-        ("2026-04-01", "2026-Q2"),
-        ("2026-07-15", "2026-Q3"),
-        ("2026-12-31", "2026-Q4"),
-    ],
-)
-def test_calendar_quarter(date: str, expected: str) -> None:
-    assert calendar_quarter(date) == expected
-
-
-def test_calendar_quarter_returns_none_on_garbage() -> None:
-    assert calendar_quarter("") is None
-    assert calendar_quarter("not-a-date") is None
-
-
 # -- LiveExaClient configuration --------------------------------------------
 
 
@@ -122,15 +99,58 @@ def test_search_dedupes_and_sorts_newest_first() -> None:
     assert candidates[0].published_date >= candidates[1].published_date
 
 
-def test_search_auto_titles_with_quarter_and_pub_date() -> None:
+def test_search_auto_titles_with_fiscal_period_and_pub_date() -> None:
     fetcher = HistoricalFetcher(client=_StubExa(search=SEARCH))
     candidates = fetcher.search(entity="panw", doc_types=["release"])
 
-    title = candidates[-1].title  # the 2026-01-28 release
+    candidate = candidates[-1]  # the 2026-01-28 release
+    title = candidate.title
     assert "PANW" in title  # entity upper-cased
-    assert "2026-Q1" in title  # calendar quarter of publication
+    assert "FY2026-Q1" in title  # fiscal period read from the doc title, not the date
     assert "pub 2026-01-28" in title
-    assert candidates[-1].source == "businesswire.com"  # www. stripped
+    assert candidate.period == "FY2026-Q1"  # surfaced for the ingest anchor
+    assert candidate.source == "businesswire.com"  # www. stripped
+
+
+def test_search_titles_with_reporting_quarter_not_publish_quarter() -> None:
+    """A doc published in one calendar quarter that reports a *different* fiscal
+    quarter (a July-fiscal-year issuer reporting Q3 in June) must be labeled by the
+    quarter it reports — never the calendar quarter of its publish date."""
+    search = {
+        "results": [
+            {
+                "url": "https://www.prnewswire.com/panw-q3",
+                "title": "Palo Alto Networks Reports Fiscal Third Quarter 2026 Financial Results",
+                "publishedDate": "2026-06-02T00:00:00Z",  # calendar Q2
+                "highlights": ["Total revenue grew 15% year over year."],
+            }
+        ]
+    }
+    candidate = HistoricalFetcher(client=_StubExa(search=search)).search(
+        entity="PANW", doc_types=["release"]
+    )[0]
+    assert candidate.period == "FY2026-Q3"
+    assert "FY2026-Q3" in candidate.title
+    assert "2026-Q2" not in candidate.title  # not the publish (calendar) quarter
+
+
+def test_search_omits_period_when_unreadable() -> None:
+    """No fabricated quarter when the doc states none — just the publish date."""
+    search = {
+        "results": [
+            {
+                "url": "https://example.com/panw-misc",
+                "title": "Palo Alto Networks announces something",
+                "publishedDate": "2026-06-02T00:00:00Z",
+                "highlights": ["No period stated anywhere in here."],
+            }
+        ]
+    }
+    candidate = HistoricalFetcher(client=_StubExa(search=search)).search(
+        entity="PANW", doc_types=["release"]
+    )[0]
+    assert candidate.period is None
+    assert candidate.title == "PANW Earnings release (pub 2026-06-02)"
 
 
 def test_search_unknown_doc_type_falls_back_to_all() -> None:
@@ -199,6 +219,34 @@ def test_ingest_historical_files_reference_facts() -> None:
     rev = next(f for f in facts if f.metric == "total_revenue")
     assert rev.source_ref == "https://www.businesswire.com/panw-q1"
     assert svc.audit_verify()  # ingestion wrote an intact audit event
+
+
+def test_ingest_historical_infers_period_from_text_when_unspecified() -> None:
+    # No period passed in the item: the connector must read the reporting quarter
+    # from the document's own words and anchor figures to it (not skip them).
+    contents = {
+        "results": [
+            {
+                "url": "https://www.prnewswire.com/panw-q3",
+                "title": "Palo Alto Networks Reports Fiscal Third Quarter 2026 Results",
+                "publishedDate": "2026-06-02",
+                "text": (
+                    "Palo Alto Networks Reports Fiscal Third Quarter 2026 Results. "
+                    "Total revenue was $2.59 billion."
+                ),
+            }
+        ]
+    }
+    svc = AttestService()
+    results = svc.ingest_historical(
+        tenant_id="acme",
+        entity="PANW",
+        items=[{"url": "https://www.prnewswire.com/panw-q3"}],  # no period
+        exa_client=_StubExa(contents=contents),
+    )
+    assert len(results) == 1 and results[0][1].ingested >= 1
+    rev = next(f for f in svc.store.all("acme") if f.metric == "total_revenue")
+    assert rev.period == "FY2026-Q3"  # read from the prose, not guessed from the date
 
 
 def test_ingest_historical_drops_unfetchable_items() -> None:

@@ -159,6 +159,9 @@ class HistoricalCandidate(BaseModel):
     source: str
     snippet: str
     doc_type: str
+    period: str | None = Field(
+        default=None, description="fiscal period read from the doc, e.g. 'FY2026-Q3'"
+    )
 
 
 class HistoricalSearchResponse(BaseModel):

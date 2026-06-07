@@ -14,12 +14,6 @@ const KIND_OPTIONS: { value: DocKind; label: string; hint: string }[] = [
 
 const ACCEPT = ".txt,.md,.html,.htm,.pdf,.docx,text/plain";
 
-function toFiscalPeriod(isoDate: string): string | undefined {
-  const m = isoDate.match(/^(\d{4})-(\d{2})/);
-  if (!m) return undefined;
-  return `FY${m[1]}-Q${Math.ceil(parseInt(m[2]) / 3)}`;
-}
-
 export function UploadModal({
   onClose,
   onUploaded,
@@ -149,7 +143,7 @@ export function UploadModal({
             url: c.url,
             title: c.title,
             doc_type: c.doc_type,
-            ...(c.published_date ? { period: toFiscalPeriod(c.published_date) } : {}),
+            ...(c.period ? { period: c.period } : {}),
           }));
         await store.ingestHistorical(ticker.trim(), items);
         onClose();
