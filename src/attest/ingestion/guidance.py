@@ -28,7 +28,6 @@ it emits.
 from __future__ import annotations
 
 import re
-from decimal import Decimal
 from pathlib import Path
 
 from attest.domain.facts import Confidence, Fact, SourceType
@@ -221,7 +220,7 @@ class GuidanceConnector:
                 seen.add(scope)
                 facts.append(
                     Fact(
-                        id=f"{accession}:exhibit-99.1:{metric}:{period}",
+                        id=f"{accession}:exhibit-99.1:{entity}:{metric}:{period}",
                         tenant_id=tenant_id,
                         entity=entity,
                         metric=metric,

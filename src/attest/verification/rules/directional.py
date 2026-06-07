@@ -36,14 +36,18 @@ def _prior_year(period: str) -> str | None:
 def _direction_word_near(text: str, label: str) -> str | None:
     """Find an up/down word in a window starting at a mention of ``label``.
 
-    Matches on the metric's label (e.g. "operating margin"); if absent, scans the
-    whole text. Returns 'up', 'down', or None.
+    Matches on the metric's label (e.g. "operating margin"). If the label is *not*
+    in the prose we return None rather than scanning the whole document: a direction
+    word elsewhere ("revenue *grew*") describes some *other* metric, and attributing
+    it here would block a release over a contradiction that was never asserted. The
+    rule must read a direction word that is genuinely adjacent to the metric, exactly
+    as its contract promises. Returns 'up', 'down', or None.
     """
     lowered = text.lower()
-    window = lowered
     idx = lowered.find(label.lower())
-    if idx != -1:
-        window = lowered[idx : idx + 120]
+    if idx == -1:
+        return None  # the metric is not named here — never attribute a foreign verb
+    window = lowered[idx : idx + 120]
     words = set(re.findall(r"[a-z]+", window))
     if words & _UP_WORDS:
         return "up"

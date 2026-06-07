@@ -85,10 +85,11 @@ class XBRLConnector:
                 unit = spec.unit
             source_type = _SOURCE_MAP.get(raw.get("source_type", "edgar_xbrl"))
 
+            entity = raw.get("entity", entity_default)
             fact = Fact(
-                id=f"{accession}:{metric_id}:{raw.get('period')}:{raw.get('as_of', idx)}",
+                id=f"{accession}:{entity}:{metric_id}:{raw.get('period')}:{raw.get('as_of', idx)}",
                 tenant_id=tenant_id,
-                entity=raw.get("entity", entity_default),
+                entity=entity,
                 metric=metric_id,
                 period=raw["period"],
                 value=Decimal(str(raw["value"])),
