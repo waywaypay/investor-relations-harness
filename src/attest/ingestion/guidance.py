@@ -221,7 +221,7 @@ class GuidanceConnector:
                 seen.add(scope)
                 facts.append(
                     Fact(
-                        id=f"{accession}:exhibit-99.1:{metric}:{period}",
+                        id=f"{accession}:exhibit-99.1:{entity}:{metric}:{period}",
                         tenant_id=tenant_id,
                         entity=entity,
                         metric=metric,

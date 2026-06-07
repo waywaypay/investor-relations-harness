@@ -26,9 +26,13 @@ from attest.domain.money import (
 )
 from attest.domain.verdicts import RuleFinding, RuleSeverity
 
-_SEP = re.compile(r"\s*(?:to|through|[‒–—-])\s*", re.IGNORECASE)
+_SEP = re.compile(r"\s*(?:\bto\b|\bthrough\b|\band\b|[‒–—-])\s*", re.IGNORECASE)
+# A trailing scale word, matched even when glued to the number ("1.34B", "1.34bn"),
+# not only when space-separated ("1.34 billion"). The old word-boundary form missed
+# the glued case, so the low end of a compact range like "$1.31–1.34B" lost its
+# scale and parsed as $1.31 instead of $1.31B — a ~1000x error in the midpoint.
 _SCALE_TAIL = re.compile(
-    r"\b(billion|million|thousand|trillion|bn|mm|[bmkt])\b\s*$", re.IGNORECASE
+    r"(billion|million|thousand|trillion|bn|mm|[bmkt])\s*$", re.IGNORECASE
 )
 
 

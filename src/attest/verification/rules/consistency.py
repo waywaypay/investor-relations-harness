@@ -62,34 +62,40 @@ def check_intra_document_consistency(document: Document) -> list[RuleFinding]:
 
 
 def check_cross_document_consistency(documents: list[Document]) -> list[RuleFinding]:
-    # (entity, metric, period) -> list of (document_id, displayed_text, normalized_or_None)
-    groups: dict[tuple[str, str, str], list[tuple[str, str, object]]] = defaultdict(list)
+    # (entity, metric, period) -> list of (document_id, displayed_text, quantity_or_None)
+    groups: dict[tuple[str, str, str], list[tuple[str, str, Quantity | None]]] = defaultdict(
+        list
+    )
 
     for doc in documents:
         for claim in doc.claims:
             key = (claim.entity, claim.metric, claim.period)
             try:
-                norm = parse_quantity(claim.displayed_text)
-                normalized: object = (norm.unit, norm.value)
+                qty: Quantity | None = parse_quantity(claim.displayed_text)
             except QuantityParseError:
-                normalized = None
-            groups[key].append((doc.id, claim.displayed_text, normalized))
+                qty = None
+            groups[key].append((doc.id, claim.displayed_text, qty))
 
     findings: list[RuleFinding] = []
     for (entity, metric, period), uses in groups.items():
         if len(uses) < 2:
             continue
-        distinct = {u[2] for u in uses if u[2] is not None}
-        if len(distinct) > 1:
-            rendered = "; ".join(f"{doc_id}: '{text}'" for doc_id, text, _ in uses)
-            findings.append(
-                RuleFinding(
-                    rule="consistency.cross_document_mismatch",
-                    severity=RuleSeverity.BLOCK,
-                    metric=metric,
-                    message=f"'{metric}' for {period} ({entity}) is stated inconsistently "
-                    f"across documents.",
-                    detail=rendered,
-                )
+        # Two roundings of the same figure ("$1.24B" in the release, "$1,241.3M" in
+        # the 10-Q) are the same number, not a mismatch — judge consistency under the
+        # rounding policy, exactly as the intra-document check does. A flag only fires
+        # when the parseable values genuinely disagree (e.g. $1.24B vs $1.25B).
+        quantities = [q for _, _, q in uses if q is not None]
+        if len(quantities) < 2 or _mutually_consistent(quantities):
+            continue
+        rendered = "; ".join(f"{doc_id}: '{text}'" for doc_id, text, _ in uses)
+        findings.append(
+            RuleFinding(
+                rule="consistency.cross_document_mismatch",
+                severity=RuleSeverity.BLOCK,
+                metric=metric,
+                message=f"'{metric}' for {period} ({entity}) is stated inconsistently "
+                f"across documents.",
+                detail=rendered,
             )
+        )
     return findings
