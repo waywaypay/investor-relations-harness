@@ -26,6 +26,7 @@ export function UploadModal({
   target = null,
   initialRole = "draft",
   initialSource,
+  initialDocTypes,
 }: {
   onClose: () => void;
   onUploaded: (docId: string) => void;
@@ -35,6 +36,8 @@ export function UploadModal({
   initialRole?: "draft" | "reference";
   /** Which source tab opens first in reference mode. */
   initialSource?: "edgar" | "historical" | "file";
+  /** When set, the historical search is pre-scoped to these Exa doc_types. */
+  initialDocTypes?: string[];
 }) {
   const store = useStore();
   const isVersion = target != null;
@@ -98,7 +101,7 @@ export function UploadModal({
     setSearching(true);
     setError(null);
     try {
-      const results = await store.searchHistorical(ent);
+      const results = await store.searchHistorical(ent, initialDocTypes);
       setCandidates(results);
       setSelected(new Set(results.map((r) => r.url))); // pre-select all for one-click load
       if (results.length === 0) setError("No historical documents found for that company.");
@@ -145,6 +148,7 @@ export function UploadModal({
           .map((c) => ({
             url: c.url,
             title: c.title,
+            doc_type: c.doc_type,
             ...(c.published_date ? { period: toFiscalPeriod(c.published_date) } : {}),
           }));
         await store.ingestHistorical(ticker.trim(), items);
@@ -270,8 +274,12 @@ export function UploadModal({
                 </button>
               </div>
               <span className="upcap upopt" style={{ textTransform: "none", letterSpacing: 0 }}>
-                Finds historical earnings releases &amp; call transcripts on the web — review and
-                load the ones you want. Loaded as reference (web source, not a filing).
+                {initialDocTypes?.length === 1 && initialDocTypes[0] === "release"
+                  ? "Finds historical earnings releases on the web — review and load the ones you want."
+                  : initialDocTypes?.length === 1 && initialDocTypes[0] === "transcript"
+                  ? "Finds historical call transcripts on the web — review and load the ones you want."
+                  : "Finds historical earnings releases & call transcripts on the web — review and load the ones you want."}
+                {" "}Loaded as reference (web source, not a filing).
               </span>
             </label>
 

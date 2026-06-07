@@ -589,6 +589,10 @@ mark.hl{background:#FBE7A6;color:#5a4410;padding:0 2px;border-radius:2px;font-we
   display:grid;place-items:center;border-radius:7px;transition:.12s}
 .sb-cat-toggle:hover{color:var(--accent);background:rgba(0,0,0,.06)}
 .sb-cat-toggle .caret{font-size:10px;line-height:1}
+.sb-cat-fetch{flex-shrink:0;background:none;border:none;cursor:pointer;padding:4px 5px;color:var(--faint);border-radius:5px;opacity:0;transition:opacity .12s,color .12s}
+.sb-cat-fetch svg{width:12px;height:12px;display:block}
+.sb-cat-h:hover .sb-cat-fetch{opacity:1}
+.sb-cat-fetch:hover{color:var(--accent);background:rgba(0,0,0,.06)}
 
 .sb-cat-docs{display:flex;flex-direction:column;gap:1px;margin:2px 0 0 14px;padding-left:11px;border-left:1px solid var(--line)}
 .sb-doc{display:flex;align-items:center;gap:9px;width:100%;text-align:left;background:none;border:none;
@@ -609,7 +613,7 @@ mark.hl{background:#FBE7A6;color:#5a4410;padding:0 2px;border-radius:2px;font-we
 
 /* Reference corpus sidebar section */
 .sb-reflist{display:flex;flex-direction:column;gap:2px;margin-bottom:20px}
-.sb-refitem{display:flex;align-items:baseline;gap:6px;padding:5px 8px;border-radius:7px;background:rgba(0,0,0,.025)}
+.sb-refitem{display:flex;align-items:baseline;gap:6px;padding:5px 8px;border-radius:7px;background:rgba(0,0,0,.025);cursor:default}
 .sb-refent{font-size:10.5px;font-weight:700;color:var(--accent);flex-shrink:0;min-width:32px}
 .sb-refl{flex:1;font-size:11.5px;color:var(--muted);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sb-refn{font-size:10px;font-weight:700;color:var(--faint);flex-shrink:0}

@@ -2,7 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import { FIGURES } from "./data/figures";
 import { COMMITMENTS, NARRATIVES } from "./data/narratives";
 import { DEMO_LIBRARY, collectFigureIds } from "./data/library";
-import type { Commitment, DocVersion, Figure, LibraryDoc, Narrative, VerdictState } from "./types";
+import type { Commitment, DocKind, DocVersion, Figure, LibraryDoc, Narrative, VerdictState } from "./types";
 import { evaluateEdit } from "./lib/verify";
 import {
   buildVersionFromAnalysis,
@@ -22,13 +22,20 @@ import {
 type FigureMap = Record<string, Figure>;
 type NarrativeMap = Record<string, Narrative>;
 
+/** A prior disclosure loaded into the reference corpus (web fetch, EDGAR, or an
+ *  uploaded file). `kind` files it under the matching sidebar category — a fetched
+ *  release lands under Press releases, a transcript under Transcripts. */
 interface ReferenceEntry {
   id: string;
   entity: string;
   label: string;
   count: number;
   addedAt: string;
+  kind: DocKind;
 }
+
+// Map an Exa historical doc_type to a library category.
+const HIST_KIND: Record<string, DocKind> = { release: "release", transcript: "script" };
 
 interface Store {
   figures: FigureMap;
@@ -61,7 +68,7 @@ interface Store {
   /** Search the web for an issuer's historical earnings docs to review before loading. */
   searchHistorical: (entity: string, docTypes?: string[]) => Promise<HistoricalCandidate[]>;
   /** Fetch + file the selected historical documents as reference. Returns figures filed. */
-  ingestHistorical: (entity: string, items: { url: string; title?: string; period?: string }[]) => Promise<number>;
+  ingestHistorical: (entity: string, items: { url: string; title?: string; period?: string; doc_type?: string }[]) => Promise<number>;
   removeDoc: (id: string) => void;
   /** Make a stored version the one the document renders. */
   setActiveVersion: (docId: string, versionId: string) => void;
@@ -80,6 +87,7 @@ const clone = <T,>(x: T): T => JSON.parse(JSON.stringify(x));
 // Uploaded documents (and the figures behind them) survive a reload via
 // localStorage; the bundled demo close pack is always re-seeded fresh.
 const UPLOADS_KEY = "attest.uploads.v1";
+const REFCORPUS_KEY = "attest.refcorpus.v1";
 const isUploadFigureId = (id: string) => id.includes("::");
 
 interface PersistedUploads {
@@ -129,6 +137,23 @@ function saveUploads(data: PersistedUploads): void {
   }
 }
 
+function loadRefCorpus(): ReferenceEntry[] {
+  try {
+    const raw = window.localStorage.getItem(REFCORPUS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as Array<Partial<ReferenceEntry>>;
+    return parsed.map((e) => ({ ...e, kind: e.kind ?? "release" } as ReferenceEntry));
+  } catch {
+    return [];
+  }
+}
+
+function saveRefCorpus(entries: ReferenceEntry[]): void {
+  try {
+    window.localStorage.setItem(REFCORPUS_KEY, JSON.stringify(entries));
+  } catch { /* storage unavailable */ }
+}
+
 export function StoreProvider({
   children,
   seedDemo = false,
@@ -156,7 +181,7 @@ export function StoreProvider({
     ...(seedDemo ? clone(DEMO_LIBRARY) : []),
     ...persisted.docs,
   ]);
-  const [referenceEntries, setReferenceEntries] = useState<ReferenceEntry[]>([]);
+  const [referenceEntries, setReferenceEntries] = useState<ReferenceEntry[]>(() => loadRefCorpus());
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | undefined>(undefined);
 
@@ -171,6 +196,10 @@ export function StoreProvider({
     for (const id of keep) if (figures[id]) figs[id] = figures[id];
     saveUploads({ docs, figures: figs });
   }, [library, figures]);
+
+  useEffect(() => {
+    saveRefCorpus(referenceEntries);
+  }, [referenceEntries]);
 
   const showToast = useCallback((msg: string) => {
     setToast(msg);
@@ -413,7 +442,7 @@ export function StoreProvider({
       if (result.ingested > 0) {
         setReferenceEntries((prev) => [
           ...prev,
-          { id: `disclosure:${name}:${Date.now()}`, entity, label: name, count: result.ingested, addedAt: new Date().toISOString().slice(0, 10) },
+          { id: `disclosure:${name}:${Date.now()}`, entity, label: name, count: result.ingested, addedAt: new Date().toISOString().slice(0, 10), kind: "release" as DocKind },
         ]);
       }
       showToast(
@@ -433,7 +462,7 @@ export function StoreProvider({
       if (result.ingested > 0) {
         setReferenceEntries((prev) => [
           ...prev,
-          { id: `edgar:${sym}:${Date.now()}`, entity: sym, label: "EDGAR XBRL facts", count: result.ingested, addedAt: new Date().toISOString().slice(0, 10) },
+          { id: `edgar:${sym}:${Date.now()}`, entity: sym, label: "EDGAR XBRL facts", count: result.ingested, addedAt: new Date().toISOString().slice(0, 10), kind: "release" as DocKind },
         ]);
       }
       showToast(
@@ -454,7 +483,7 @@ export function StoreProvider({
       if (result.total_ingested > 0) {
         setReferenceEntries((prev) => [
           ...prev,
-          { id: `edgar-8k:${sym}:${priorLabel}:${Date.now()}`, entity: sym, label: `${priorLabel} 8-K`, count: result.total_ingested, addedAt: new Date().toISOString().slice(0, 10) },
+          { id: `edgar-8k:${sym}:${priorLabel}:${Date.now()}`, entity: sym, label: `${priorLabel} 8-K`, count: result.total_ingested, addedAt: new Date().toISOString().slice(0, 10), kind: "release" as DocKind },
         ]);
       }
       showToast(
@@ -477,18 +506,22 @@ export function StoreProvider({
   );
 
   const ingestHistorical = useCallback(
-    async (entity: string, items: { url: string; title?: string; period?: string }[]): Promise<number> => {
+    async (entity: string, items: { url: string; title?: string; period?: string; doc_type?: string }[]): Promise<number> => {
       const result = await client.ingestHistorical(entity, items);
       const docs = result.documents.length;
       const sym = entity.toUpperCase();
       if (docs > 0) {
-        const newEntries: ReferenceEntry[] = result.documents.map((d) => ({
-          id: `historical:${d.url}`,
-          entity: sym,
-          label: d.title || d.url,
-          count: d.ingested,
-          addedAt: d.published_date || new Date().toISOString().slice(0, 10),
-        }));
+        const newEntries: ReferenceEntry[] = result.documents.map((d) => {
+          const item = items.find((i) => i.url === d.url);
+          return {
+            id: `historical:${d.url}`,
+            entity: sym,
+            label: d.title || d.url,
+            count: d.ingested,
+            addedAt: d.published_date || new Date().toISOString().slice(0, 10),
+            kind: (item?.doc_type ? HIST_KIND[item.doc_type] : undefined) ?? "release",
+          };
+        });
         setReferenceEntries((prev) => [...prev, ...newEntries]);
       }
       showToast(
