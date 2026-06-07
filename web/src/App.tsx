@@ -105,7 +105,7 @@ function Workspace() {
               <div className="stage-empty-card">
                 <h2>No documents yet</h2>
                 <p>
-                  Upload an earnings release, call transcript, or Q&amp;A draft and
+                  Upload a press release, call transcript, or Q&amp;A draft and
                   Attest detects every figure, ties each one out against your filed
                   sources, and runs the disclosure checks.
                 </p>
