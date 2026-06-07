@@ -137,12 +137,21 @@ function saveUploads(data: PersistedUploads): void {
   }
 }
 
+// Entries persisted before reference docs carried a category have no `kind`.
+// Recover it from the label / id so a previously-loaded transcript still files
+// under Transcripts rather than being defaulted to Press releases.
+function inferRefKind(e: Partial<ReferenceEntry>): DocKind {
+  if (e.kind) return e.kind;
+  const hay = `${e.label ?? ""} ${e.id ?? ""}`;
+  return /transcript|call|prepared remarks/i.test(hay) ? "script" : "release";
+}
+
 function loadRefCorpus(): ReferenceEntry[] {
   try {
     const raw = window.localStorage.getItem(REFCORPUS_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as Array<Partial<ReferenceEntry>>;
-    return parsed.map((e) => ({ ...e, kind: e.kind ?? "release" } as ReferenceEntry));
+    return parsed.map((e) => ({ ...e, kind: inferRefKind(e) } as ReferenceEntry));
   } catch {
     return [];
   }
