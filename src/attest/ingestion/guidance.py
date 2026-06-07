@@ -28,7 +28,6 @@ it emits.
 from __future__ import annotations
 
 import re
-from decimal import Decimal
 from pathlib import Path
 
 from attest.domain.facts import Confidence, Fact, SourceType

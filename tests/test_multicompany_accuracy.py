@@ -20,10 +20,10 @@ from __future__ import annotations
 from decimal import Decimal
 
 from attest.domain.document import Document, DocumentKind
-from attest.domain.facts import Confidence, Fact, SourceType
+from attest.domain.facts import Fact, SourceType
 from attest.domain.metrics import DEFAULT_REGISTRY, MetricRegistry, MetricSpec
 from attest.domain.money import Unit
-from attest.domain.verdicts import FigureClaim, RuleSeverity
+from attest.domain.verdicts import FigureClaim
 from attest.factstore.repository import InMemoryFactStore
 from attest.ingestion.edgar_xbrl import XBRLConnector
 from attest.ingestion.guidance import GuidanceConnector
