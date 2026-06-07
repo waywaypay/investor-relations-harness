@@ -37,6 +37,34 @@ def test_draft_contradicting_prior_disclosure_is_flagged():
     assert "1970" not in v.reason
 
 
+def test_prior_disclosure_period_inferred_from_text_when_not_supplied():
+    # The reference "upload a file" path files a past release/transcript without a
+    # period typed. The period must be read from the document's own words (as the
+    # draft and historical-fetch paths do); otherwise every figure anchors to the
+    # empty period and is silently dropped, ingesting nothing.
+    svc = AttestService()
+    rep = svc.ingest_disclosure(
+        text=_PRIOR, tenant_id="acme", entity="ACME", label="Q1 FY2025 release",
+    )
+    assert rep.ingested >= 1
+
+    v = _verdicts(svc, "In Q1 fiscal 2025, total revenue of $1.30 billion.")["total_revenue"]
+    assert v.verdict.value == "conflict"
+    assert "prior disclosure" in v.reason.lower()
+
+
+def test_ingest_disclosure_endpoint_infers_period_from_upload():
+    # End to end through the API: a file upload with no period field still lands facts.
+    client = TestClient(create_app(AttestService()))
+    r = client.post(
+        "/tenants/acme/ingest/disclosure",
+        data={"entity": "ACME"},
+        files={"file": ("q1_call.txt", _PRIOR.encode(), "text/plain")},
+    )
+    assert r.status_code == 200
+    assert r.json()["ingested"] >= 1
+
+
 def test_dated_prior_disclosure_shows_the_date():
     svc = AttestService()
     svc.ingest_disclosure(

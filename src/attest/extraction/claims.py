@@ -41,8 +41,38 @@ _ALIASES: dict[str, tuple[str, ...]] = {
     # company in the red writes "diluted loss per share", never "earnings". Without
     # these, the loss figure (already the most consequential number to verify) lands
     # unidentified and ships untraced.
-    "gaap_diluted_eps": ("gaap diluted eps", "gaap eps", "gaap diluted earnings per share", "gaap diluted loss per share", "diluted eps", "diluted earnings per share", "diluted loss per share", "earnings per share", "loss per share", "net loss per share"),
-    "non_gaap_diluted_eps": ("non-gaap diluted eps", "non gaap diluted eps", "adjusted diluted eps", "non-gaap eps", "adjusted eps", "non-gaap diluted earnings per share", "non-gaap diluted loss per share", "adjusted diluted loss per share", "non-gaap loss per share", "adjusted loss per share"),
+    #
+    # The per-share line is also routinely written as "net income per (diluted) share"
+    # rather than "EPS". Those phrasings carry the substring "net income", so without
+    # an explicit per-share alias the figure binds to the absolute ``net_income``
+    # metric instead — a $0.61 per-share number compared to a billion-dollar fact,
+    # which fires a false *conflict*. The per-share aliases below win by sitting
+    # nearer the figure (and, on a tie, by being the longer match), so "net income
+    # per share" resolves to EPS while a bare "net income" still resolves to the level.
+    # The "non-gaap"/"adjusted" qualifier must steer to the non-GAAP line, never the
+    # GAAP one, so every GAAP earnings/per-share phrasing has a non-GAAP twin below.
+    "gaap_diluted_eps": (
+        "gaap diluted eps", "gaap eps",
+        "gaap diluted earnings per share", "gaap diluted loss per share",
+        "gaap net income per diluted share", "gaap net income per share",
+        "diluted eps", "diluted earnings per share", "diluted loss per share",
+        "net income per diluted share", "net income per share",
+        "diluted net income per share", "net loss per diluted share",
+        "earnings per share", "loss per share", "net loss per share",
+    ),
+    "non_gaap_diluted_eps": (
+        "non-gaap diluted eps", "non gaap diluted eps", "adjusted diluted eps",
+        "non-gaap eps", "adjusted eps",
+        "non-gaap diluted earnings per share", "non-gaap diluted loss per share",
+        "adjusted diluted earnings per share", "adjusted diluted loss per share",
+        "non-gaap earnings per share", "non gaap earnings per share", "adjusted earnings per share",
+        "non-gaap net income per diluted share", "non gaap net income per diluted share",
+        "non-gaap net income per share", "non gaap net income per share",
+        "adjusted net income per diluted share", "adjusted net income per share",
+        "non-gaap diluted net income per share", "adjusted diluted net income per share",
+        "non-gaap loss per share", "adjusted loss per share",
+        "non-gaap net loss per share", "adjusted net loss per share",
+    ),
     "operating_cash_flow": ("operating cash flow", "cash flow from operations", "cash provided by operating activities", "cash from operations"),
     "net_income": ("net income", "net earnings"),
     "operating_income": ("operating income", "income from operations", "operating profit"),
@@ -132,15 +162,30 @@ def _has_guidance_context(window: str, period: str | None) -> bool:
     return False
 
 # A guidance range stated as a single span: "$1.31 to $1.34 billion", "$1.31–1.34B",
-# or — as transcripts phrase it — symbol-free "1.31 to 1.34 billion". When no "$"
-# is present a trailing scale word is required so a plain year span ("2025 to 2026")
-# is not mistaken for money, and a trailing count noun ("400 to 500 million users")
-# is excluded so an operating-metric range is not read as currency guidance.
+# "$2.68 billion to $2.71 billion" (the scale word repeated on each end — the phrasing
+# most real releases use), or — as transcripts phrase it — symbol-free "1.31 to 1.34
+# billion". A scale word is allowed after the *first* number, but only when the joiner
+# is an unambiguous range word ("to"/"through"/dash): "and" also joins an enumeration
+# of two different metrics ("$1.2 billion and $0.6 billion"), so a scale word before
+# "and" would mis-read that as one range. When no "$" is present a trailing scale word
+# is required so a plain year span ("2025 to 2026") is not mistaken for money, and a
+# trailing count noun ("400 to 500 million users") is excluded so an operating-metric
+# range is not read as currency guidance.
+_NUM = r"\d[\d,]*(?:\.\d+)?"
+_SCALE_WORD = r"(?:billion|million|thousand|trillion|bn|mm)"
+_SCALE_TRAIL = r"(?:billion|million|thousand|trillion|bn|mm|[bmkt])"
+_RANGE_CONN = r"(?:to|through|[-–—])"  # unambiguous range joiners (scale-before-ok)
+_ANY_CONN = r"(?:to|through|and|[-–—])"
+_NOUN_TAIL = rf"\b(?!\s*(?:{NOUN_WORDS})\b)"
 _RANGE_RE = re.compile(
-    r"\$\s?\d[\d,]*(?:\.\d+)?\s*(?:to|through|and|[-–—])\s*\$?\s?\d[\d,]*(?:\.\d+)?\s*"
-    r"(?:billion|million|thousand|trillion|bn|mm|[bmkt])?"
-    r"|\b\d[\d,]*(?:\.\d+)?\s*(?:to|through|and|[-–—])\s*\d[\d,]*(?:\.\d+)?\s*"
-    rf"(?:billion|million|thousand|trillion|bn|mm)\b(?!\s*(?:{NOUN_WORDS})\b)",
+    # currency, scale word on the first number too (range joiner only)
+    rf"\$\s?{_NUM}\s*{_SCALE_WORD}\s*{_RANGE_CONN}\s*\$?\s?{_NUM}\s*{_SCALE_TRAIL}?"
+    # currency, any joiner incl. "and", scale word on the last number only
+    rf"|\$\s?{_NUM}\s*{_ANY_CONN}\s*\$?\s?{_NUM}\s*{_SCALE_TRAIL}?"
+    # symbol-free, scale on the first number too (range joiner only); trailing scale required
+    rf"|\b{_NUM}\s*{_SCALE_WORD}\s*{_RANGE_CONN}\s*{_NUM}\s*{_SCALE_WORD}{_NOUN_TAIL}"
+    # symbol-free, any joiner; trailing scale required
+    rf"|\b{_NUM}\s*{_ANY_CONN}\s*{_NUM}\s*{_SCALE_WORD}{_NOUN_TAIL}",
     re.IGNORECASE,
 )
 

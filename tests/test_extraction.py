@@ -212,6 +212,56 @@ def test_transcript_pipeline_ties_out_every_filed_figure():
     assert result.counts["untraced"] == 0   # nothing mis-binds to the wrong metric
 
 
+def test_guidance_range_with_scale_on_both_ends_is_one_span():
+    # The phrasing most real releases use repeats the scale word on each end
+    # ("$2.68 billion to $2.71 billion"). It must be detected as a single guidance
+    # range routed to the next period, not split into two mis-attributed figures.
+    svc = seeded_service()
+    text = (
+        "For the second quarter, the company expects total revenue in the range of "
+        "$2.68 billion to $2.71 billion."
+    )
+    claims = ClaimExtractor(svc.registry, svc.store).extract(
+        text, document_id="d", tenant_id="atlas", entity="ATLS", period="FY2026-Q1"
+    )
+    ranges = [c for c in claims if c.displayed_text == "$2.68 billion to $2.71 billion"]
+    assert len(ranges) == 1, [c.displayed_text for c in claims]
+    assert ranges[0].metric in {"q2_revenue_guidance", "revenue_guidance"}
+    assert ranges[0].period == "FY2026-Q2"
+    # The "$2.71 billion" tail is not left behind as its own stray figure.
+    assert not any(c.displayed_text == "$2.71 billion" for c in claims)
+
+
+# The per-share line is written a dozen ways; each must resolve to the right EPS
+# metric. "net income per (diluted) share" must reach EPS, not the absolute
+# ``net_income`` level whose name it contains (binding a $0.61 per-share figure to
+# a billion-dollar fact fires a false conflict), and any "non-GAAP"/"adjusted"
+# qualifier must steer to the non-GAAP line, never the GAAP one.
+@pytest.mark.parametrize(
+    "prose, figure, expected_metric",
+    [
+        ("Diluted earnings per share was $0.61.", "$0.61", "gaap_diluted_eps"),
+        ("Net income per diluted share was $0.61.", "$0.61", "gaap_diluted_eps"),
+        ("Net income per share was $0.61.", "$0.61", "gaap_diluted_eps"),
+        ("GAAP net income per diluted share was $0.61.", "$0.61", "gaap_diluted_eps"),
+        ("Diluted net income per share was $0.61.", "$0.61", "gaap_diluted_eps"),
+        ("Non-GAAP earnings per share was $0.81.", "$0.81", "non_gaap_diluted_eps"),
+        ("Adjusted earnings per share of $0.81.", "$0.81", "non_gaap_diluted_eps"),
+        ("Non-GAAP net income per diluted share was $0.81.", "$0.81", "non_gaap_diluted_eps"),
+        ("Adjusted net income per share was $0.81.", "$0.81", "non_gaap_diluted_eps"),
+        # A bare absolute level is unchanged — it must NOT be pulled to the per-share line.
+        ("Net income was $1.24 billion.", "$1.24 billion", "net_income"),
+    ],
+)
+def test_extractor_disambiguates_per_share_and_non_gaap_eps(prose, figure, expected_metric):
+    svc = seeded_service()
+    claims = ClaimExtractor(svc.registry, svc.store).extract(
+        prose, document_id="d", tenant_id="atlas", entity="ATLS", period="FY2026-Q1"
+    )
+    by_text = {c.displayed_text: c for c in claims}
+    assert by_text[figure].metric == expected_metric
+
+
 # -- tenant-configurable vocabulary ------------------------------------------
 
 def test_alias_config_extend_unions_and_replaces():
