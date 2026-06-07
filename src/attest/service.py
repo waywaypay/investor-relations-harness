@@ -517,7 +517,7 @@ class AttestService:
         items: list[dict],
         exa_client: ExaHttpClient | None = None,
         actor: str = "system:historical-fetch",
-    ) -> list[tuple[ExaDocument, IngestionReport]]:
+    ) -> list[tuple[ExaDocument, IngestionReport, str | None]]:
         """Fetch the selected web documents and ingest them as prior disclosures.
 
         ``items`` are the reviewed candidates to load — each a mapping with a
@@ -527,16 +527,18 @@ class AttestService:
         ``PRIOR_DISCLOSURE`` reference fact (web source, not a filing). Like every
         ingestion, each document writes an attributable audit event.
 
-        Returns ``(document, report)`` per successfully fetched document. A
-        candidate whose text can't be fetched is silently dropped (it simply
-        doesn't appear in the result), mirroring the connectors' never-guess rule.
+        Returns ``(document, report, period)`` per successfully fetched document —
+        the resolved reporting period travels with each result so the caller can
+        surface the document itself (not just its figure count). A candidate whose
+        text can't be fetched is silently dropped (it simply doesn't appear in the
+        result), mirroring the connectors' never-guess rule.
         """
         fetcher = HistoricalFetcher(client=exa_client)
         title_by_url = {it["url"]: it.get("title") for it in items if it.get("url")}
         period_by_url = {it["url"]: it.get("period") for it in items if it.get("url")}
         docs = fetcher.fetch_contents(urls=list(title_by_url))
 
-        results: list[tuple[ExaDocument, IngestionReport]] = []
+        results: list[tuple[ExaDocument, IngestionReport, str | None]] = []
         for doc in docs:
             # Anchor unperiodized figures to the document's own reporting period:
             # the period the reviewer saw (read from the candidate), else inferred
@@ -560,7 +562,7 @@ class AttestService:
                 tenant_id=tenant_id,
                 payload=report.model_dump(),
             )
-            results.append((doc, report))
+            results.append((doc, report, period))
 
         return results
 

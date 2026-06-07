@@ -270,9 +270,10 @@ def test_ingest_historical_files_reference_facts() -> None:
     )
 
     assert len(results) == 1
-    doc, report = results[0]
+    doc, report, period = results[0]
     assert doc.url == "https://www.businesswire.com/panw-q1"
     assert report.ingested >= 1
+    assert period == "FY2026-Q1"  # the resolved reporting period travels with the result
 
     facts = svc.store.all("acme")
     assert any(f.entity == "PANW" and f.metric == "total_revenue" for f in facts)
@@ -360,4 +361,9 @@ def test_search_and_ingest_endpoints(monkeypatch: pytest.MonkeyPatch) -> None:
     assert r2.status_code == 200
     body = r2.json()
     assert body["total_ingested"] >= 1
-    assert body["documents"][0]["url"] == "https://www.businesswire.com/panw-q1"
+    doc = body["documents"][0]
+    assert doc["url"] == "https://www.businesswire.com/panw-q1"
+    # The fetched prose and resolved period come back so the client can render the
+    # loaded document, not just report a figure count.
+    assert doc["period"] == "FY2026-Q1"
+    assert "Total revenue was $2.59 billion." in doc["text"]

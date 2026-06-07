@@ -349,12 +349,14 @@ def create_app(service: AttestService | None = None) -> FastAPI:
                 published_date=doc.published_date,
                 ingested=report.ingested,
                 skipped=report.skipped,
+                period=period,
+                text=doc.text,
             )
-            for doc, report in results
+            for doc, report, period in results
         ]
         return HistoricalIngestResponse(
             documents=documents,
-            total_ingested=sum(r.ingested for _, r in results),
+            total_ingested=sum(r.ingested for _, r, _ in results),
         )
 
 

@@ -55,8 +55,16 @@ describe("historical reference: grouping and category placement", () => {
     mock.searchHistorical.mockResolvedValue([TRANSCRIPT, RELEASE]);
     mock.ingestHistorical.mockResolvedValue({
       documents: [
-        { url: RELEASE.url, title: "PANW Q3 release", published_date: "2026-06-02", ingested: 5, skipped: 0 },
-        { url: TRANSCRIPT.url, title: "PANW Q3 transcript", published_date: "2026-06-03", ingested: 4, skipped: 0 },
+        {
+          url: RELEASE.url, title: "PANW Q3 release", published_date: "2026-06-02",
+          ingested: 5, skipped: 0, period: "FY2026-Q3",
+          text: "Palo Alto Networks Reports Fiscal Third Quarter 2026 Results.\n\nTotal revenue was $2.59 billion, up 15% year over year.",
+        },
+        {
+          url: TRANSCRIPT.url, title: "PANW Q3 transcript", published_date: "2026-06-03",
+          ingested: 4, skipped: 0, period: "FY2026-Q3",
+          text: "Palo Alto Networks (PANW) Q3 2026 Earnings Call Transcript.\n\nRevenue came in at $2.59 billion this quarter.",
+        },
       ],
       total_ingested: 9,
     });
@@ -154,7 +162,26 @@ describe("historical reference: grouping and category placement", () => {
     expect(within(press).queryByText("PANW Earnings call transcript")).not.toBeInTheDocument();
   });
 
-  it("persists loaded reference entries across a reload, still under the right category", async () => {
+  it("opens the loaded document in the main view so it isn't just a sidebar count", async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Fetch historical" }));
+    fireEvent.change(screen.getByPlaceholderText(/PANW or Palo Alto Networks/i), {
+      target: { value: "PANW" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    await screen.findByText(RELEASE.title);
+    fireEvent.click(screen.getByRole("button", { name: /Load 2 selected/i }));
+    await waitFor(() => expect(mock.ingestHistorical).toHaveBeenCalledTimes(1));
+
+    // The first loaded document is shown in the stage — its prose is rendered, not
+    // left blank — rather than only bumping a count in the sidebar. (The revenue
+    // sentence is split by inline figure tokens, so assert on the intact lede.)
+    const stage = document.querySelector(".stage") as HTMLElement;
+    expect(
+      await within(stage).findByText(/Palo Alto Networks Reports Fiscal Third Quarter 2026 Results/i)
+    ).toBeInTheDocument();
+  });
+
+  it("persists loaded documents across a reload, still under the right category", async () => {
     fireEvent.click(screen.getByRole("button", { name: "Fetch historical" }));
     fireEvent.change(screen.getByPlaceholderText(/PANW or Palo Alto Networks/i), {
       target: { value: "PANW" },
@@ -172,7 +199,11 @@ describe("historical reference: grouping and category placement", () => {
 
     fireEvent.click(screen.getAllByRole("button", { name: /Expand Press releases/i })[0]);
     fireEvent.click(screen.getAllByRole("button", { name: /Expand Transcripts/i })[0]);
-    expect(screen.getByText("PANW Q3 release")).toBeInTheDocument();
-    expect(screen.getByText("PANW Q3 transcript")).toBeInTheDocument();
+    // The loaded release also renders in the stage after reload (it's the first
+    // document), so scope the placement assertions to each sidebar category.
+    const press = category(/Manage Press releases/i);
+    const scripts = category(/Manage Transcripts/i);
+    expect(within(press).getByText("PANW Q3 release")).toBeInTheDocument();
+    expect(within(scripts).getByText("PANW Q3 transcript")).toBeInTheDocument();
   });
 });

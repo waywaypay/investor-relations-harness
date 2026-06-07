@@ -295,6 +295,63 @@ export function buildVersionFromAnalysis(
   });
 }
 
+const REF_SUBTITLE: Record<DocKind, string> = {
+  release: "Earnings release · loaded from the web",
+  script: "Earnings call transcript · loaded from the web",
+  qa: "Q&A · loaded from the web",
+  other: "Document · loaded from the web",
+};
+
+/** Build a viewable version from a historical document fetched from the web.
+ *
+ *  These are *prior disclosures* loaded as the reference corpus a later draft is
+ *  checked against — so the user can read the loaded release/transcript in the
+ *  workspace instead of just seeing a figure count appear in the sidebar. Figures
+ *  are detected and shown for reading; they read as untraced with a reference note
+ *  (they're filed as reference facts on the backend, not verified as a draft is). */
+export function buildReferenceVersion(
+  input: { text: string; title: string; kind: DocKind; source?: string; period?: string },
+  versionId: string
+): BuiltVersion {
+  const period = input.period || "—";
+  const claims: AnalyzeClaim[] = [];
+  const verdicts: AnalyzeVerdict[] = [];
+  let i = 0;
+  for (const figText of detectNewFigures(input.text)) {
+    const id = `ref_${i++}`;
+    claims.push({
+      claim_id: id,
+      metric: "reference_figure",
+      period,
+      entity: "—",
+      displayed_text: figText,
+      span: null,
+    });
+    verdicts.push({
+      claim_id: id,
+      metric: "reference_figure",
+      period,
+      displayed_text: figText,
+      verdict: "untraced",
+      reason:
+        "Figure from a prior disclosure loaded as reference. It's filed as a reference fact your drafts tie out against — not verified as a draft itself.",
+      source_value: null,
+    });
+  }
+  return assembleVersion({
+    versionId,
+    origin: "upload",
+    kind: input.kind,
+    title: input.title || "Historical document",
+    subtitle: REF_SUBTITLE[input.kind] ?? REF_SUBTITLE.other,
+    text: input.text,
+    claims,
+    verdicts,
+    warnings: input.source ? [`Loaded as reference from ${input.source}.`] : undefined,
+    period: input.period || "Reference",
+  });
+}
+
 /** Offline fallback: detect numeric spans client-side, mark them untraced, and
  *  attach an honest warning that no verification backend was reached. */
 export function buildVersionLocally(
