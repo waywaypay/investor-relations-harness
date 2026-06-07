@@ -64,8 +64,9 @@ export function Sidebar({
   onUpload: () => void;
   /** Open the documents manager — focused on a document, or scoped to a category. */
   onManage: (focusDocId?: string, kind?: DocKind) => void;
-  /** Open the reference modal to load prior disclosures as reference corpus. */
-  onOpenReference: () => void;
+  /** Open the reference modal to load prior disclosures as reference corpus.
+   *  Pass a kind to scope the search (release = press releases, script = transcripts). */
+  onOpenReference: (kind?: DocKind) => void;
 }) {
   const store = useStore();
   // Categories are collapsed by default — the rail shows just the types; a click
@@ -108,8 +109,18 @@ export function Sidebar({
                 >
                   <span className="sb-cat-ic" dangerouslySetInnerHTML={{ __html: KIND_META[k].icon }} />
                   <span className="sb-cat-l">{KIND_META[k].label}</span>
-                  <span className="sb-cat-n">{byKind[k].length}</span>
+                  <span className="sb-cat-n">{byKind[k].length + store.referenceEntries.filter((e) => e.kind === k).length || 0}</span>
                 </button>
+                {(k === "release" || k === "script") && (
+                  <button
+                    className="sb-cat-fetch"
+                    onClick={(e) => { e.stopPropagation(); onOpenReference(k); }}
+                    title={k === "release" ? "Fetch historical releases" : "Fetch historical transcripts"}
+                    aria-label={k === "release" ? "Fetch historical releases" : "Fetch historical transcripts"}
+                  >
+                    <span dangerouslySetInnerHTML={{ __html: ICON_HISTORICAL }} />
+                  </button>
+                )}
                 <button
                   className="sb-cat-toggle"
                   onClick={() => toggleKind(k)}
@@ -137,6 +148,13 @@ export function Sidebar({
                       )}
                     </button>
                   ))}
+                  {store.referenceEntries.filter((e) => e.kind === k).map((e) => (
+                    <div key={e.id} className="sb-refitem" title={`${e.entity} ${e.label} — ${e.count} reference figure${e.count !== 1 ? "s" : ""}`}>
+                      <span className="sb-refent">{e.entity}</span>
+                      <span className="sb-refl">{e.label}</span>
+                      <span className="sb-refn">{e.count > 0 ? e.count : "—"}</span>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -150,7 +168,7 @@ export function Sidebar({
         <NavItem id="calendar" name="Calendar & tasks" icon={ICON_CALENDAR} view={view} setView={setView} />
         <button
           className="sb-doc tool"
-          onClick={onOpenReference}
+          onClick={() => onOpenReference()}
           title="Search the web for past earnings releases and call transcripts to load as reference"
         >
           <span className="sb-doc-ic" dangerouslySetInnerHTML={{ __html: ICON_HISTORICAL }} />
@@ -158,20 +176,7 @@ export function Sidebar({
         </button>
       </div>
 
-      {store.referenceEntries.length > 0 && (
-        <>
-          <div className="sb-cap">Reference corpus</div>
-          <div className="sb-reflist">
-            {store.referenceEntries.map((e) => (
-              <div key={e.id} className="sb-refitem">
-                <span className="sb-refent">{e.entity}</span>
-                <span className="sb-refl">{e.label}</span>
-                <span className="sb-refn">{e.count > 0 ? e.count : "—"}</span>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
+
     </aside>
   );
 }
