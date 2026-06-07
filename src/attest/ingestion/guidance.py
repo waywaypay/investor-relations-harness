@@ -73,6 +73,12 @@ _PCT_RANGE = re.compile(
 )
 _PCT_SINGLE = re.compile(r"\d[\d,]*(?:\.\d+)?\s*%", re.IGNORECASE)
 
+# A list item beneath a guidance lead-in. Modern releases bullet each guided
+# metric ("• Total revenue …"); matching the common glyphs (and a leading dash)
+# lets a bullet inherit the lead-in's period instead of being dropped for lacking
+# the guidance verb the lead-in stated once.
+_BULLET_START = re.compile(r"\s*[•·▪‣◦∙*\-–—]\s+")
+
 _QUARTER_WORDS = {"first": 1, "second": 2, "third": 3, "fourth": 4}
 _FULL_YEAR = re.compile(r"\b(full[- ]year|full fiscal year|fiscal year|for the year)\b", re.IGNORECASE)
 _QUARTER = re.compile(r"\b(first|second|third|fourth)[\s-]+quarter\b", re.IGNORECASE)
@@ -196,11 +202,24 @@ class GuidanceConnector:
         seen: set[tuple[str, str, str, str]] = set()
         skipped: list[str] = []
 
+        # Period carried from a guidance lead-in to the bulleted items beneath it.
+        active_period: str | None = None
         for sentence in _iter_sentences(text):
-            if not _GUIDANCE.search(sentence):
+            if _GUIDANCE.search(sentence):
+                # A guidance lead-in fixes the target period for itself *and* the
+                # bullets that follow it: filers write "For Q2 we expect: • A. • B.
+                # • C." and restate the verb only once. Remember the period so each
+                # bullet beneath it is read as guidance for the same period.
+                period = active_period = _guidance_period(sentence, base_period)
+            elif active_period is not None and _BULLET_START.match(sentence):
+                # A bare bullet under an open lead-in inherits its period — without
+                # this, every guided metric after the first bullet is silently lost.
+                period = active_period
+            else:
+                # A normal (non-bullet, non-guidance) line closes the list.
+                active_period = None
                 continue
 
-            period = _guidance_period(sentence, base_period)
             extracted_here = 0
 
             # Carve the sentence into regions, one per metric keyword present, so a

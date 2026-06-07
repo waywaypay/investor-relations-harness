@@ -132,7 +132,14 @@ class AttestService:
         (non-GAAP, operational) still get a reference, so a later draft that restates
         one and *changed it* is flagged as contradicting prior disclosure. Like every
         ingestion, it writes an attributable audit event.
+
+        When no ``period`` is supplied (the common case — a user files a past release
+        or transcript without typing one), it is inferred from the document's own
+        words, exactly as the draft (:meth:`analyze_text`) and historical-fetch paths
+        do. Without this every figure in a period-less upload is anchored to the empty
+        period and silently dropped, so the disclosure ingests nothing.
         """
+        period = period or infer_period(label or "", text)
         facts, report = DisclosureConnector(
             self.registry, self.store, self.aliases_for(tenant_id)
         ).fetch(

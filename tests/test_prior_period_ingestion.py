@@ -146,6 +146,43 @@ def test_filing_window_invalid_returns_none():
     assert _filing_date_window("FY2026-FY") is None
 
 
+def test_filing_window_honours_non_calendar_fiscal_year_end():
+    # PANW's fiscal year ends 31 July, so its Q1 closes 31 Oct and the earnings
+    # 8-K lands Nov–mid-Jan — not the Apr–Jun a calendar assumption would give.
+    start, end = _filing_date_window("FY2026-Q1", "0731")
+    assert start == "2025-11-01"
+    assert end == "2026-01-15"
+    # Q4 closes at the fiscal-year-end (31 Jul 2026), filed Aug–mid-Oct 2026.
+    start_q4, end_q4 = _filing_date_window("FY2026-Q4", "0731")
+    assert start_q4 == "2026-08-01"
+    assert end_q4 == "2026-10-15"
+
+
+def test_fetcher_uses_issuer_fiscal_year_end_to_find_filing():
+    # A July-FYE issuer files its Q1 (ends 31 Oct 2025) release in mid-November.
+    # The window must follow the issuer's calendar, or the right filing is missed.
+    subs = {
+        "cik": "0001234567",
+        "name": "MERIDIAN SYSTEMS INC",
+        "fiscalYearEnd": "0731",
+        "filings": {
+            "recent": {
+                "accessionNumber": ["0001234567-25-000900", "0001234567-26-000100"],
+                "filingDate": ["2025-11-18", "2026-04-28"],
+                "form": ["8-K", "8-K"],
+                "items": ["2.02,9.01", "2.02,9.01"],
+                "primaryDocument": ["ex99-1.htm", "ex99-1.htm"],
+            }
+        },
+    }
+    stub = _StubEdgarClient(submissions=subs)
+    fetcher = PriorPeriodFetcher(client=stub)
+    # FY2026-Q2's prior is FY2026-Q1 (ends 31 Oct 2025) → the Nov filing, not April.
+    exhibits = fetcher.fetch_exhibits(ticker="MRDN", period="FY2026-Q2")
+    assert len(exhibits) == 1
+    assert exhibits[0].accession == "0001234567-25-000900"
+
+
 # ---------------------------------------------------------------------------
 # _strip_html()
 # ---------------------------------------------------------------------------

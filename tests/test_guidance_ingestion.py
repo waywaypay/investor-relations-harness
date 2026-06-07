@@ -71,6 +71,34 @@ def test_extracts_full_year_revenue_guidance_to_its_own_period():
     assert fy.value == Decimal("5475000000")  # midpoint of $5.40 to $5.55 billion
 
 
+# Modern releases (e.g. Palo Alto Networks) state the guidance verb once and list
+# each guided metric as its own bullet — so every metric after the first bullet
+# lacks the verb. Each bullet must inherit the lead-in's period, or revenue/EPS
+# guidance is silently dropped and the fetch ingests nothing.
+_BULLETED = (
+    "For the fiscal second quarter 2026, we expect: "
+    "• Next-Generation Security ARR of $6.11 billion to $6.14 billion. "
+    "• Total revenue in the range of $2.57 billion to $2.59 billion. "
+    "• Diluted non-GAAP net income per share in the range of $0.93 to $0.95. "
+    "We remain focused on durable growth."
+)
+
+
+def test_bulleted_guidance_items_inherit_the_lead_in_period():
+    facts, _ = GuidanceConnector().fetch(
+        text=_BULLETED, tenant_id="atlas", entity="PANW",
+        accession=ACCESSION, base_period="FY2026-Q1", as_of="2025-11-19",
+    )
+    # The revenue and EPS bullets — neither of which repeats "we expect" — are
+    # still captured for the lead-in's quarter, as range midpoints.
+    rev = _by_scope(facts, "revenue_guidance", "FY2026-Q2")
+    assert rev.value == Decimal("2580000000")  # midpoint of $2.57 to $2.59 billion
+    eps = _by_scope(facts, "eps_guidance", "FY2026-Q2")
+    assert eps.value == Decimal("0.94")  # midpoint of $0.93 to $0.95
+    # The trailing non-bullet line closes the list — it must not be read as guidance.
+    assert all(f.period == "FY2026-Q2" for f in facts)
+
+
 def test_every_guidance_fact_cites_the_exact_sentence():
     """The whole point: the number is bound to the line it came from."""
     facts, _ = _ingest()

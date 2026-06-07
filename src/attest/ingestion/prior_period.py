@@ -32,6 +32,15 @@ _USER_AGENT = "Attest/0.1 (investor-relations-harness; contact@attest.io)"
 # 8-K item 2.02 = Results of Operations (the earnings 8-K)
 _EARNINGS_ITEMS = frozenset({"2.02", "2.01"})
 
+# Filename signals for the earnings press release exhibit within a filing. The
+# release is Exhibit 99.1, but filers name the file a dozen ways ("ex99-1.htm",
+# "ex991q1press.htm", "exhibit991.htm", "...earningsrelease.htm"); these match the
+# common shapes, separators and all, against the lowercased filename.
+_EX99_1_NAME = re.compile(r"ex(?:hibit)?[^a-z0-9]*99[^a-z0-9]*1")
+_EX99_NAME = re.compile(r"ex(?:hibit)?[^a-z0-9]*99")
+_EARNINGS_RELEASE_NAME = re.compile(r"earnings[^a-z0-9]*release")
+_PRESS_RELEASE_NAME = re.compile(r"press[^a-z0-9]*release")
+
 
 class EdgarFetchError(Exception):
     """Raised when an EDGAR HTTP request fails."""
@@ -112,24 +121,43 @@ def prior_period(period: str) -> str | None:
     return f"FY{year - 1}-Q4" if q == 1 else f"FY{year}-Q{q - 1}"
 
 
-def _filing_date_window(period: str) -> tuple[str, str] | None:
+def _add_months(year: int, month: int, delta: int) -> tuple[int, int]:
+    """``(year, month)`` shifted by ``delta`` months, wrapping the year."""
+    idx = year * 12 + (month - 1) + delta
+    return idx // 12, idx % 12 + 1
+
+
+def _filing_date_window(period: str, fiscal_year_end: str = "1231") -> tuple[str, str] | None:
     """Return ``(start_date, end_date)`` for when an 8-K for this period is typically filed.
 
-    Assumes a calendar-year fiscal year. An 8-K for Q1 (Jan–Mar) is filed
-    April–June; Q4 (Oct–Dec) straddles the year and is filed January–March of
-    the following year.
+    The window is derived from the *issuer's* fiscal-year-end (``fiscal_year_end``
+    as the ``MMDD`` SEC's submissions feed reports, e.g. ``"0731"`` for a 31-July
+    year end), not a fixed calendar assumption. The earnings 8-K lands in the ~2.5
+    months after a quarter closes, so the window runs from the first day of the
+    month after quarter-end to the 15th of the month two later.
+
+    For a calendar-year issuer (the default ``"1231"``) this reproduces the prior
+    behaviour exactly — Q1 (ends 31 Mar) is filed Apr 1–Jun 15 — while a July-FYE
+    issuer like PANW has its Q1 (ends 31 Oct) filed Nov 1–Jan 15, so the right
+    quarter's release is found instead of a calendar-shifted (wrong) one.
     """
     m = re.match(r"FY(\d{4})-Q([1-4])", period, re.IGNORECASE)
     if not m:
         return None
     year, q = int(m.group(1)), int(m.group(2))
-    windows: dict[int, tuple[str, str]] = {
-        1: (f"{year}-04-01", f"{year}-06-15"),
-        2: (f"{year}-07-01", f"{year}-09-15"),
-        3: (f"{year}-10-01", f"{year}-12-15"),
-        4: (f"{year + 1}-01-01", f"{year + 1}-03-15"),
-    }
-    return windows[q]
+    try:
+        fye_month = int(fiscal_year_end[:2])
+    except (TypeError, ValueError, IndexError):
+        fye_month = 12
+    if not 1 <= fye_month <= 12:
+        fye_month = 12
+
+    # The quarter-end month/year: Q4 ends at the fiscal-year-end; each earlier
+    # quarter is three months before the next.
+    end_year, end_month = _add_months(year, fye_month, -3 * (4 - q))
+    start_year, start_month = _add_months(end_year, end_month, 1)
+    stop_year, stop_month = _add_months(end_year, end_month, 3)
+    return (f"{start_year:04d}-{start_month:02d}-01", f"{stop_year:04d}-{stop_month:02d}-15")
 
 
 class PriorPeriodFetcher:
@@ -167,10 +195,7 @@ class PriorPeriodFetcher:
         prev = prior_period(period)
         if not prev:
             return []
-        window = _filing_date_window(prev)
-        if not window:
-            return []
-        return self._search_8k_exhibits(cik=resolved, start=window[0], end=window[1])
+        return self._search_8k_exhibits(cik=resolved, period=prev)
 
     def _lookup_cik(self, ticker: str) -> str | None:
         key = ticker.upper()
@@ -190,13 +215,20 @@ class PriorPeriodFetcher:
         return None
 
     def _search_8k_exhibits(
-        self, *, cik: str, start: str, end: str
+        self, *, cik: str, period: str
     ) -> list[FetchedExhibit]:
         url = f"{_EDGAR_SUBMISSIONS}/CIK{cik}.json"
         try:
             data = self._http.get_json(url)
         except EdgarFetchError:
             return []
+
+        # The same submissions feed carries the issuer's fiscal-year-end, so the
+        # filing window is anchored to *its* calendar, not a fixed Dec-31 assumption.
+        window = _filing_date_window(period, data.get("fiscalYearEnd") or "1231")
+        if not window:
+            return []
+        start, end = window
 
         recent = data.get("filings", {}).get("recent", {})
         exhibits: list[FetchedExhibit] = []
@@ -233,9 +265,58 @@ class PriorPeriodFetcher:
         # EDGAR archive path: /data/{cik_int}/{acc_nodash}/{document}
         cik_int = str(int(cik))
         acc_nodash = accession.replace("-", "")
-        url = f"{_EDGAR_ARCHIVES}/{cik_int}/{acc_nodash}/{document}"
+        # `document` (the filing's primaryDocument) is the 8-K *cover page*, not the
+        # press release — it carries no results/guidance prose. The earnings release
+        # is filed as a separate Exhibit 99.1 document, so resolve and fetch that.
+        target = self._resolve_exhibit_document(
+            cik_int=cik_int, acc_nodash=acc_nodash, fallback=document
+        )
+        url = f"{_EDGAR_ARCHIVES}/{cik_int}/{acc_nodash}/{target}"
         try:
             raw = self._http.get_text(url)
         except EdgarFetchError:
             return None
         return _strip_html(raw) if raw.lstrip().startswith("<") else raw
+
+    def _resolve_exhibit_document(
+        self, *, cik_int: str, acc_nodash: str, fallback: str
+    ) -> str:
+        """The filename of the earnings press release (Exhibit 99.1) in a filing.
+
+        Reads the filing's ``index.json`` document listing and picks the EX-99.1
+        exhibit — recognised by its filename (``ex99-1``/``ex991``/``exhibit99-1``)
+        or an ``earnings release`` name. Falls back to ``fallback`` (the filing's
+        primary document) when the index can't be read or names no exhibit, so the
+        fetch degrades to the prior behaviour rather than failing.
+        """
+        idx_url = f"{_EDGAR_ARCHIVES}/{cik_int}/{acc_nodash}/index.json"
+        try:
+            index = self._http.get_json(idx_url)
+        except EdgarFetchError:
+            return fallback
+
+        best_priority, best_size, best_name = 0, -1, fallback
+        for item in index.get("directory", {}).get("item", []):
+            name = item.get("name", "")
+            low = name.lower()
+            if not low.endswith((".htm", ".html", ".txt")):
+                continue
+            if low.endswith(("-index.html", "-index-headers.html")) or low == fallback.lower():
+                continue
+            if re.fullmatch(r"r\d+\.htm", low):  # XBRL viewer fragments
+                continue
+            if _EX99_1_NAME.search(low) or _EARNINGS_RELEASE_NAME.search(low):
+                priority = 3
+            elif _EX99_NAME.search(low) or _PRESS_RELEASE_NAME.search(low):
+                priority = 2
+            else:
+                continue  # not an exhibit press release — leave the fallback in place
+            try:
+                size = int(item.get("size") or 0)
+            except (TypeError, ValueError):
+                size = 0
+            # Strongest filename signal wins; among equals, the largest document —
+            # the substantive release, not a one-paragraph supplemental exhibit.
+            if (priority, size) > (best_priority, best_size):
+                best_priority, best_size, best_name = priority, size, name
+        return best_name
