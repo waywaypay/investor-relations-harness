@@ -84,6 +84,16 @@ export function UploadModal({
   // The file/paste inputs show for drafts, new versions, and the file source mode.
   const fileMode = !edgarMode && !historicalMode;
 
+  // Group the review results by type so releases and transcripts are never shown
+  // interleaved — a combined search lists each under its own subheader; a search
+  // scoped to one type (from a category's fetch button) is a single group.
+  const candidateGroups = ([
+    ["release", "Press releases"],
+    ["transcript", "Transcripts"],
+  ] as const)
+    .map(([dt, label]) => ({ dt, label, items: candidates.filter((c) => c.doc_type === dt) }))
+    .filter((g) => g.items.length > 0);
+
   const chooseMode = (m: "edgar" | "historical" | "file") => {
     setSourceMode(m);
     setError(null);
@@ -295,24 +305,34 @@ export function UploadModal({
                     {selected.size === candidates.length ? "Clear all" : "Select all"}
                   </button>
                 </div>
-                {candidates.map((c) => (
-                  <label key={c.url} className={`uphrow ${selected.has(c.url) ? "on" : ""}`}>
-                    <input
-                      type="checkbox"
-                      checked={selected.has(c.url)}
-                      onChange={() => toggleSelect(c.url)}
-                    />
-                    <span className="uphrow-main">
-                      <span className="uphrow-t">{c.title}</span>
-                      <span className="uphrow-m">
-                        <span className={`uphtag ${c.doc_type}`}>
-                          {c.doc_type === "transcript" ? "Transcript" : "Release"}
+                {candidateGroups.map((g) => (
+                  <div key={g.dt} className="uphgroup">
+                    {candidateGroups.length > 1 && (
+                      <div className="uphgroup-h">
+                        {g.label}
+                        <span className="uphgroup-n">{g.items.length}</span>
+                      </div>
+                    )}
+                    {g.items.map((c) => (
+                      <label key={c.url} className={`uphrow ${selected.has(c.url) ? "on" : ""}`}>
+                        <input
+                          type="checkbox"
+                          checked={selected.has(c.url)}
+                          onChange={() => toggleSelect(c.url)}
+                        />
+                        <span className="uphrow-main">
+                          <span className="uphrow-t">{c.title}</span>
+                          <span className="uphrow-m">
+                            <span className={`uphtag ${c.doc_type}`}>
+                              {c.doc_type === "transcript" ? "Transcript" : "Release"}
+                            </span>
+                            <span className="uphsrc">{c.source}</span>
+                          </span>
+                          {c.snippet && <span className="uphrow-s">{c.snippet}</span>}
                         </span>
-                        <span className="uphsrc">{c.source}</span>
-                      </span>
-                      {c.snippet && <span className="uphrow-s">{c.snippet}</span>}
-                    </span>
-                  </label>
+                      </label>
+                    ))}
+                  </div>
                 ))}
               </div>
             )}
