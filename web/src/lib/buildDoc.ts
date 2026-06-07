@@ -43,7 +43,7 @@ const BADGE: Record<VerdictState, string> = {
 const TAG: Record<VerdictState, string> = { v: "✓", r: "?", f: "!", u: "?" };
 
 const SUBTITLE: Record<DocKind, string> = {
-  release: "Earnings release · uploaded",
+  release: "Press release · uploaded",
   script: "Earnings call script · uploaded",
   qa: "Q&A prep · uploaded",
   other: "Document · uploaded",

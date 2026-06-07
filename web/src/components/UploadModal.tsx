@@ -6,7 +6,7 @@ import type { HistoricalCandidate } from "../api/client";
 import type { DocKind, LibraryDoc } from "../types";
 
 const KIND_OPTIONS: { value: DocKind; label: string; hint: string }[] = [
-  { value: "release", label: "Earnings release", hint: "Press release · 8-K Ex.99.1" },
+  { value: "release", label: "Press release", hint: "Press release · 8-K Ex.99.1" },
   { value: "script", label: "Prepared remarks", hint: "Earnings call script" },
   { value: "qa", label: "Q&A prep", hint: "Anticipated analyst questions" },
   { value: "other", label: "Other document", hint: "Any draft to tie out" },
@@ -292,10 +292,10 @@ export function UploadModal({
               </div>
               <span className="upcap upopt" style={{ textTransform: "none", letterSpacing: 0 }}>
                 {initialDocTypes?.length === 1 && initialDocTypes[0] === "release"
-                  ? "Finds historical earnings releases on the web — review and load the ones you want."
+                  ? "Finds historical press releases on the web — review and load the ones you want."
                   : initialDocTypes?.length === 1 && initialDocTypes[0] === "transcript"
                   ? "Finds historical call transcripts on the web — review and load the ones you want."
-                  : "Finds historical earnings releases & call transcripts on the web — review and load the ones you want."}
+                  : "Finds historical press releases & call transcripts on the web — review and load the ones you want."}
                 {" "}Loaded as reference (web source, not a filing).
               </span>
             </label>

@@ -24,7 +24,7 @@ export const ICON_FOR_KIND: Record<string, string> = {
 export const DOCS: DocMeta[] = [
   {
     id: "release",
-    name: "Earnings release",
+    name: "Press release",
     kind: "Press release · 8-K Ex.99.1",
     icon: ICON_RELEASE,
     blocks: [

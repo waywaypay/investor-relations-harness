@@ -55,7 +55,7 @@ export const CALENDAR = {
     { d: 14, title: "Verify figures + narrative (Attest)", owner: "IR", status: "todo" },
     { d: 15, title: "Legal & disclosure committee review", owner: "Legal", status: "todo" },
     { d: 17, title: "Board approval", owner: "CFO", status: "todo" },
-    { d: 22, title: "Earnings release (8-K) + call 5:00pm ET", owner: "IR", status: "todo", type: "milestone" },
+    { d: 22, title: "Press release (8-K) + call 5:00pm ET", owner: "IR", status: "todo", type: "milestone" },
     { d: 24, title: "File 10-Q", owner: "Legal", status: "todo" },
     { d: 25, title: "Post-call debrief", owner: "IR", status: "todo" },
   ] as CalEvent[],
