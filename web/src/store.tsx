@@ -5,6 +5,7 @@ import { DEMO_LIBRARY, collectFigureIds } from "./data/library";
 import type { Commitment, DocKind, DocVersion, Figure, LibraryDoc, Narrative, VerdictState } from "./types";
 import { evaluateEdit } from "./lib/verify";
 import {
+  buildReferenceVersion,
   buildVersionFromAnalysis,
   buildVersionLocally,
   newDocId,
@@ -37,6 +38,16 @@ interface ReferenceEntry {
 // Map an Exa historical doc_type to a library category.
 const HIST_KIND: Record<string, DocKind> = { release: "release", transcript: "script" };
 
+// The bare hostname of a source URL (e.g. "prnewswire.com"), for the "loaded from
+// the web" provenance note on a fetched document. Falls back to the raw URL.
+function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
+}
+
 interface Store {
   figures: FigureMap;
   narratives: NarrativeMap;
@@ -67,8 +78,10 @@ interface Store {
   fetchPriorPeriod: (ticker: string, period: string) => Promise<number>;
   /** Search the web for an issuer's historical earnings docs to review before loading. */
   searchHistorical: (entity: string, docTypes?: string[], quarters?: number) => Promise<HistoricalCandidate[]>;
-  /** Fetch + file the selected historical documents as reference. Returns figures filed. */
-  ingestHistorical: (entity: string, items: { url: string; title?: string; period?: string; doc_type?: string }[]) => Promise<number>;
+  /** Fetch the selected historical documents, file their figures as reference, and
+   *  add each as a viewable document in the workspace. Returns the id of the first
+   *  loaded document to navigate to (or null when none could be rendered). */
+  ingestHistorical: (entity: string, items: { url: string; title?: string; period?: string; doc_type?: string }[]) => Promise<string | null>;
   removeDoc: (id: string) => void;
   /** Make a stored version the one the document renders. */
   setActiveVersion: (docId: string, versionId: string) => void;
@@ -515,32 +528,68 @@ export function StoreProvider({
   );
 
   const ingestHistorical = useCallback(
-    async (entity: string, items: { url: string; title?: string; period?: string; doc_type?: string }[]): Promise<number> => {
+    async (entity: string, items: { url: string; title?: string; period?: string; doc_type?: string }[]): Promise<string | null> => {
       const result = await client.ingestHistorical(entity, items);
       const docs = result.documents.length;
       const sym = entity.toUpperCase();
-      if (docs > 0) {
-        const newEntries: ReferenceEntry[] = result.documents.map((d) => {
-          const item = items.find((i) => i.url === d.url);
-          return {
+      const kindByUrl = new Map(items.map((i) => [i.url, i.doc_type]));
+
+      // A fetched document with recovered prose becomes a viewable library
+      // document the user can open and read; one without (text couldn't be
+      // recovered) falls back to the reference-count row, so its figures are still
+      // visibly filed. Either way the figures are reference facts on the backend.
+      const newDocs: LibraryDoc[] = [];
+      const newFigures: FigureMap = {};
+      const fallbackEntries: ReferenceEntry[] = [];
+      for (const d of result.documents) {
+        const dt = kindByUrl.get(d.url);
+        const kind = (dt ? HIST_KIND[dt] : undefined) ?? "release";
+        if (d.text && d.text.trim()) {
+          const versionId = newVersionId();
+          const built = buildReferenceVersion(
+            { text: d.text, title: d.title || d.url, kind, source: hostOf(d.url), period: d.period ?? undefined },
+            versionId
+          );
+          Object.assign(newFigures, built.figures);
+          const version = { ...built.version, label: "Version 1" };
+          newDocs.push({
+            id: newDocId(),
+            kind: built.meta.kind,
+            name: built.meta.name,
+            subtitle: built.meta.subtitle,
+            icon: built.meta.icon,
+            source: "upload",
+            period: built.meta.period,
+            addedAt: d.published_date || new Date().toISOString(),
+            blocks: version.blocks,
+            warnings: version.warnings,
+            versions: [version],
+            activeVersionId: version.id,
+          });
+        } else {
+          fallbackEntries.push({
             id: `historical:${d.url}`,
             entity: sym,
             label: d.title || d.url,
             count: d.ingested,
             addedAt: d.published_date || new Date().toISOString().slice(0, 10),
-            kind: (item?.doc_type ? HIST_KIND[item.doc_type] : undefined) ?? "release",
-          };
-        });
-        setReferenceEntries((prev) => [...prev, ...newEntries]);
+            kind,
+          });
+        }
       }
+
+      if (Object.keys(newFigures).length) setFigures((prev) => ({ ...prev, ...newFigures }));
+      if (newDocs.length) setLibrary((prev) => [...prev, ...newDocs]);
+      if (fallbackEntries.length) setReferenceEntries((prev) => [...prev, ...fallbackEntries]);
+
       showToast(
-        result.total_ingested
-          ? `Filed ${result.total_ingested} reference figure${result.total_ingested > 1 ? "s" : ""} from ${docs} document${docs > 1 ? "s" : ""}.`
-          : docs > 0
-            ? `Fetched ${docs} document${docs > 1 ? "s" : ""} — no figures extracted. Try specifying a valid ticker.`
-            : "No documents fetched — check the company name or try a ticker symbol."
+        docs === 0
+          ? "No documents fetched — check the company name or try a ticker symbol."
+          : result.total_ingested
+            ? `Loaded ${docs} document${docs > 1 ? "s" : ""} — ${result.total_ingested} reference figure${result.total_ingested > 1 ? "s" : ""} filed.`
+            : `Loaded ${docs} document${docs > 1 ? "s" : ""} — no figures extracted.`
       );
-      return result.total_ingested;
+      return newDocs[0]?.id ?? null;
     },
     [showToast]
   );

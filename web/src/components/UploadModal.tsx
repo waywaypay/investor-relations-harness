@@ -158,7 +158,10 @@ export function UploadModal({
             doc_type: c.doc_type,
             ...(c.period ? { period: c.period } : {}),
           }));
-        await store.ingestHistorical(ticker.trim(), items);
+        // Open the first loaded document so it appears in the main view rather
+        // than only as a count in the sidebar.
+        const firstDocId = await store.ingestHistorical(ticker.trim(), items);
+        if (firstDocId) onUploaded(firstDocId);
         onClose();
         return;
       }

@@ -99,9 +99,18 @@ export interface HistoricalCandidate {
   period?: string | null; // fiscal period read from the doc, e.g. "FY2026-Q3"
 }
 
-/** Summary of ingesting selected historical documents found via web search. */
+/** Summary of ingesting selected historical documents found via web search.
+ *  Each document carries its recovered `text` (and resolved `period`) so the client
+ *  can render the loaded document in the workspace, not just report a figure count. */
 export interface HistoricalIngestResult {
-  documents: { url: string; title: string; published_date: string; ingested: number }[];
+  documents: {
+    url: string;
+    title: string;
+    published_date: string;
+    ingested: number;
+    period?: string | null;
+    text?: string;
+  }[];
   total_ingested: number;
 }
 

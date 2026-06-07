@@ -192,6 +192,13 @@ class HistoricalIngestDoc(BaseModel):
     published_date: str
     ingested: int
     skipped: int
+    period: str | None = Field(
+        default=None, description="fiscal period the document reports, e.g. 'FY2026-Q3'"
+    )
+    text: str = Field(
+        default="",
+        description="the document's recovered prose, so the client can render it in the workspace",
+    )
 
 
 class HistoricalIngestResponse(BaseModel):
