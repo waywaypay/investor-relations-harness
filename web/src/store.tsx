@@ -66,7 +66,7 @@ interface Store {
   /** Auto-fetch the prior quarter's 8-K press release from EDGAR. Returns figures ingested. */
   fetchPriorPeriod: (ticker: string, period: string) => Promise<number>;
   /** Search the web for an issuer's historical earnings docs to review before loading. */
-  searchHistorical: (entity: string, docTypes?: string[]) => Promise<HistoricalCandidate[]>;
+  searchHistorical: (entity: string, docTypes?: string[], quarters?: number) => Promise<HistoricalCandidate[]>;
   /** Fetch + file the selected historical documents as reference. Returns figures filed. */
   ingestHistorical: (entity: string, items: { url: string; title?: string; period?: string; doc_type?: string }[]) => Promise<number>;
   removeDoc: (id: string) => void;
@@ -137,12 +137,21 @@ function saveUploads(data: PersistedUploads): void {
   }
 }
 
+// Entries persisted before reference docs carried a category have no `kind`.
+// Recover it from the label / id so a previously-loaded transcript still files
+// under Transcripts rather than being defaulted to Press releases.
+function inferRefKind(e: Partial<ReferenceEntry>): DocKind {
+  if (e.kind) return e.kind;
+  const hay = `${e.label ?? ""} ${e.id ?? ""}`;
+  return /transcript|call|prepared remarks/i.test(hay) ? "script" : "release";
+}
+
 function loadRefCorpus(): ReferenceEntry[] {
   try {
     const raw = window.localStorage.getItem(REFCORPUS_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as Array<Partial<ReferenceEntry>>;
-    return parsed.map((e) => ({ ...e, kind: e.kind ?? "release" } as ReferenceEntry));
+    return parsed.map((e) => ({ ...e, kind: inferRefKind(e) } as ReferenceEntry));
   } catch {
     return [];
   }
@@ -497,10 +506,10 @@ export function StoreProvider({
   );
 
   const searchHistorical = useCallback(
-    async (entity: string, docTypes?: string[]): Promise<HistoricalCandidate[]> => {
+    async (entity: string, docTypes?: string[], quarters?: number): Promise<HistoricalCandidate[]> => {
       // Pure lookup — no toast on success (the results render in the modal); a
       // failure (e.g. Exa not configured) surfaces to the caller's catch.
-      return client.searchHistorical(entity, docTypes);
+      return client.searchHistorical(entity, docTypes, quarters);
     },
     []
   );

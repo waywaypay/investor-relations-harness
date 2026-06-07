@@ -150,6 +150,31 @@ def _auto_title(
     return fallback.strip() or f"{ent} {label}"
 
 
+def _one_per_period(cands: list[ExaCandidate], quarters: int) -> list[ExaCandidate]:
+    """Collapse a result pool to one candidate per fiscal period, newest first.
+
+    Several outlets report the same quarter; keep the single best hit per period
+    (the most recently published) and return the most recent ``quarters`` periods.
+    Hits whose period can't be read are kept only to backfill when there aren't
+    enough dated quarters — so the reviewer never sees the same quarter twice, but
+    isn't left empty-handed when periods are unreadable.
+    """
+    best_by_period: dict[str, ExaCandidate] = {}
+    undated: list[ExaCandidate] = []
+    for c in cands:
+        if not c.period:
+            undated.append(c)
+            continue
+        cur = best_by_period.get(c.period)
+        if cur is None or c.published_date > cur.published_date:
+            best_by_period[c.period] = c
+    perioded = sorted(best_by_period.values(), key=lambda c: c.period or "", reverse=True)
+    kept = perioded[:quarters]
+    if len(kept) < quarters:
+        kept += undated[: quarters - len(kept)]
+    return kept
+
+
 class HistoricalFetcher:
     """Searches Exa for a company's earnings docs, then fetches selected texts.
 
@@ -162,16 +187,21 @@ class HistoricalFetcher:
         self._http = client or LiveExaClient()
 
     def search(
-        self, *, entity: str, doc_types: list[str], limit: int = 8
+        self, *, entity: str, doc_types: list[str], quarters: int = 4
     ) -> list[ExaCandidate]:
-        """Return auto-titled candidates for ``entity`` across the given doc types.
+        """One candidate per fiscal period, for the most recent ``quarters`` periods.
 
-        Runs one Exa search per requested type, deduplicates by URL, and sorts
-        newest-first. ``entity`` is a ticker or company name — both work as a
-        neural-search query.
+        Runs one Exa search per requested type over a generous result pool, reads
+        each hit's reporting period, then collapses the pool to a single best
+        candidate per period — several outlets cover the same quarter, and the
+        reviewer wants one release (and one transcript) per quarter, not the same
+        period repeated. Returns the newest ``quarters`` periods per type, newest
+        first overall. ``entity`` is a ticker or company name.
         """
         wanted = [d for d in doc_types if d in _DOC_TYPES] or list(_DOC_TYPES)
-        per_type = max(1, limit // len(wanted))
+        # Pull a wider pool than we keep: multiple outlets cover each quarter, so we
+        # need headroom to still cover `quarters` distinct periods after collapsing.
+        pool = min(30, max(10, quarters * 3))
 
         candidates: list[ExaCandidate] = []
         seen: set[str] = set()
@@ -181,11 +211,12 @@ class HistoricalFetcher:
                 "/search",
                 {
                     "query": f"{entity} {suffix}",
-                    "numResults": per_type,
+                    "numResults": pool,
                     "type": "auto",
                     "contents": {"highlights": {"numSentences": 2, "highlightsPerUrl": 1}},
                 },
             )
+            pool_candidates: list[ExaCandidate] = []
             for r in data.get("results", []):
                 url = r.get("url")
                 if not url or url in seen:
@@ -198,7 +229,7 @@ class HistoricalFetcher:
                 # Read the fiscal period from the document's own title / highlight,
                 # so the label matches the prose (and anchors ingest to the right quarter).
                 period = infer_period(result_title, snippet)
-                candidates.append(
+                pool_candidates.append(
                     ExaCandidate(
                         url=url,
                         title=_auto_title(entity, doc_type, published, period, result_title),
@@ -209,6 +240,7 @@ class HistoricalFetcher:
                         period=period,
                     )
                 )
+            candidates.extend(_one_per_period(pool_candidates, quarters))
 
         candidates.sort(key=lambda c: c.published_date, reverse=True)
         return candidates

@@ -18,9 +18,9 @@ from attest.ingestion.exa import (
 )
 from attest.service import AttestService
 
-# Two results, newest second, so sort-by-date is observable. One release URL and
-# one transcript URL, both returned for every /search call so dedup is exercised.
-SEARCH = {
+# A realistic release pool: two outlets cover the SAME quarter (FY2026-Q1) — these
+# must collapse to one — plus a distinct earlier quarter (FY2025-Q4).
+RELEASES = {
     "results": [
         {
             "url": "https://www.businesswire.com/panw-q1",
@@ -29,13 +29,40 @@ SEARCH = {
             "highlights": ["Total revenue grew 14% year over year."],
         },
         {
-            "url": "https://www.fool.com/panw-q1-transcript",
-            "title": "Palo Alto Networks (PANW) Q1 2026 Earnings Call Transcript",
-            "publishedDate": "2026-01-29T12:00:00Z",
-            "highlights": ["Prepared remarks from the CEO."],
+            "url": "https://www.investing.com/panw-q1-recap",
+            "title": "Palo Alto Networks Q1 2026 results: revenue tops estimates",
+            "publishedDate": "2026-01-29T00:00:00Z",  # same period, newer -> wins the collapse
+            "highlights": ["Q1 fiscal 2026 revenue and guidance recap."],
+        },
+        {
+            "url": "https://www.businesswire.com/panw-q4",
+            "title": "Palo Alto Networks Reports Fourth Quarter Fiscal 2025 Results",
+            "publishedDate": "2025-08-18T00:00:00Z",
+            "highlights": ["Fiscal 2025 fourth quarter revenue grew 15%."],
         },
     ]
 }
+
+# A transcript pool spanning the same two quarters.
+TRANSCRIPTS = {
+    "results": [
+        {
+            "url": "https://www.fool.com/panw-q1-transcript",
+            "title": "Palo Alto Networks (PANW) Q1 2026 Earnings Call Transcript",
+            "publishedDate": "2026-01-30T12:00:00Z",
+            "highlights": ["Prepared remarks from the CEO."],
+        },
+        {
+            "url": "https://www.fool.com/panw-q4-transcript",
+            "title": "Palo Alto Networks (PANW) Q4 2025 Earnings Call Transcript",
+            "publishedDate": "2025-08-20T12:00:00Z",
+            "highlights": ["Prepared remarks for the fourth quarter."],
+        },
+    ]
+}
+
+# Back-compat single-payload fixture for tests that don't care about per-type results.
+SEARCH = RELEASES
 
 # Full text for the selected release: an in-period figure the DisclosureConnector
 # can extract once a period anchor is supplied.
@@ -52,17 +79,30 @@ CONTENTS = {
 
 
 class _StubExa:
-    """Canned Exa transport: returns the configured payload per endpoint."""
+    """Canned Exa transport: returns the configured payload per endpoint.
 
-    def __init__(self, *, search: dict | None = None, contents: dict | None = None) -> None:
-        self._search = search or {"results": []}
+    ``search`` returns one payload for any query; ``releases`` / ``transcripts``
+    let a test return type-specific results (the real API runs one query per type).
+    """
+
+    def __init__(
+        self,
+        *,
+        search: dict | None = None,
+        releases: dict | None = None,
+        transcripts: dict | None = None,
+        contents: dict | None = None,
+    ) -> None:
+        self._releases = releases or search or {"results": []}
+        self._transcripts = transcripts or search or {"results": []}
         self._contents = contents or {"results": []}
         self.calls: list[tuple[str, dict]] = []
 
     def post_json(self, path: str, payload: dict) -> dict:
         self.calls.append((path, payload))
         if path == "/search":
-            return self._search
+            query = payload.get("query", "")
+            return self._transcripts if "transcript" in query else self._releases
         if path == "/contents":
             # Mirror the real endpoint: only return the requested URLs.
             wanted = set(payload.get("urls", []))
@@ -89,27 +129,48 @@ def test_live_client_accepts_explicit_key() -> None:
 # -- HistoricalFetcher.search ------------------------------------------------
 
 
-def test_search_dedupes_and_sorts_newest_first() -> None:
-    fetcher = HistoricalFetcher(client=_StubExa(search=SEARCH))
+def test_search_returns_one_result_per_period() -> None:
+    # The release pool has two outlets for FY2026-Q1 and one for FY2025-Q4; the
+    # transcript pool spans the same two quarters. The result must carry exactly one
+    # candidate per (type, period) — no quarter repeated — newest first overall.
+    fetcher = HistoricalFetcher(client=_StubExa(releases=RELEASES, transcripts=TRANSCRIPTS))
     candidates = fetcher.search(entity="PANW", doc_types=["release", "transcript"])
 
-    urls = [c.url for c in candidates]
-    assert len(urls) == len(set(urls)) == 2  # same payload twice -> deduped
-    # Newest-first: the 2026-01-29 transcript precedes the 2026-01-28 release.
-    assert candidates[0].published_date >= candidates[1].published_date
+    scopes = [(c.doc_type, c.period) for c in candidates]
+    assert len(scopes) == len(set(scopes))  # no (type, period) repeated
+    assert sorted(scopes) == sorted(
+        [("release", "FY2026-Q1"), ("release", "FY2025-Q4"),
+         ("transcript", "FY2026-Q1"), ("transcript", "FY2025-Q4")]
+    )
+    # Sorted newest-first by publish date.
+    dates = [c.published_date for c in candidates]
+    assert dates == sorted(dates, reverse=True)
+    # Among the two FY2026-Q1 releases, the most recently published outlet wins.
+    q1_release = next(c for c in candidates if c.doc_type == "release" and c.period == "FY2026-Q1")
+    assert q1_release.source == "investing.com"  # pub 2026-01-29 beat businesswire's 2026-01-28
+
+
+def test_search_limits_to_requested_quarters() -> None:
+    # quarters=1 -> only the single most recent period per type.
+    fetcher = HistoricalFetcher(client=_StubExa(releases=RELEASES, transcripts=TRANSCRIPTS))
+    candidates = fetcher.search(entity="PANW", doc_types=["release", "transcript"], quarters=1)
+
+    assert {(c.doc_type, c.period) for c in candidates} == {
+        ("release", "FY2026-Q1"),
+        ("transcript", "FY2026-Q1"),
+    }
 
 
 def test_search_auto_titles_with_fiscal_period_and_pub_date() -> None:
-    fetcher = HistoricalFetcher(client=_StubExa(search=SEARCH))
+    fetcher = HistoricalFetcher(client=_StubExa(releases=RELEASES))
     candidates = fetcher.search(entity="panw", doc_types=["release"])
 
-    candidate = candidates[-1]  # the 2026-01-28 release
-    title = candidate.title
+    q4 = next(c for c in candidates if c.period == "FY2025-Q4")
+    title = q4.title
     assert "PANW" in title  # entity upper-cased
-    assert "FY2026-Q1" in title  # fiscal period read from the doc title, not the date
-    assert "pub 2026-01-28" in title
-    assert candidate.period == "FY2026-Q1"  # surfaced for the ingest anchor
-    assert candidate.source == "businesswire.com"  # www. stripped
+    assert "FY2025-Q4" in title  # fiscal period read from the doc title, not the date
+    assert "pub 2025-08-18" in title
+    assert q4.source == "businesswire.com"  # www. stripped
 
 
 def test_search_titles_with_reporting_quarter_not_publish_quarter() -> None:

@@ -117,7 +117,7 @@ export interface AttestClient {
   /** Auto-fetch the prior quarter's 8-K press release from SEC EDGAR. */
   fetchPriorPeriod(ticker: string, period: string): Promise<PriorPeriodResult>;
   /** Search the web (via Exa) for an issuer's historical earnings docs to review. */
-  searchHistorical(entity: string, docTypes?: string[]): Promise<HistoricalCandidate[]>;
+  searchHistorical(entity: string, docTypes?: string[], quarters?: number): Promise<HistoricalCandidate[]>;
   /** Fetch + ingest the selected historical documents as prior-disclosure references. */
   ingestHistorical(
     entity: string,
@@ -331,13 +331,14 @@ export function createLiveClient(baseUrl: string): AttestClient {
       return (await res.json()) as PriorPeriodResult;
     },
 
-    async searchHistorical(entity, docTypes) {
+    async searchHistorical(entity, docTypes, quarters) {
       const res = await fetch(`${base}/tenants/${TENANT}/historical/search`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           entity: entity.trim(),
           ...(docTypes ? { doc_types: docTypes } : {}),
+          ...(quarters ? { quarters } : {}),
         }),
       });
       if (!res.ok) {

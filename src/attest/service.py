@@ -484,14 +484,15 @@ class AttestService:
         *,
         entity: str,
         doc_types: tuple[str, ...] = ("release", "transcript"),
-        limit: int = 8,
+        quarters: int = 4,
         exa_client: ExaHttpClient | None = None,
     ) -> list[ExaCandidate]:
         """Search the web (via Exa) for an issuer's historical earnings documents.
 
         The discovery half of the SEC-independent path: returns auto-titled
-        candidates (release / transcript, newest first) the caller reviews before
-        ingesting any. Nothing is stored here — this is a pure lookup.
+        candidates — one release (and one transcript) per fiscal period, newest
+        first — for the most recent ``quarters`` periods, for the caller to review
+        before ingesting any. Nothing is stored here — this is a pure lookup.
 
         ``exa_client`` is injected in tests to avoid real network calls. Raises
         :class:`~attest.ingestion.exa.ExaUnavailable` (or its ``ExaNotConfigured``
@@ -499,7 +500,7 @@ class AttestService:
         an empty result.
         """
         fetcher = HistoricalFetcher(client=exa_client)
-        return fetcher.search(entity=entity, doc_types=list(doc_types), limit=limit)
+        return fetcher.search(entity=entity, doc_types=list(doc_types), quarters=quarters)
 
     def ingest_historical(
         self,
