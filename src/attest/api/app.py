@@ -315,6 +315,7 @@ def create_app(service: AttestService | None = None) -> FastAPI:
                     source=c.source,
                     snippet=c.snippet,
                     doc_type=c.doc_type,
+                    period=c.period,
                 )
                 for c in candidates
             ]

@@ -96,6 +96,7 @@ export interface HistoricalCandidate {
   source: string;
   snippet: string;
   doc_type: string; // "release" | "transcript"
+  period?: string | null; // fiscal period read from the doc, e.g. "FY2026-Q3"
 }
 
 /** Summary of ingesting selected historical documents found via web search. */

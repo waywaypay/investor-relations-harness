@@ -35,6 +35,8 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Protocol
 
+from attest.extraction.claims import infer_period
+
 _EXA_BASE = "https://api.exa.ai"
 
 # The two document classes the IR workflow cares about, with the query suffix and
@@ -58,11 +60,12 @@ class ExaCandidate:
     """A search hit the user reviews before ingesting (no full text yet)."""
 
     url: str
-    title: str           # auto-generated, e.g. "PANW Earnings call transcript · 2026-Q1 (pub 2026-01-28)"
+    title: str           # auto-generated, e.g. "PANW Earnings call transcript · FY2026-Q1 (pub 2026-01-28)"
     published_date: str  # ISO date "YYYY-MM-DD", or "" when Exa returns none
     source: str          # display domain, e.g. "fool.com"
     snippet: str         # short highlight for the review row
     doc_type: str        # "release" | "transcript"
+    period: str | None = None  # fiscal period read from the doc itself, e.g. "FY2026-Q3"
 
 
 @dataclass
@@ -125,27 +128,23 @@ def _domain(url: str) -> str:
     return host[4:] if host.startswith("www.") else host
 
 
-def calendar_quarter(iso_date: str) -> str | None:
-    """The calendar quarter a publish date falls in, e.g. ``2026-01-28`` -> ``2026-Q1``.
+def _auto_title(
+    entity: str, doc_type: str, published_date: str, period: str | None, fallback: str
+) -> str:
+    """An auto-generated, human-readable title carrying the *fiscal* period it reports.
 
-    This is the *publication* quarter (what the user asked to see in the title),
-    not the issuer's fiscal reporting period — those can differ, and the figures
-    themselves still resolve their own period from the prose.
+    The period is read from the document's own words (title / highlight), not guessed
+    from the publish date — an issuer's reporting quarter and the calendar quarter it
+    publishes in routinely differ (a July-fiscal-year company reports its Q3 in June),
+    so a date-derived label would contradict the document beside it. When no period can
+    be read, the title falls back to just the publish date rather than inventing one.
     """
-    m = re.match(r"(\d{4})-(\d{2})", iso_date)
-    if not m:
-        return None
-    year, month = int(m.group(1)), int(m.group(2))
-    return f"{year}-Q{(month - 1) // 3 + 1}"
-
-
-def _auto_title(entity: str, doc_type: str, published_date: str, fallback: str) -> str:
-    """An auto-generated, human-readable title carrying the publish date / quarter."""
     label = _DOC_TYPES.get(doc_type, ("", "Disclosure"))[1]
     ent = entity.strip().upper()
-    quarter = calendar_quarter(published_date)
-    if published_date and quarter:
-        return f"{ent} {label} · {quarter} (pub {published_date})"
+    if period and published_date:
+        return f"{ent} {label} · {period} (pub {published_date})"
+    if period:
+        return f"{ent} {label} · {period}"
     if published_date:
         return f"{ent} {label} (pub {published_date})"
     return fallback.strip() or f"{ent} {label}"
@@ -193,16 +192,21 @@ class HistoricalFetcher:
                     continue
                 seen.add(url)
                 published = (r.get("publishedDate") or "")[:10]
+                result_title = r.get("title", "") or ""
                 highlights = r.get("highlights") or []
-                snippet = (highlights[0] if highlights else r.get("title", "") or "")[:240]
+                snippet = (highlights[0] if highlights else result_title)[:240]
+                # Read the fiscal period from the document's own title / highlight,
+                # so the label matches the prose (and anchors ingest to the right quarter).
+                period = infer_period(result_title, snippet)
                 candidates.append(
                     ExaCandidate(
                         url=url,
-                        title=_auto_title(entity, doc_type, published, r.get("title", "") or ""),
+                        title=_auto_title(entity, doc_type, published, period, result_title),
                         published_date=published,
                         source=_domain(url),
                         snippet=snippet,
                         doc_type=doc_type,
+                        period=period,
                     )
                 )
 

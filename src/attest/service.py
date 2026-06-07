@@ -530,13 +530,17 @@ class AttestService:
 
         results: list[tuple[ExaDocument, IngestionReport]] = []
         for doc in docs:
+            # Anchor unperiodized figures to the document's own reporting period:
+            # the period the reviewer saw (read from the candidate), else inferred
+            # from the full text now in hand — never a calendar guess off the date.
+            period = period_by_url.get(doc.url) or infer_period(doc.title, doc.text)
             facts, report = DisclosureConnector(
                 self.registry, self.store, self.aliases_for(tenant_id)
             ).fetch(
                 text=doc.text,
                 tenant_id=tenant_id,
                 entity=entity,
-                period=period_by_url.get(doc.url),
+                period=period,
                 as_of=doc.published_date or UNDATED_AS_OF,
                 source_ref=doc.url,
                 label=title_by_url.get(doc.url) or doc.title,
