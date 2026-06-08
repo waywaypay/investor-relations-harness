@@ -169,7 +169,11 @@ export function DocumentsManager({
   focusKind = null,
 }: {
   onOpen: (docId: string) => void;
-  onUploadNew: (role?: "draft" | "reference") => void;
+  onUploadNew: (
+    role?: "draft" | "reference",
+    source?: "edgar" | "historical" | "file",
+    kind?: DocKind,
+  ) => void;
   onUploadVersion: (doc: LibraryDoc) => void;
   focusDocId?: string | null;
   /** When set, the manager is scoped to one document category. */
@@ -186,6 +190,20 @@ export function DocumentsManager({
   for (const d of docs) if (!periods.includes(d.period)) periods.push(d.period);
 
   const scoped = focusKind != null;
+
+  // Within a press-releases or transcripts section, a reference upload is scoped to
+  // that category: the "Fetch historical" search then returns only that document
+  // type (not both), and opens straight on the historical tab. Outside those two
+  // sections it stays the generic reference upload (defaults to the EDGAR tab).
+  const refScoped = focusKind === "release" || focusKind === "script";
+  const refLabel =
+    focusKind === "release"
+      ? "+ Add past release"
+      : focusKind === "script"
+        ? "+ Add past transcript"
+        : "+ Upload past transcript";
+  const openReference = () =>
+    refScoped ? onUploadNew("reference", "historical", focusKind!) : onUploadNew("reference");
 
   return (
     <div className="mgr">
@@ -204,8 +222,8 @@ export function DocumentsManager({
             {docs.length} document{docs.length === 1 ? "" : "s"}
           </span>
           <div className="dmtoolbar-acts">
-            <button className="btn" onClick={() => onUploadNew("reference")}>
-              + Upload past transcript
+            <button className="btn" onClick={openReference}>
+              {refLabel}
             </button>
             <button className="btn go" onClick={() => onUploadNew("draft")}>+ New draft</button>
           </div>

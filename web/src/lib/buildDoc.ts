@@ -305,38 +305,54 @@ const REF_SUBTITLE: Record<DocKind, string> = {
 /** Build a viewable version from a historical document fetched from the web.
  *
  *  These are *prior disclosures* loaded as the reference corpus a later draft is
- *  checked against — so the user can read the loaded release/transcript in the
- *  workspace instead of just seeing a figure count appear in the sidebar. Figures
- *  are detected and shown for reading; they read as untraced with a reference note
- *  (they're filed as reference facts on the backend, not verified as a draft is). */
+ *  checked against — but each is also analyzed against the issuer's filed SEC
+ *  sources, so the user can read the loaded release/transcript with every figure
+ *  tied out (traced / conflict) and linked to its source, not just a count in the
+ *  sidebar. When that analysis is present (`verdicts`), it drives the figures;
+ *  otherwise we fall back to client-side numeric detection, marking each figure an
+ *  untraced reference number (no backend reached, or none extracted). */
 export function buildReferenceVersion(
-  input: { text: string; title: string; kind: DocKind; source?: string; period?: string },
+  input: {
+    text: string;
+    title: string;
+    kind: DocKind;
+    source?: string;
+    period?: string;
+    claims?: AnalyzeClaim[];
+    verdicts?: AnalyzeVerdict[];
+  },
   versionId: string
 ): BuiltVersion {
   const period = input.period || "—";
-  const claims: AnalyzeClaim[] = [];
-  const verdicts: AnalyzeVerdict[] = [];
-  let i = 0;
-  for (const figText of detectNewFigures(input.text)) {
-    const id = `ref_${i++}`;
-    claims.push({
-      claim_id: id,
-      metric: "reference_figure",
-      period,
-      entity: "—",
-      displayed_text: figText,
-      span: null,
-    });
-    verdicts.push({
-      claim_id: id,
-      metric: "reference_figure",
-      period,
-      displayed_text: figText,
-      verdict: "untraced",
-      reason:
-        "Figure from a prior disclosure loaded as reference. It's filed as a reference fact your drafts tie out against — not verified as a draft itself.",
-      source_value: null,
-    });
+  let claims = input.claims ?? [];
+  let verdicts = input.verdicts ?? [];
+  // No backend analysis to render: detect numeric spans client-side and show them
+  // as untraced reference figures so the document is still readable.
+  if (verdicts.length === 0) {
+    claims = [];
+    verdicts = [];
+    let i = 0;
+    for (const figText of detectNewFigures(input.text)) {
+      const id = `ref_${i++}`;
+      claims.push({
+        claim_id: id,
+        metric: "reference_figure",
+        period,
+        entity: "—",
+        displayed_text: figText,
+        span: null,
+      });
+      verdicts.push({
+        claim_id: id,
+        metric: "reference_figure",
+        period,
+        displayed_text: figText,
+        verdict: "untraced",
+        reason:
+          "Figure from a prior disclosure loaded as reference. It's filed as a reference fact your drafts tie out against — not verified as a draft itself.",
+        source_value: null,
+      });
+    }
   }
   return assembleVersion({
     versionId,

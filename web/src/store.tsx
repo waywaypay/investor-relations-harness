@@ -547,7 +547,17 @@ export function StoreProvider({
         if (d.text && d.text.trim()) {
           const versionId = newVersionId();
           const built = buildReferenceVersion(
-            { text: d.text, title: d.title || d.url, kind, source: hostOf(d.url), period: d.period ?? undefined },
+            {
+              text: d.text,
+              title: d.title || d.url,
+              kind,
+              source: hostOf(d.url),
+              period: d.period ?? undefined,
+              // The backend analyzed the fetched doc against the issuer's filed SEC
+              // sources; render those verdicts so figures link to their source.
+              claims: d.claims,
+              verdicts: d.verdicts,
+            },
             versionId
           );
           Object.assign(newFigures, built.figures);

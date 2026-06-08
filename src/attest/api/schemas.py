@@ -179,6 +179,9 @@ class HistoricalIngestItem(BaseModel):
     period: str | None = Field(
         default=None, description="optional fiscal period to anchor figures, e.g. 'FY2026-Q1'"
     )
+    doc_type: str | None = Field(
+        default=None, description="'release' or 'transcript' — the kind it analyzes under"
+    )
 
 
 class HistoricalIngestRequest(BaseModel):
@@ -198,6 +201,14 @@ class HistoricalIngestDoc(BaseModel):
     text: str = Field(
         default="",
         description="the document's recovered prose, so the client can render it in the workspace",
+    )
+    claims: list[FigureClaim] = Field(
+        default_factory=list,
+        description="figures the edge found in the prose, with spans for highlighting",
+    )
+    verdicts: list[FigureVerdict] = Field(
+        default_factory=list,
+        description="the spine's per-figure disposition against the issuer's filed SEC sources",
     )
 
 

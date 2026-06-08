@@ -39,11 +39,34 @@ from attest.extraction.claims import infer_period
 
 _EXA_BASE = "https://api.exa.ai"
 
-# The two document classes the IR workflow cares about, with the query suffix and
-# the human label each gets in an auto-generated title.
-_DOC_TYPES: dict[str, tuple[str, str]] = {
-    "release": ("quarterly earnings results press release", "Earnings release"),
-    "transcript": ("earnings call transcript prepared remarks", "Earnings call transcript"),
+
+@dataclass(frozen=True)
+class _DocTypeSpec:
+    """How one document class is searched: the query suffix, the human label its
+    auto-title gets, and the Exa content ``category`` that biases the search."""
+
+    query_suffix: str
+    label: str
+    category: str
+
+
+# The two document classes the IR workflow cares about. The release query targets
+# the issuer's *own* earnings press release (its investor-relations site and the
+# newswires it distributes through — Business Wire / GlobeNewswire / PR Newswire),
+# not third-party recaps or analysis; ``category="news"`` keeps Exa on published
+# press/news pages rather than blogs or filings. The transcript query targets the
+# call's prepared remarks.
+_DOC_TYPES: dict[str, _DocTypeSpec] = {
+    "release": _DocTypeSpec(
+        "investor relations earnings press release announces financial results",
+        "Earnings release",
+        "news",
+    ),
+    "transcript": _DocTypeSpec(
+        "earnings call transcript prepared remarks",
+        "Earnings call transcript",
+        "news",
+    ),
 }
 
 
@@ -139,7 +162,8 @@ def _auto_title(
     so a date-derived label would contradict the document beside it. When no period can
     be read, the title falls back to just the publish date rather than inventing one.
     """
-    label = _DOC_TYPES.get(doc_type, ("", "Disclosure"))[1]
+    spec = _DOC_TYPES.get(doc_type)
+    label = spec.label if spec else "Disclosure"
     ent = entity.strip().upper()
     if period and published_date:
         return f"{ent} {label} · {period} (pub {published_date})"
@@ -206,13 +230,14 @@ class HistoricalFetcher:
         candidates: list[ExaCandidate] = []
         seen: set[str] = set()
         for doc_type in wanted:
-            suffix = _DOC_TYPES[doc_type][0]
+            spec = _DOC_TYPES[doc_type]
             data = self._http.post_json(
                 "/search",
                 {
-                    "query": f"{entity} {suffix}",
+                    "query": f"{entity} {spec.query_suffix}",
                     "numResults": pool,
                     "type": "auto",
+                    "category": spec.category,
                     "contents": {"highlights": {"numSentences": 2, "highlightsPerUrl": 1}},
                 },
             )
