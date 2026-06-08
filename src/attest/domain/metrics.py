@@ -40,6 +40,11 @@ class MetricSpec(BaseModel):
     derived_denominator: str | None = Field(
         default=None, description="for a 'ratio' derived metric, the denominator metric"
     )
+    derived_subtrahend: str | None = Field(
+        default=None,
+        description="for a 'difference' derived metric, the metric subtracted from "
+        "derived_base (e.g. free cash flow = operating_cash_flow - capex)",
+    )
     derived_components: tuple[str, ...] = Field(
         default=(), description="for a 'sum' derived metric, the components that must sum to it"
     )
@@ -210,10 +215,39 @@ DEFAULT_REGISTRY = MetricRegistry(
             label="Operating margin guidance",
             unit=Unit.PERCENT,
         ),
+        # Margins are not tagged in XBRL, but they are exact identities over figures
+        # that are: a draft's "operating margin of 28%" recomputes from filed operating
+        # income / revenue, so the engine can trace it (or catch a wrong one) rather than
+        # leave it untraced.
         MetricSpec(
             id="operating_margin",
             label="Operating margin",
             unit=Unit.PERCENT,
+            derived_kind="ratio_pct",
+            derived_numerator="operating_income",
+            derived_denominator="total_revenue",
+        ),
+        # Non-GAAP margins are a different (larger) number than the GAAP ratio above —
+        # recomputing a "non-GAAP gross margin" against filed GAAP gross profit would
+        # fire a false conflict. They have no filed source, so (like billings) they are
+        # recognised and checked for *consistency* against prior disclosure, never traced.
+        MetricSpec(
+            id="non_gaap_operating_margin",
+            label="Non-GAAP operating margin",
+            unit=Unit.PERCENT,
+        ),
+        MetricSpec(
+            id="non_gaap_gross_margin",
+            label="Non-GAAP gross margin",
+            unit=Unit.PERCENT,
+        ),
+        MetricSpec(
+            id="gross_margin",
+            label="Gross margin",
+            unit=Unit.PERCENT,
+            derived_kind="ratio_pct",
+            derived_numerator="gross_profit",
+            derived_denominator="total_revenue",
         ),
         MetricSpec(
             id="operating_margin_change_bps",
@@ -221,6 +255,40 @@ DEFAULT_REGISTRY = MetricRegistry(
             unit=Unit.BASIS_POINTS,
             derived_kind="delta_bps",
             derived_base="operating_margin",
+        ),
+        # Capital expenditure — a filed cash-flow line, and the subtrahend that turns
+        # operating cash flow into free cash flow.
+        MetricSpec(
+            id="capex",
+            label="Capital expenditure",
+            unit=Unit.CURRENCY,
+            xbrl_tags=("us-gaap:PaymentsToAcquirePropertyPlantAndEquipment",),
+        ),
+        # Free cash flow is the canonical non-GAAP cash measure: operating cash flow
+        # less capex. Both operands are filed, so it is a verifiable identity. (Quarterly
+        # operands are often filed only as cumulative YTD figures, which the EDGAR
+        # connector skips, so single-quarter FCF can stay honestly untraced; annual FCF
+        # ties out.)
+        # (Left off the Reg G non-GAAP flag deliberately: FCF *is* non-GAAP, but the
+        # equal-prominence / reconciliation enforcement that flag drives doesn't fit a
+        # subtraction identity — wiring that up is a separate Reg G enhancement.)
+        MetricSpec(
+            id="free_cash_flow",
+            label="Free cash flow",
+            unit=Unit.CURRENCY,
+            derived_kind="difference",
+            derived_base="operating_cash_flow",
+            derived_subtrahend="capex",
+        ),
+        # Billings (revenue + change in deferred revenue) is a non-GAAP operational
+        # measure with no standard XBRL tag and an issuer-specific definition, so it is
+        # never *traced* to a filing. Registering it means a draft's billings figure is
+        # recognised (not "unidentified") and checked for *consistency* against what the
+        # company previously disclosed — the path every non-filed operational figure takes.
+        MetricSpec(
+            id="billings",
+            label="Billings",
+            unit=Unit.CURRENCY,
         ),
     ]
 )
