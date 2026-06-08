@@ -74,6 +74,10 @@ _ALIASES: dict[str, tuple[str, ...]] = {
         "non-gaap net loss per share", "adjusted net loss per share",
     ),
     "operating_cash_flow": ("operating cash flow", "cash flow from operations", "cash provided by operating activities", "cash from operations"),
+    # Free cash flow = operating cash flow − capex. Bound to the full phrase so it is
+    # never swallowed by the "cash flow" in the operating-cash-flow aliases.
+    "free_cash_flow": ("free cash flow", "fcf"),
+    "capex": ("capital expenditures", "capital expenditure", "capex", "purchases of property and equipment", "purchases of property, plant and equipment"),
     "net_income": ("net income", "net earnings"),
     "operating_income": ("operating income", "income from operations", "operating profit"),
     "gross_profit": ("gross profit",),
@@ -83,6 +87,13 @@ _ALIASES: dict[str, tuple[str, ...]] = {
     "cash_and_equivalents": ("cash and cash equivalents", "cash and equivalents"),
     "share_repurchases": ("share repurchases", "repurchases of common stock", "repurchase of common stock", "repurchased", "stock buyback", "buyback"),
     "operating_margin": ("operating margin", "margin from operations"),
+    "gross_margin": ("gross margin", "gross profit margin"),
+    # Non-GAAP margins must steer to their own (consistency-only) metric, not the
+    # GAAP-derived ratio — the longer alias wins the substring tie over "gross/operating
+    # margin", so a recompute against GAAP operands never fires a false conflict.
+    "non_gaap_gross_margin": ("non-gaap gross margin", "non gaap gross margin", "adjusted gross margin"),
+    "non_gaap_operating_margin": ("non-gaap operating margin", "non gaap operating margin", "adjusted operating margin"),
+    "billings": ("billings", "total billings", "calculated billings"),
     # A basis-points figure is the margin *change*. "basis points" alone can't anchor
     # it (those words sit inside the figure span, not its context), so attribute on the
     # margin verb that precedes it — in any inflection a real draft uses ("expanded",
@@ -111,6 +122,10 @@ _GROWTH_NEAR = re.compile(
     r"(?:de|ac)celerat\w*|up|down|higher|lower|yoy|year[- ]over[- ]year)\b",
     re.IGNORECASE,
 )
+
+# Derived kinds that express a *change* (so a percent needs a growth word nearby to
+# read as a change, not a level). A ratio level like a margin is deliberately not here.
+_GROWTH_KINDS = frozenset({"yoy_growth", "qoq_growth", "delta_bps"})
 
 # Where a figure's own trailing label ends and the next clause begins. A trailing
 # label is a tight prepositional tail ("$338 million of operating cash flow"); once
@@ -466,7 +481,10 @@ class ClaimExtractor:
             return None, False, None
         metric_id, trailing_span = best
         spec = self.registry.get(metric_id)
-        is_growth = bool(spec and spec.derived_kind)
+        # Only *change* metrics (YoY/QoQ growth, bps delta) demand a growth word
+        # nearby; a ratio level like a margin is not a change, so it must not be
+        # demoted to low confidence for lacking one.
+        is_growth = bool(spec and spec.derived_kind in _GROWTH_KINDS)
         return metric_id, is_growth, trailing_span
 
     def extract(

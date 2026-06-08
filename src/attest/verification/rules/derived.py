@@ -28,7 +28,8 @@ import re
 from decimal import Decimal
 
 from attest.domain.document import Document
-from attest.domain.metrics import MetricRegistry
+from attest.domain.facts import Fact
+from attest.domain.metrics import MetricRegistry, MetricSpec
 from attest.domain.money import (
     DEFAULT_POLICY,
     Quantity,
@@ -76,6 +77,69 @@ def _expected(kind: str, current: Decimal, prior: Decimal) -> tuple[Decimal, Uni
     return None
 
 
+# Derived kinds that are an identity over *same-period* operands (no prior period):
+# ratio/ratio_pct = a / b (×100), sum = Σ components, difference = base − subtrahend.
+CURRENT_PERIOD_KINDS = frozenset({"ratio", "ratio_pct", "sum", "difference"})
+
+
+def recompute_current_period(
+    spec: MetricSpec,
+    store: FactStore,
+    tenant_id: str,
+    entity: str,
+    period: str,
+    *,
+    require_filed: bool,
+) -> tuple[Quantity, list[Fact]] | None:
+    """Recompute a same-period identity metric from its operand facts.
+
+    Returns ``(expected_quantity, operand_facts)`` or ``None`` when any operand is
+    missing — or, with ``require_filed=True``, present but not a filed source. This
+    is the single place the identity math lives, shared by the consistency rule
+    (which flags a *mis-stated* derived figure) and the engine (which renders a
+    *verdict* for a derived metric that has no stored fact of its own, so a gross
+    margin recomputes to ``traced``/``conflict`` instead of falling to untraced).
+
+    The returned quantity carries the metric's declared unit and an exact quantum;
+    the caller rounds to the figure-as-written's precision when comparing.
+    """
+
+    def operand(metric_id: str | None) -> Fact | None:
+        if not metric_id:
+            return None
+        fact = store.latest(tenant_id, entity, metric_id, period)
+        if fact is None or (require_filed and not fact.is_filed):
+            return None
+        return fact
+
+    kind = spec.derived_kind
+    if kind in ("ratio", "ratio_pct"):
+        num, den = operand(spec.derived_numerator), operand(spec.derived_denominator)
+        if num is None or den is None or den.value == 0:
+            return None
+        value = num.value / den.value
+        if kind == "ratio_pct":
+            value *= Decimal(100)
+        return Quantity(value=value, unit=spec.unit, quantum=Decimal(0)), [num, den]
+
+    if kind == "difference":
+        base, sub = operand(spec.derived_base), operand(spec.derived_subtrahend)
+        if base is None or sub is None:
+            return None
+        return Quantity(value=base.value - sub.value, unit=spec.unit, quantum=Decimal(0)), [base, sub]
+
+    if kind == "sum":
+        if not spec.derived_components:
+            return None
+        parts = [operand(c) for c in spec.derived_components]
+        if any(p is None for p in parts):
+            return None
+        total = sum((p.value for p in parts), Decimal(0))  # type: ignore[union-attr]
+        return Quantity(value=total, unit=spec.unit, quantum=Decimal(0)), parts  # type: ignore[return-value]
+
+    return None
+
+
 def check_derived_consistency(
     document: Document, registry: MetricRegistry, store: FactStore
 ) -> list[RuleFinding]:
@@ -90,6 +154,10 @@ def check_derived_consistency(
         # two same-period operands rather than a prior period.
         if spec.derived_kind in ("ratio", "ratio_pct"):
             findings.extend(_check_ratio(document, claim, spec, store))
+            continue
+
+        if spec.derived_kind == "difference":
+            findings.extend(_check_difference(document, claim, spec, store))
             continue
 
         if spec.derived_kind == "sum":
@@ -221,6 +289,37 @@ def _check_sum(document, claim, spec, store) -> list[RuleFinding]:
             message=f"'{spec.label}' is stated as {claim.displayed_text} but its "
             f"components sum to {rounded}.",
             detail=f"{bridge} = {total}.",
+        )
+    ]
+
+
+def _check_difference(document, claim, spec, store) -> list[RuleFinding]:
+    """Verify a difference identity: claimed == base - subtrahend (e.g. FCF = OCF - capex)."""
+    recomputed = recompute_current_period(
+        spec, store, document.tenant_id, claim.entity, claim.period, require_filed=False
+    )
+    if recomputed is None:
+        return []  # an operand is missing — never guess
+    expected_qty, (base, sub) = recomputed
+
+    try:
+        claimed = parse_quantity(claim.displayed_text)
+    except QuantityParseError:
+        return []
+
+    expected = Quantity(value=expected_qty.value, unit=claimed.unit, quantum=claimed.quantum)
+    if claimed.matches(expected, DEFAULT_POLICY):
+        return []
+    rounded = DEFAULT_POLICY.round_to(expected_qty.value, claimed.quantum or Decimal(1))
+    return [
+        RuleFinding(
+            rule="derived.difference_mismatch",
+            severity=RuleSeverity.BLOCK,
+            document_id=document.id,
+            metric=claim.metric,
+            message=f"'{spec.label}' is stated as {claim.displayed_text} but "
+            f"{spec.derived_base} - {spec.derived_subtrahend} = {rounded}.",
+            detail=f"{base.value} - {sub.value} = {expected_qty.value}.",
         )
     ]
 

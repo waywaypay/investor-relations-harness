@@ -35,6 +35,7 @@ from attest.domain.verdicts import (
 )
 from attest.factstore.repository import FactStore
 from attest.verification.rules import (
+    CURRENT_PERIOD_KINDS,
     check_cross_document_consistency,
     check_intra_document_consistency,
     check_derived_consistency,
@@ -44,7 +45,17 @@ from attest.verification.rules import (
     check_range_sanity,
     check_reg_g,
     check_unit_consistency,
+    recompute_current_period,
 )
+
+
+def _operand_ids(spec) -> list[str]:
+    """The metric ids a derived identity is computed from, in reading order."""
+    if spec.derived_kind in ("ratio", "ratio_pct"):
+        return [spec.derived_numerator or "?", spec.derived_denominator or "?"]
+    if spec.derived_kind == "difference":
+        return [spec.derived_base or "?", spec.derived_subtrahend or "?"]
+    return list(spec.derived_components)
 
 
 class VerificationResult(BaseModel):
@@ -112,8 +123,15 @@ class VerificationEngine:
     def _bind(self, claim: FigureClaim, tenant_id: str) -> FigureVerdict:
         versions = self.store.versions(tenant_id, claim.entity, claim.metric, claim.period)
 
-        # No source at all: the figure is untraced, full stop.
+        # No stored fact of its own: a *derived* metric (gross/operating margin, free
+        # cash flow) can still be verified by recomputing its identity from filed
+        # operands. This keeps the spine's invariant — only an exact-with-tolerance
+        # match against filed sources may say `traced` — while no longer leaving an
+        # exactly-correct margin untraced just because XBRL doesn't tag it.
         if not versions:
+            derived = self._bind_derived(claim, tenant_id)
+            if derived is not None:
+                return derived
             return self._verdict(
                 claim,
                 Verdict.UNTRACED,
@@ -223,6 +241,78 @@ class VerificationEngine:
             reason=f"Differs from the filed source "
             f"({latest.quantity().display()} as of {latest.as_of}).",
             fact=latest,
+        )
+
+    # The join symbol that reads the metric's identity for a human ("a / b", "a - b").
+    _IDENTITY_JOIN = {"ratio": " / ", "ratio_pct": " / ", "difference": " - ", "sum": " + "}
+
+    def _bind_derived(self, claim: FigureClaim, tenant_id: str) -> FigureVerdict | None:
+        """Verify a derived metric (margin / FCF) by recomputing its identity from
+        filed operands. Returns ``None`` when the metric isn't a same-period identity
+        or its operands aren't all filed — so the caller falls through to untraced and
+        never asserts a number it cannot source."""
+        spec = self.registry.get(claim.metric)
+        if spec is None or spec.derived_kind not in CURRENT_PERIOD_KINDS:
+            return None
+        recomputed = recompute_current_period(
+            spec, self.store, tenant_id, claim.entity, claim.period, require_filed=True
+        )
+        if recomputed is None:
+            return None
+        expected, operands = recomputed
+        identity = self._IDENTITY_JOIN[spec.derived_kind].join(_operand_ids(spec))
+
+        def synth(quantum):
+            as_of = max((o.as_of for o in operands), default=UNDATED_AS_OF)
+            return Fact(
+                id=f"derived:{claim.entity}:{claim.metric}:{claim.period}",
+                tenant_id=tenant_id,
+                entity=claim.entity,
+                metric=claim.metric,
+                period=claim.period,
+                value=expected.value,
+                unit=expected.unit,
+                quantum=quantum,
+                source_type=SourceType.DERIVED,
+                source_ref=f"derived:{identity}",
+                source_label=f"Recomputed from filed sources ({identity})",
+                as_of=as_of,
+                confidence=Confidence.HIGH,
+            )
+
+        try:
+            draft_qty = parse_quantity(claim.displayed_text)
+        except QuantityParseError:
+            return self._verdict(
+                claim,
+                Verdict.NEEDS_REVIEW,
+                reason=f"Could not normalize the figure as written "
+                f"('{claim.displayed_text}'); manual comparison required.",
+                fact=synth(expected.quantum),
+            )
+        if claim.detect_confidence == Confidence.LOW:
+            return self._verdict(
+                claim,
+                Verdict.NEEDS_REVIEW,
+                reason="Low detection confidence — routed for human review.",
+                fact=synth(expected.quantum),
+            )
+
+        # Compare at the figure-as-written's precision, like the filed-source path.
+        synthetic = synth(draft_qty.quantum)
+        if draft_qty.matches(synthetic.quantity(), self.policy):
+            return self._verdict(
+                claim,
+                Verdict.TRACED,
+                reason=f"Recomputed from filed sources ({identity}) within the rounding policy.",
+                fact=synthetic,
+            )
+        return self._verdict(
+            claim,
+            Verdict.CONFLICT,
+            reason=f"Differs from the value recomputed from filed sources: "
+            f"{identity} = {synthetic.quantity().display()}.",
+            fact=synthetic,
         )
 
     def _verdict(

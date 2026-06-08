@@ -32,6 +32,8 @@ class SourceType(str, Enum):
     #                                        release / transcript / deck) — not a filing,
     #                                        but the reference for a consistency check
     MANAGEMENT_INPUT = "management_input"  # guidance / forward-looking — no filed source
+    DERIVED = "derived"  # recomputed from filed facts via a metric identity (e.g. gross
+    #                      margin = gross profit / revenue) — traceable through its operands
 
     @property
     def is_filed(self) -> bool:
