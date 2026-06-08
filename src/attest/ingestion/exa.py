@@ -56,6 +56,72 @@ class _DocTypeSpec:
 # not third-party recaps or analysis; ``category="news"`` keeps Exa on published
 # press/news pages rather than blogs or filings. The transcript query targets the
 # call's prepared remarks.
+
+# Search and ingest should return the issuer's press-release prose, not SEC
+# filing cover pages. Exa supports domain exclusions for
+# normal/news search, but we also keep local guardrails because search providers can
+# still surface mirrored filings from an issuer's own site.
+_SEC_EXCLUDED_DOMAINS = ["sec.gov", "www.sec.gov"]
+
+_SEC_COVER_RE = re.compile(
+    r"\bUNITED\s+STATES\b.{0,400}?\bSECURITIES\s+AND\s+EXCHANGE\s+COMMISSION\b.{0,600}?\bFORM\s+8-K\b",
+    re.IGNORECASE | re.DOTALL,
+)
+_EXHIBIT_99_RE = re.compile(
+    r"(?:^|\n)\s*(?:EX-99\.1|EXHIBIT\s+99\.1|EXHIBIT\s+99(?:\s|$))\s*(?:\n|$|[:.-])",
+    re.IGNORECASE,
+)
+_NEXT_EXHIBIT_RE = re.compile(r"(?:^|\n)\s*(?:EX-\d+|EXHIBIT\s+\d+)\b", re.IGNORECASE)
+
+
+def _looks_like_sec_filing(text: str) -> bool:
+    """True when Exa returned an SEC filing/8-K cover instead of article prose."""
+    return bool(_SEC_COVER_RE.search(text[:4000]))
+
+
+def _extract_exhibit_99(text: str) -> str | None:
+    """Return the press-release exhibit from an 8-K text blob, when present.
+
+    Some company IR sites expose a single filing text/PDF whose first page is the
+    SEC cover sheet and whose actual earnings release is attached as Exhibit 99.1.
+    Rendering the whole blob creates the vertical "UNITED / STATES / SECURITIES"
+    page users reported.  If the exhibit is present, keep only that article-like
+    section; otherwise the caller should skip the document rather than load a
+    filing cover as a historical press release.
+    """
+    m = _EXHIBIT_99_RE.search(text)
+    if not m:
+        return None
+    start = m.end()
+    tail = text[start:]
+    nxt = _NEXT_EXHIBIT_RE.search(tail)
+    if nxt and nxt.start() > 200:
+        tail = tail[: nxt.start()]
+    # Filing text often appends signature boilerplate after the exhibit; drop it
+    # when it appears well after the release body has started.
+    sig = re.search(r"(?:^|\n)\s*SIGNATURES?\s*(?:\n|$)", tail, re.IGNORECASE)
+    if sig and sig.start() > 50:
+        tail = tail[: sig.start()]
+    return tail.strip() or None
+
+
+def _clean_historical_text(text: str) -> str:
+    """Normalize fetched historical prose and discard SEC filing cover pages."""
+    cleaned = re.sub(r"\r\n?", "\n", text).strip()
+    if not cleaned:
+        return ""
+    if _looks_like_sec_filing(cleaned):
+        exhibit = _extract_exhibit_99(cleaned)
+        if not exhibit:
+            return ""
+        cleaned = exhibit
+    # Exa markdown occasionally preserves very tall filing/PDF spacing. Keep real
+    # paragraph breaks, but remove runs of whitespace-only lines that make the UI
+    # look like a cover-page facsimile rather than prose.
+    cleaned = re.sub(r"[ \t]+\n", "\n", cleaned)
+    cleaned = re.sub(r"\n{4,}", "\n\n", cleaned)
+    return cleaned.strip()
+
 _DOC_TYPES: dict[str, _DocTypeSpec] = {
     "release": _DocTypeSpec(
         "investor relations earnings press release announces financial results",
@@ -234,10 +300,11 @@ class HistoricalFetcher:
             data = self._http.post_json(
                 "/search",
                 {
-                    "query": f"{entity} {spec.query_suffix}",
+                    "query": f"{entity} {spec.query_suffix} -site:sec.gov -site:www.sec.gov",
                     "numResults": pool,
                     "type": "auto",
                     "category": spec.category,
+                    "excludeDomains": _SEC_EXCLUDED_DOMAINS,
                     "contents": {"highlights": {"numSentences": 2, "highlightsPerUrl": 1}},
                 },
             )
@@ -278,7 +345,7 @@ class HistoricalFetcher:
         data = self._http.post_json("/contents", {"urls": clean, "text": True})
         docs: list[ExaDocument] = []
         for r in data.get("results", []):
-            text = (r.get("text") or "").strip()
+            text = _clean_historical_text(r.get("text") or "")
             if not text:
                 continue
             docs.append(

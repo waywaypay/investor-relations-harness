@@ -293,6 +293,86 @@ def test_fetch_contents_empty_urls_makes_no_request() -> None:
     assert stub.calls == []
 
 
+def test_search_excludes_sec_domains() -> None:
+    stub = _StubExa(releases=RELEASES)
+    HistoricalFetcher(client=stub).search(entity="PANW", doc_types=["release"])
+
+    payload = stub.calls[0][1]
+    assert "sec.gov" in payload["excludeDomains"]
+    assert "-site:sec.gov" in payload["query"]
+
+
+def test_fetch_contents_skips_sec_cover_page_without_release_exhibit() -> None:
+    sec_cover = """UNITED STATES
+
+SECURITIES AND EXCHANGE COMMISSION
+
+Washington, D.C. 20549
+
+FORM
+
+8-K
+
+CURRENT REPORT
+"""
+    stub = _StubExa(
+        contents={
+            "results": [
+                {
+                    "url": "https://www.sec.gov/Archives/x",
+                    "title": "8-K",
+                    "publishedDate": "2026-01-28",
+                    "text": sec_cover,
+                }
+            ]
+        }
+    )
+
+    assert (
+        HistoricalFetcher(client=stub).fetch_contents(urls=["https://www.sec.gov/Archives/x"])
+        == []
+    )
+
+
+def test_fetch_contents_extracts_press_release_exhibit_from_8k_blob() -> None:
+    filing_blob = """UNITED STATES
+
+SECURITIES AND EXCHANGE COMMISSION
+
+Washington, D.C. 20549
+
+FORM 8-K
+
+EXHIBIT 99.1
+
+Palo Alto Networks Reports Fiscal Third Quarter 2026 Financial Results
+
+Total revenue was $3.0 billion.
+
+SIGNATURES
+
+/s/ Officer
+"""
+    stub = _StubExa(
+        contents={
+            "results": [
+                {
+                    "url": "https://issuer.example/8k-q3",
+                    "title": "8-K",
+                    "publishedDate": "2026-06-02",
+                    "text": filing_blob,
+                }
+            ]
+        }
+    )
+
+    docs = HistoricalFetcher(client=stub).fetch_contents(urls=["https://issuer.example/8k-q3"])
+    assert len(docs) == 1
+    assert docs[0].text.startswith("Palo Alto Networks Reports Fiscal Third Quarter 2026")
+    assert "UNITED STATES" not in docs[0].text
+    assert "SIGNATURES" not in docs[0].text
+
+
 # -- service integration -----------------------------------------------------
 
 
