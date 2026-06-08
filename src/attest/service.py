@@ -9,6 +9,7 @@ accountability: Attest never silently changes a disclosure.
 from __future__ import annotations
 
 import uuid
+from dataclasses import dataclass
 
 from attest.audit.events import EventType
 from attest.audit.log import AuditLog, InMemoryAuditLog
@@ -29,6 +30,31 @@ from attest.ingestion.exa import ExaCandidate, ExaDocument, ExaHttpClient, Histo
 from attest.ingestion.prior_period import EdgarHttpClient, FetchedExhibit, PriorPeriodFetcher, prior_period as _prior_period
 from attest.verification.engine import VerificationEngine, VerificationResult
 from attest.verification.rules import check_cross_document_consistency
+
+
+# An Exa historical doc_type maps to the document kind it analyzes under, so the
+# right wording rules run (a transcript is a script, a release is a release).
+_HISTORICAL_DOC_KIND: dict[str, DocumentKind] = {
+    "release": DocumentKind.RELEASE,
+    "transcript": DocumentKind.SCRIPT,
+}
+
+
+@dataclass
+class HistoricalDocResult:
+    """One fetched historical document, ingested *and* analyzed.
+
+    ``report`` summarizes filing it as a prior-disclosure reference fact; ``analysis``
+    is the verdict the spine renders for the document's own figures against the
+    issuer's filed (EDGAR/XBRL) sources, so each highlighted figure links to the SEC
+    source instead of reading as an unattributed reference number.
+    """
+
+    document: ExaDocument
+    report: IngestionReport
+    period: str | None
+    analyzed: Document
+    analysis: VerificationResult
 
 
 class AttestService:
@@ -517,33 +543,64 @@ class AttestService:
         items: list[dict],
         exa_client: ExaHttpClient | None = None,
         actor: str = "system:historical-fetch",
-    ) -> list[tuple[ExaDocument, IngestionReport, str | None]]:
-        """Fetch the selected web documents and ingest them as prior disclosures.
+    ) -> list[HistoricalDocResult]:
+        """Fetch the selected web documents, tie their figures to the SEC source,
+        and file them as prior disclosures.
 
         ``items`` are the reviewed candidates to load — each a mapping with a
-        ``url`` and optional ``title`` / ``period``. Their full text is fetched
-        via Exa, then run through the **same** :class:`DisclosureConnector` a
-        manually uploaded transcript takes, so each figure lands as a cited
-        ``PRIOR_DISCLOSURE`` reference fact (web source, not a filing). Like every
-        ingestion, each document writes an attributable audit event.
+        ``url`` and optional ``title`` / ``period`` / ``doc_type``. Their full text
+        is fetched via Exa, then handled in two passes so the result is both
+        verifiable and a reference:
 
-        Returns ``(document, report, period)`` per successfully fetched document —
-        the resolved reporting period travels with each result so the caller can
-        surface the document itself (not just its figure count). A candidate whose
-        text can't be fetched is silently dropped (it simply doesn't appear in the
-        result), mirroring the connectors' never-guess rule.
+        * **Analyze** each document against the issuer's *filed* sources — the
+          issuer's EDGAR/XBRL facts are loaded first (best-effort) so a historical
+          release's revenue/EPS figures tie out to the SEC database and the UI can
+          show the linking, instead of every number reading as an unattributed
+          reference figure. All analysis happens before any disclosure is filed, so
+          a figure ties out to the *filed* source, never to another fetched doc.
+        * **File** each as a cited ``PRIOR_DISCLOSURE`` reference fact (web source,
+          not a filing) via the same :class:`DisclosureConnector` a manually
+          uploaded transcript takes — the reference corpus later drafts check
+          against. Like every ingestion, each document writes an audit event.
+
+        Returns a :class:`HistoricalDocResult` per successfully fetched document, so
+        the caller can render the document itself (with per-figure verdicts) and not
+        just a figure count. A candidate whose text can't be fetched is silently
+        dropped, mirroring the connectors' never-guess rule.
         """
         fetcher = HistoricalFetcher(client=exa_client)
         title_by_url = {it["url"]: it.get("title") for it in items if it.get("url")}
         period_by_url = {it["url"]: it.get("period") for it in items if it.get("url")}
+        kind_by_url = {it["url"]: it.get("doc_type") for it in items if it.get("url")}
         docs = fetcher.fetch_contents(urls=list(title_by_url))
 
-        results: list[tuple[ExaDocument, IngestionReport, str | None]] = []
+        # Load the issuer's filed facts up front (best-effort) so the documents'
+        # figures can trace to the SEC source. Honest no-op when EDGAR is disabled.
+        self.ensure_issuer_facts(tenant_id, entity)
+
+        # Pass 1 — analyze every fetched document against the filed sources, before
+        # any of them is filed as a disclosure, so a figure ties out to the SEC
+        # source rather than to a sibling fetched document of the same period.
+        analyzed: list[tuple[ExaDocument, str | None, Document, VerificationResult]] = []
         for doc in docs:
             # Anchor unperiodized figures to the document's own reporting period:
             # the period the reviewer saw (read from the candidate), else inferred
             # from the full text now in hand — never a calendar guess off the date.
             period = period_by_url.get(doc.url) or infer_period(doc.title, doc.text)
+            kind = _HISTORICAL_DOC_KIND.get(kind_by_url.get(doc.url) or "", DocumentKind.OTHER)
+            document, result, _, _ = self.analyze_text(
+                tenant_id=tenant_id,
+                text=doc.text,
+                title=title_by_url.get(doc.url) or doc.title,
+                kind=kind,
+                entity=entity,
+                period=period,
+            )
+            analyzed.append((doc, period, document, result))
+
+        # Pass 2 — file each as a prior-disclosure reference for later drafts.
+        results: list[HistoricalDocResult] = []
+        for doc, period, document, result in analyzed:
             facts, report = DisclosureConnector(
                 self.registry, self.store, self.aliases_for(tenant_id)
             ).fetch(
@@ -562,7 +619,15 @@ class AttestService:
                 tenant_id=tenant_id,
                 payload=report.model_dump(),
             )
-            results.append((doc, report, period))
+            results.append(
+                HistoricalDocResult(
+                    document=doc,
+                    report=report,
+                    period=period,
+                    analyzed=document,
+                    analysis=result,
+                )
+            )
 
         return results
 

@@ -344,19 +344,21 @@ def create_app(service: AttestService | None = None) -> FastAPI:
             raise HTTPException(status_code=502, detail=f"Historical fetch failed: {exc}") from exc
         documents = [
             HistoricalIngestDoc(
-                url=doc.url,
-                title=doc.title,
-                published_date=doc.published_date,
-                ingested=report.ingested,
-                skipped=report.skipped,
-                period=period,
-                text=doc.text,
+                url=r.document.url,
+                title=r.document.title,
+                published_date=r.document.published_date,
+                ingested=r.report.ingested,
+                skipped=r.report.skipped,
+                period=r.period,
+                text=r.document.text,
+                claims=list(r.analyzed.claims),
+                verdicts=list(r.analysis.verdicts),
             )
-            for doc, report, period in results
+            for r in results
         ]
         return HistoricalIngestResponse(
             documents=documents,
-            total_ingested=sum(r.ingested for _, r, _ in results),
+            total_ingested=sum(r.report.ingested for r in results),
         )
 
 

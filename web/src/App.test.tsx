@@ -193,12 +193,25 @@ describe("document library & upload", () => {
     expect(screen.getAllByDisplayValue("Q1 release (renamed)").length).toBeGreaterThan(0);
   });
 
-  it("opens the manager scoped to a category to upload past transcripts", () => {
+  it("scopes the historical fetch to the category it was opened from", () => {
     // Clicking a document category in the sidebar opens the manager focused on
-    // that type, where past filings/transcripts for the company can be uploaded.
+    // that type. A reference upload launched from there is scoped to the category:
+    // its "Fetch historical" search returns only that document type, not both.
     fireEvent.click(screen.getByRole("button", { name: /Manage Press releases/i }));
     expect(screen.getByText(/Past filings, transcripts/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Upload past transcript/i })).toBeInTheDocument();
+
+    const addRelease = screen.getByRole("button", { name: /Add past release/i });
+    expect(addRelease).toBeInTheDocument();
+    fireEvent.click(addRelease);
+
+    // The modal opens straight on the historical search, narrowed to press
+    // releases — not the combined "releases & call transcripts" search.
+    expect(
+      screen.getByText(/Finds historical earnings releases on the web/i)
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/earnings releases & call transcripts/i)
+    ).not.toBeInTheDocument();
   });
 });
 

@@ -110,6 +110,10 @@ export interface HistoricalIngestResult {
     ingested: number;
     period?: string | null;
     text?: string;
+    // The spine's analysis of the fetched document's own figures against the
+    // issuer's filed SEC sources, so each highlighted figure links to its source.
+    claims?: AnalyzeClaim[];
+    verdicts?: AnalyzeVerdict[];
   }[];
   total_ingested: number;
 }
@@ -130,7 +134,7 @@ export interface AttestClient {
   /** Fetch + ingest the selected historical documents as prior-disclosure references. */
   ingestHistorical(
     entity: string,
-    items: { url: string; title?: string; period?: string }[]
+    items: { url: string; title?: string; period?: string; doc_type?: string }[]
   ): Promise<HistoricalIngestResult>;
 }
 
