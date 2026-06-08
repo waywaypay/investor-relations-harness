@@ -16,6 +16,7 @@ from attest.ingestion.exa import (
     HistoricalFetcher,
     LiveExaClient,
 )
+from attest.ingestion.edgar import StaticEdgarClient
 from attest.service import AttestService
 
 # A realistic release pool: two outlets cover the SAME quarter (FY2026-Q1) — these
@@ -110,6 +111,41 @@ class _StubExa:
                 "results": [r for r in self._contents["results"] if r.get("url") in wanted]
             }
         return {}
+
+
+def _panw_q3_edgar() -> StaticEdgarClient:
+    cik = 1327567
+
+    def dur(start: str, end: str, val: int | float, accn: str = "0001327567-26-000015") -> dict:
+        return {"start": start, "end": end, "val": val, "accn": accn, "form": "10-Q", "filed": "2026-06-03"}
+
+    def inst(end: str, val: int, accn: str = "0001327567-26-000015") -> dict:
+        return {"end": end, "val": val, "accn": accn, "form": "10-Q", "filed": "2026-06-03"}
+
+    return StaticEdgarClient(
+        tickers={"PANW": cik},
+        fiscal_year_ends={cik: "0731"},
+        concepts={
+            (cik, "us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax"): {
+                "units": {"USD": [dur("2026-02-01", "2026-04-30", 3002000000)]}
+            },
+            (cik, "us-gaap:RevenueRemainingPerformanceObligation"): {
+                "units": {"USD": [inst("2026-04-30", 18400000000)]}
+            },
+            (cik, "us-gaap:EarningsPerShareDiluted"): {
+                "units": {"USD/shares": [
+                    dur("2026-02-01", "2026-04-30", -0.22),
+                    dur("2025-02-01", "2025-04-30", 0.37, "0001327567-25-000020"),
+                ]}
+            },
+            (cik, "us-gaap:NetCashProvidedByUsedInOperatingActivities"): {
+                "units": {"USD": [
+                    dur("2025-08-01", "2026-01-31", 300000000),
+                    dur("2025-08-01", "2026-04-30", 1171000000),
+                ]}
+            },
+        },
+    )
 
 
 # -- LiveExaClient configuration --------------------------------------------
@@ -301,6 +337,51 @@ def test_ingest_historical_files_reference_facts() -> None:
     assert rev.source_ref == "https://www.businesswire.com/panw-q1"
     assert svc.audit_verify()  # ingestion wrote an intact audit event
 
+
+
+def test_ingest_historical_analyzes_realistic_release_against_sec_without_false_conflicts() -> None:
+    contents = {
+        "results": [
+            {
+                "url": "https://www.paloaltonetworks.com/q3-fy2026",
+                "title": "Palo Alto Networks Reports Fiscal Third Quarter 2026 Financial Results",
+                "publishedDate": "2026-06-02",
+                "text": (
+                    "Palo Alto Networks (NASDAQ: PANW) reported fiscal third quarter 2026 results. "
+                    "Total revenue for the fiscal third quarter 2026 grew 31% year over year to $3.0 billion. "
+                    "Remaining performance obligation grew 36% year over year to $18.4 billion. "
+                    "GAAP net loss for the fiscal third quarter 2026 was $177 million, or ($0.22) per diluted share, "
+                    "compared with GAAP net income of $262 million, or $0.37 per diluted share, for the fiscal third quarter 2025. "
+                    "Net cash provided by operating activities for the fiscal third quarter 2026 was $871 million. "
+                    "Product revenue was $594 million and services revenue was $2.4 billion. "
+                    "Non-GAAP net income for the fiscal third quarter 2026 was $684 million, or $0.85 per diluted share. "
+                    "For the fiscal fourth quarter 2026, we expect total revenue in the range of $3.345 billion to $3.355 billion."
+                ),
+            }
+        ]
+    }
+    svc = AttestService(edgar=_panw_q3_edgar())
+    results = svc.ingest_historical(
+        tenant_id="acme",
+        entity="PANW",
+        items=[{
+            "url": "https://www.paloaltonetworks.com/q3-fy2026",
+            "title": "PANW Q3 release",
+            "period": "FY2026-Q3",
+            "doc_type": "release",
+        }],
+        exa_client=_StubExa(contents=contents),
+    )
+
+    verdicts = results[0].analysis.verdicts
+    traced = {(v.metric, v.period, v.displayed_text) for v in verdicts if v.verdict.value == "traced"}
+    assert ("total_revenue", "FY2026-Q3", "$3.0 billion") in traced
+    assert ("total_rpo", "FY2026-Q3", "$18.4 billion") in traced
+    assert ("gaap_diluted_eps", "FY2026-Q3", "($0.22)") in traced
+    assert ("operating_cash_flow", "FY2026-Q3", "$871 million") in traced
+    # Product/services revenue, non-GAAP income/EPS, and Q4 guidance are not SEC
+    # totals for Q3; they must be honest untraced/review items, not false conflicts.
+    assert [v for v in verdicts if v.verdict.value == "conflict"] == []
 
 def test_ingest_historical_infers_period_from_text_when_unspecified() -> None:
     # No period passed in the item: the connector must read the reporting quarter

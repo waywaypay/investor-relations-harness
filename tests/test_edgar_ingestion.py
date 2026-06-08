@@ -115,6 +115,29 @@ def test_connector_skips_ytd_durations():
     assert 5068000000 not in values
 
 
+
+def test_connector_derives_quarter_from_ytd_cash_flow_without_binding_cumulative_value():
+    # PANW-style cash-flow tags are often reported as YTD in Q2/Q3. The connector
+    # must derive Q3 as Q3-YTD minus Q2-YTD; otherwise the release's current-quarter
+    # operating cash flow stays untraced, or worse, the nine-month cumulative value
+    # binds as if it were the quarter.
+    client = StaticEdgarClient(
+        tickers={"PANW": PANW_CIK},
+        fiscal_year_ends={PANW_CIK: "0731"},
+        concepts={
+            (PANW_CIK, "us-gaap:NetCashProvidedByUsedInOperatingActivities"): {
+                "units": {"USD": [
+                    _dur("2025-08-01", "2026-01-31", 300000000),   # Q2 YTD
+                    _dur("2025-08-01", "2026-04-30", 1171000000),  # Q3 YTD
+                ]}
+            }
+        },
+    )
+    facts, _ = EdgarConnector(client=client).fetch("PANW", "acme", max_years=1)
+    ocf = {f.period: f.value for f in facts if f.metric == "operating_cash_flow"}
+    assert ocf["FY2026-Q3"] == 871000000
+    assert 1171000000 not in set(ocf.values())
+
 def test_unknown_ticker_yields_no_facts_without_error():
     facts, report = EdgarConnector(client=panw_client()).fetch("NOPE", "acme")
     assert facts == [] and report.ingested == 0

@@ -57,6 +57,7 @@ _ALIASES: dict[str, tuple[str, ...]] = {
         "gaap net income per diluted share", "gaap net income per share",
         "diluted eps", "diluted earnings per share", "diluted loss per share",
         "net income per diluted share", "net income per share",
+        "per diluted share", "per share",
         "diluted net income per share", "net loss per diluted share",
         "earnings per share", "loss per share", "net loss per share",
     ),
@@ -149,6 +150,20 @@ _GUIDANCE_NEAR = re.compile(
 # the current reporting quarter by :func:`_has_guidance_context`.
 _FOR_THE_QUARTER = re.compile(r"for the (first|second|third|fourth) quarter", re.IGNORECASE)
 
+_FYQ_CONTEXT_RE = re.compile(
+    r"\b(?:fiscal\s+)?(?:(first|second|third|fourth|1st|2nd|3rd|4th)\s+quarter|q\s*([1-4]))"
+    r"(?:\s+of)?(?:\s+fiscal)?(?:\s+fy)?[\s,'-]+(?:fy\s*)?(20\d\d)\b",
+    re.IGNORECASE,
+)
+_FY_CONTEXT_RE = re.compile(r"\b(?:fiscal\s+year|full[- ]year|fy)\s*(20\d\d)\b", re.IGNORECASE)
+_COMPARATIVE_PRIOR_RE = re.compile(r"\b(compared\s+(?:with|to)|versus|vs\.?)\b", re.IGNORECASE)
+_UNSUPPORTED_TOTAL_REVENUE_RE = re.compile(
+    r"\b(?:product|products|service|services|subscription|subscriptions|support|license|licenses)\s+revenue\b",
+    re.IGNORECASE,
+)
+_NON_GAAP_RE = re.compile(r"\b(?:non[- ]gaap|adjusted)\b", re.IGNORECASE)
+_GAAP_ONLY_METRICS = frozenset({"net_income", "operating_income", "gross_profit", "gross_margin", "operating_margin"})
+
 
 def _current_quarter(period: str | None) -> int | None:
     if not period:
@@ -174,6 +189,69 @@ def _has_guidance_context(window: str, period: str | None) -> bool:
         q = _ORD_TO_Q.get(m.group(1).lower())
         if q is not None and q != current:
             return True
+    return False
+
+
+def _prior_year_period(period: str | None) -> str | None:
+    if not period:
+        return None
+    m = re.match(r"FY(\d{4})-Q([1-4])", period, re.IGNORECASE)
+    if not m:
+        return None
+    return f"FY{int(m.group(1)) - 1}-Q{m.group(2)}"
+
+
+def _period_from_context(window: str) -> str | None:
+    """Read an explicit local fiscal period from text near one figure."""
+    if (m := _PERIOD_RE.search(window)) is not None:
+        return m.group(0).upper()
+    if (m := _FYQ_CONTEXT_RE.search(window)) is not None:
+        ord_word, qnum, year = m.group(1), m.group(2), m.group(3)
+        quarter = _ORD_TO_Q[ord_word.lower()] if ord_word else int(qnum)
+        return f"FY{year}-Q{quarter}"
+    return None
+
+
+def _full_year_from_context(window: str) -> str | None:
+    if (m := _FY_CONTEXT_RE.search(window)) is not None:
+        return f"FY{m.group(1)}"
+    return None
+
+
+def _sentence_window(text: str, start: int, end: int) -> str:
+    """The local sentence/line around a figure, wide enough for section guidance.
+
+    The leading/trailing attribution windows are intentionally tight, but historical
+    earnings documents often put period qualifiers at sentence level ("compared with
+    ... for fiscal third quarter 2025" or a heading-like "For fiscal year 2026").
+    This window is used only to choose period / demote unsafe bindings, never to
+    assert a metric label by itself.
+    """
+    lo = max(text.rfind(".", 0, start), text.rfind("\n", 0, start), text.rfind(";", 0, start)) + 1
+    stops = [p for p in (text.find(".", end), text.find("\n", end), text.find(";", end)) if p != -1]
+    hi = min(stops) if stops else min(len(text), end + 240)
+    return text[lo:hi]
+
+
+def _is_unsupported_metric_binding(metric: str, context: str) -> bool:
+    """True when a nearby alias is real, but the filed metric would be the wrong source.
+
+    This is the production-safety valve for historical prose: never bind a product
+    revenue, services revenue, non-GAAP income/margin, or other unsupported submetric
+    to a GAAP total just because it contains the word "revenue"/"income"/"margin".
+    It is better to show an honest untraced figure than a high-confidence false
+    conflict against an unrelated SEC tag.
+    """
+    if metric == "total_revenue" and _UNSUPPORTED_TOTAL_REVENUE_RE.search(context):
+        return True
+    if metric in _GAAP_ONLY_METRICS and _NON_GAAP_RE.search(context):
+        return True
+    if metric in {"gross_margin", "operating_margin"} and re.search(
+        r"\b(?:product|products|service|services|subscription|subscriptions|support|total)\s+gross\s+margin\b",
+        context,
+        re.IGNORECASE,
+    ):
+        return True
     return False
 
 # A guidance range stated as a single span: "$1.31 to $1.34 billion", "$1.31–1.34B",
@@ -569,6 +647,10 @@ class ClaimExtractor:
             if (brk := _CLAUSE_BREAK.search(after)) is not None:
                 after = after[: brk.start()]
             after = after.lower()
+            sent = _sentence_window(text, cand.span[0], cand.span[1]).lower()
+            wide_before = text[max(0, cand.span[0] - 420) : cand.span[0]].lower()
+            context = f"{before} {after} {sent}"
+            period_context = f"{context} {wide_before}"
             # Entity resolution stays leading-biased (a later "cloud" mention must not
             # pull an EPS figure into the Cloud segment), with only a short lookahead.
             ectx = before + " " + text[cand.span[1] : cand.span[1] + 4].lower()
@@ -602,20 +684,34 @@ class ClaimExtractor:
             if metric is None:
                 metric = UNIDENTIFIED_METRIC
                 confidence = Confidence.LOW
+            elif metric == "gaap_diluted_eps" and _NON_GAAP_RE.search(before + " " + after + " " + wide_before[-180:]):
+                # "non-GAAP net income per share" contains the generic "per share"
+                # EPS cue. Keep it out of the GAAP filed-source comparison unless a
+                # tenant has ingested a non-GAAP reference for that period.
+                metric = "non_gaap_diluted_eps"
+            elif _is_unsupported_metric_binding(metric, context):
+                # The label matched a real word but not a filed metric we can safely
+                # bind (e.g. "product revenue" vs total revenue, or non-GAAP income
+                # vs GAAP net income). Route to the untraced/review lane rather than
+                # manufacturing a false SEC conflict.
+                metric = UNIDENTIFIED_METRIC
+                confidence = Confidence.LOW
+
+            if _COMPARATIVE_PRIOR_RE.search(before) and (prior := _prior_year_period(period)):
+                # Comparatives in earnings prose are usually "compared with" the
+                # same quarter last year. This takes precedence over a current-period
+                # phrase earlier in the same sentence.
+                claim_period = prior
+            elif (explicit_period := _period_from_context(sent)):
+                claim_period = explicit_period
 
             # A currency figure sitting in clearly forward-looking prose is a forecast
-            # for a *later* period, not a restatement of this one — route it to the
-            # guidance period so it binds there (and trips safe-harbor) instead of
-            # being asserted against the current period and producing a false conflict
-            # ("we expect Q2 revenue of $1.31 billion" must not conflict with filed Q1
-            # revenue). The figure keeps its metric; only its period shifts.
-            if (
-                guidance_period
-                and metric != UNIDENTIFIED_METRIC
-                and unit is Unit.CURRENCY
-                and _has_guidance_context(before, period)
-            ):
-                claim_period = guidance_period
+            # for a *later* period, not a restatement of this one — route it away from
+            # the current period so it never compares against current-quarter filed
+            # sources. The wider context catches heading-style outlook text followed
+            # by bullet points on subsequent lines.
+            if metric != UNIDENTIFIED_METRIC and _has_guidance_context(period_context, period):
+                claim_period = _period_from_context(period_context) or _full_year_from_context(period_context) or guidance_period or claim_period
 
             # Record a trailing label this figure just consumed so later figures don't
             # re-attribute it — but only when it sits closer to this figure than to the
@@ -630,6 +726,18 @@ class ClaimExtractor:
                 if start_gap <= (next_start - label_end):
                     claimed_labels.append((label_start, label_end))
 
+            displayed_text = cand.text
+            if (
+                metric in {"gaap_diluted_eps", "net_income", "operating_income"}
+                and re.search(r"\bloss(?:es)?\b", before + " " + after)
+                and not displayed_text.lstrip().startswith("-")
+                and "(" not in displayed_text
+            ):
+                # Earnings prose often writes "loss per share of $0.22" without
+                # parentheses. Normalize the claim to the signed economic value so it
+                # can tie to XBRL's negative fact while preserving the span.
+                displayed_text = "-" + displayed_text
+
             seq += 1
             claims.append(
                 FigureClaim(
@@ -638,7 +746,7 @@ class ClaimExtractor:
                     entity=entity_for,
                     metric=metric,
                     period=claim_period,
-                    displayed_text=cand.text,
+                    displayed_text=displayed_text,
                     span=cand.span,
                     detect_confidence=confidence,
                 )

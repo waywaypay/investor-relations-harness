@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import urllib.error
 import urllib.request
 from datetime import date
@@ -262,7 +263,7 @@ class EdgarConnector:
                 if not concept:
                     continue
                 got_any = True
-                for datum in _quarterly_data(concept):
+                for datum in _quarterly_data(concept, fye):
                     period = fiscal_period(datum["end"], fye)
                     if period is None or claimed_by.setdefault(period, tag) != tag:
                         continue
@@ -323,32 +324,66 @@ class EdgarConnector:
         return out
 
 
-def _quarterly_data(concept: dict) -> list[dict]:
-    """Yield the quarterly / balance-sheet datapoints from a ``companyconcept``.
+def _quarterly_data(concept: dict, fiscal_year_end: str) -> list[dict]:
+    """Yield quarterly / balance-sheet datapoints from a ``companyconcept``.
 
-    Keeps single-quarter durations (~one fiscal quarter) and instantaneous
-    (balance-sheet) facts; drops YTD and annual durations so a cumulative figure
-    never binds as if it were the quarter. Each yielded datapoint is annotated with
-    the SEC ``Unit`` it was reported in (so the connector can keep dimensions straight).
+    Keeps native single-quarter durations and instantaneous balance-sheet facts.
+    For cash-flow-style tags that SEC often reports only as year-to-date durations,
+    derive the quarter by subtracting the prior YTD fact in the same fiscal year.
+    That lets an earnings release's current-quarter operating cash flow tie to the
+    filed 10-Q instead of staying untraced, while still never treating a cumulative
+    six/nine-month value as a quarter by itself.
     """
     out: list[dict] = []
+    ytd: dict[str, dict[str, dict]] = {}
+    direct_periods: set[tuple[str, str]] = set()
+
     for unit_key, rows in concept.get("units", {}).items():
         for row in rows:
             end = row.get("end")
-            if not end:
+            if not end or row.get("val") is None or not row.get("accn"):
+                continue
+            period = fiscal_period(end, fiscal_year_end)
+            if period is None:
                 continue
             start = row.get("start")
-            if start:  # a duration fact — keep only a single fiscal quarter
-                try:
-                    days = (date.fromisoformat(end) - date.fromisoformat(start)).days
-                except ValueError:
-                    continue
-                if days not in _QUARTER_DAYS:
-                    continue
-            if row.get("val") is None or not row.get("accn"):
+            if not start:  # instantaneous balance-sheet fact
+                out.append({**row, "unit_key": unit_key})
+                direct_periods.add((unit_key, period))
                 continue
-            out.append({**row, "unit_key": unit_key})
+            try:
+                days = (date.fromisoformat(end) - date.fromisoformat(start)).days
+            except ValueError:
+                continue
+            if days in _QUARTER_DAYS:
+                out.append({**row, "unit_key": unit_key})
+                direct_periods.add((unit_key, period))
+                continue
+            # Longer duration: keep as YTD input only. It becomes a quarter if the
+            # previous YTD exists below; otherwise it is skipped, preserving the old
+            # no-guess behaviour for annual/cumulative-only facts.
+            ytd.setdefault(unit_key, {})[period] = {**row, "unit_key": unit_key}
+
+    for unit_key, by_period in ytd.items():
+        for period, row in sorted(by_period.items()):
+            if (unit_key, period) in direct_periods:
+                continue
+            prev = _previous_fiscal_quarter(period)
+            if prev is None or prev not in by_period:
+                continue
+            value = Decimal(str(row["val"])) - Decimal(str(by_period[prev]["val"]))
+            out.append({**row, "val": value, "unit_key": unit_key, "derived_from_ytd": True})
     return out
+
+
+def _previous_fiscal_quarter(period: str) -> str | None:
+    m = re.match(r"FY(\d{4})-Q([1-4])", period)
+    if not m:
+        return None
+    year, q = int(m.group(1)), int(m.group(2))
+    if q <= 1:
+        return None
+    return f"FY{year}-Q{q - 1}"
 
 
 def _within_recent_years(facts: list[Fact], max_years: int) -> list[Fact]:
