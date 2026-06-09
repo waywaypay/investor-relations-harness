@@ -81,3 +81,7 @@ class CachingFactStore:
     def all(self, tenant_id: str | None = None) -> list[Fact]:
         # Full listing is not on the hot path; pass straight through.
         return self._inner.all(tenant_id)
+
+    def get(self, fact_id: str, tenant_id: str | None = None) -> Fact | None:
+        # Point lookup by id; not on the hot path, pass straight through.
+        return self._inner.get(fact_id, tenant_id)

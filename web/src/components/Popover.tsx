@@ -53,7 +53,10 @@ export function Popover({
   if (target.type === "fig") {
     const d = target.fig;
     const bc = d.st === "f" ? "f" : d.st === "r" ? "r" : "";
-    const stTxt = d.st === "v" ? "Traced" : d.st === "r" ? "Manual check" : "Conflict";
+    // Each state gets its own honest word — an untraced figure must never be
+    // labeled "Conflict" (a different, scarier claim than "no source bound").
+    const stTxt =
+      d.st === "v" ? "Traced" : d.st === "r" ? "Manual check" : d.st === "f" ? "Conflict" : "Untraced";
     return (
       <div className={`pop show`} ref={ref} style={style} onMouseEnter={onEnter} onMouseLeave={onLeave}>
         <div className="ph">

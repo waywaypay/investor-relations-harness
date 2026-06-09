@@ -128,6 +128,36 @@ _GROWTH_NEAR = re.compile(
 # read as a change, not a level). A ratio level like a margin is deliberately not here.
 _GROWTH_KINDS = frozenset({"yoy_growth", "qoq_growth", "delta_bps"})
 
+# Context that means a growth percent is NOT the plain year-over-year reported
+# figure: sequential (QoQ) phrasing, or a constant-currency / FX-adjusted basis.
+# Binding those to a YoY recompute would manufacture a false conflict, so the
+# structural growth attribution leaves them honestly unattributed instead.
+_NON_YOY_BASIS_RE = re.compile(
+    r"\b(sequential\w*|quarter[- ]over[- ]quarter|qoq|constant[- ]currency|"
+    r"fx[- ]adjusted|currency[- ]adjusted|organic)\b",
+    re.IGNORECASE,
+)
+
+# Direction words that make a stated growth figure a *decline* — the recompute
+# compares signed values, so "declined 5%" must normalize to -5%.
+_DECLINE_NEAR_RE = re.compile(
+    r"\b(declin\w*|decreas\w*|down|fell|drop\w*|contract\w*|lower)\b", re.IGNORECASE
+)
+
+# A sentence boundary that doesn't split inside a number: '.', ';' or newline not
+# followed by a digit ("$18.4 billion." ends a sentence; the '.' in "18.4" doesn't).
+_SENTENCE_BREAK_RE = re.compile(r"[.;\n](?!\d)")
+
+
+def _sentence_bounds(text: str, start: int, end: int) -> tuple[int, int]:
+    """Character bounds of the sentence containing ``[start, end)``, decimal-safe."""
+    lo = 0
+    for m in _SENTENCE_BREAK_RE.finditer(text, max(0, start - 300), start):
+        lo = m.end()
+    nxt = _SENTENCE_BREAK_RE.search(text, end, min(len(text), end + 300))
+    hi = nxt.start() if nxt else min(len(text), end + 300)
+    return lo, hi
+
 # Where a figure's own trailing label ends and the next clause begins. A trailing
 # label is a tight prepositional tail ("$338 million of operating cash flow"); once
 # we hit punctuation or a conjunction we are into the next clause's subject and must
@@ -753,4 +783,94 @@ class ClaimExtractor:
             )
 
         claims.sort(key=lambda c: (c.span or (0, 0))[0])
-        return tuple(claims)
+        return self._attach_growth_claims(text, claims, period)
+
+    def _attach_growth_claims(
+        self, text: str, claims: list[FigureClaim], period: str | None
+    ) -> tuple[FigureClaim, ...]:
+        """Attribute unidentified growth percents to the figure they grow.
+
+        Earnings prose states growth as "<metric phrase> grew 14% year over year
+        to $2.6 billion" (or "$612 million, up 31%") — the percent's own context
+        carries no metric label an alias can match, but its *base* is the adjacent
+        currency figure in the same sentence, which the first pass already
+        attributed. When the registry declares a YoY-growth metric over that base
+        (revenue_growth_yoy over total_revenue), the percent binds to it, so the
+        engine can recompute it from the filed levels instead of leaving the most
+        quoted figure in the release unattributed.
+
+        Deliberately conservative — every guard below leaves the claim honestly
+        unidentified rather than risking a false link: no growth word nearby; a
+        sequential / constant-currency basis (a different formula than YoY);
+        forward-looking context (a forecast, not this period's reported growth);
+        or no same-sentence base figure with a declared growth metric.
+        """
+        growth_spec_for_base: dict[str, str] = {
+            spec.derived_base: spec.id
+            for spec in self.registry.metrics()
+            if spec.derived_kind == "yoy_growth" and spec.derived_base
+        }
+        if not growth_spec_for_base:
+            return tuple(claims)
+
+        out = list(claims)
+        consumed_bases: set[int] = set()  # indexes of base claims already grown
+        for i, claim in enumerate(out):
+            if claim.metric != UNIDENTIFIED_METRIC or claim.span is None:
+                continue
+            if _unit_of_candidate(claim.displayed_text, None) is not Unit.PERCENT:
+                continue
+            start, end = claim.span
+            near = (
+                text[max(0, start - 90) : start] + " " + text[end : end + 60]
+            ).lower()
+            if not _GROWTH_NEAR.search(near):
+                continue
+            sent_lo, sent_hi = _sentence_bounds(text, start, end)
+            sentence = text[sent_lo:sent_hi].lower()
+            if _NON_YOY_BASIS_RE.search(sentence):
+                continue
+            wide_before = text[max(0, start - 420) : start].lower()
+            if _has_guidance_context(sentence + " " + wide_before, period):
+                continue
+
+            # The base: the nearest same-sentence claim with a declared growth
+            # metric — following first ("grew 14% ... to $2.6 billion"), else
+            # preceding ("$612 million, up 31%"). Each base grows at most once,
+            # so a second percent in the sentence can't double-bind it.
+            base_idx: int | None = None
+            for j in range(i + 1, len(out)):
+                nxt = out[j]
+                if nxt.span is None or nxt.span[0] >= sent_hi:
+                    break
+                if nxt.metric in growth_spec_for_base and j not in consumed_bases:
+                    base_idx = j
+                    break
+            if base_idx is None:
+                for j in range(i - 1, -1, -1):
+                    prv = out[j]
+                    if prv.span is None or prv.span[1] <= sent_lo:
+                        break
+                    if prv.metric in growth_spec_for_base and j not in consumed_bases:
+                        base_idx = j
+                        break
+            if base_idx is None:
+                continue
+
+            base = out[base_idx]
+            consumed_bases.add(base_idx)
+            displayed = claim.displayed_text
+            if _DECLINE_NEAR_RE.search(near) and not displayed.lstrip().startswith("-"):
+                displayed = "-" + displayed
+            out[i] = claim.model_copy(
+                update={
+                    "metric": growth_spec_for_base[base.metric],
+                    "entity": base.entity,
+                    # Growth is reported for the period under report, even when
+                    # the base figure beside it is the prior-year comparative.
+                    "period": period or claim.period,
+                    "displayed_text": displayed,
+                    "detect_confidence": Confidence.HIGH,
+                }
+            )
+        return tuple(out)

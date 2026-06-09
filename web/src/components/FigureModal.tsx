@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useStore } from "../store";
 import { StatusIcon, Eye, Warn } from "../lib/icons";
 import { TrendChart } from "./TrendChart";
+import { TRENDS } from "../data/trends";
 import { SourceDocumentModal } from "./SourceDocumentModal";
 import type { Figure } from "../types";
 
@@ -150,27 +151,51 @@ export function FigureModal({ fig, onClose }: { fig: Figure; onClose: () => void
         ? `Apply source value (${fig.filed})`
         : "Apply source value";
 
+  // Copy a self-contained citation: the figure, what it is, and its source.
+  const copyCitation = async () => {
+    const asOf = fig.fields?.find((f) => f.label === "As of")?.value;
+    const citation = [`${fig.cur} — ${fig.lbl}`, fig.cite, asOf ? `as of ${asOf}` : ""]
+      .filter(Boolean)
+      .join(" · ");
+    try {
+      await navigator.clipboard.writeText(citation);
+      store.showToast("Citation copied to clipboard.");
+    } catch {
+      store.showToast("Could not access the clipboard.");
+    }
+  };
+  const copyBtn = (
+    <button className="btn" onClick={copyCitation}>Copy citation</button>
+  );
+
+  // An uploaded/fetched document's figure gets only actions that actually do
+  // something; the demo close pack keeps its scripted review flow.
+  const isUploadFigure = fig.id.includes("::");
   const acts =
     fig.st === "f" ? (
       <>
         <button className="btn go" onClick={() => { store.resolveFigure(fig.id); onClose(); }}>
           {conflictLabel}
         </button>
-        <button className="btn">Keep &amp; add justification</button>
+        {isUploadFigure ? copyBtn : <button className="btn">Keep &amp; add justification</button>}
       </>
     ) : fig.st === "r" ? (
       <>
         <button className="btn amber" onClick={() => { store.resolveFigure(fig.id); onClose(); }}>
           Approve &amp; attach safe harbor
         </button>
-        <button className="btn">Request edit from FP&amp;A</button>
+        {isUploadFigure ? copyBtn : <button className="btn">Request edit from FP&amp;A</button>}
       </>
     ) : (
       <>
-        <button className="btn">Re-verify against latest filing</button>
-        <button className="btn">Copy citation</button>
+        {!isUploadFigure && <button className="btn">Re-verify against latest filing</button>}
+        {copyBtn}
       </>
     );
+
+  // The trend tab only exists where a historical series does — a tab that
+  // opens onto "no data" is noise, not a feature.
+  const hasTrend = Boolean(TRENDS[fig.id]);
 
   return (
     <>
@@ -185,15 +210,17 @@ export function FigureModal({ fig, onClose }: { fig: Figure; onClose: () => void
       </div>
       <div className="mbody">
         <div className="source">
-          <div className="srctabs">
-            <button className={`stab ${tab === "source" ? "active" : ""}`} onClick={() => setTab("source")}>
-              Source as filed
-            </button>
-            <button className={`stab ${tab === "trend" ? "active" : ""}`} onClick={() => setTab("trend")}>
-              Trend over time
-            </button>
-          </div>
-          {tab === "source" ? (
+          {hasTrend && (
+            <div className="srctabs">
+              <button className={`stab ${tab === "source" ? "active" : ""}`} onClick={() => setTab("source")}>
+                Source as filed
+              </button>
+              <button className={`stab ${tab === "trend" ? "active" : ""}`} onClick={() => setTab("trend")}>
+                Trend over time
+              </button>
+            </div>
+          )}
+          {tab === "source" || !hasTrend ? (
             <>
               <div dangerouslySetInnerHTML={{ __html: fig.page }} />
               {fig.page && (
