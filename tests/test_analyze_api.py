@@ -316,3 +316,26 @@ def test_analyze_auto_detects_ticker_from_text(edgar_client):
     traced = {v["metric"] for v in body["verdicts"] if v["verdict"] == "traced"}
     assert {"total_revenue", "total_rpo"} <= traced
     assert any("PANW" in w for w in body["warnings"])
+
+
+def test_analyze_with_company_name_resolves_ticker_and_ties_out():
+    """The entity field accepts a company name, not just a symbol: it resolves to
+    the SEC ticker (saying so in a warning), loads the issuer's filed facts, and
+    ties out — previously a non-ticker entity loaded nothing and every figure
+    stayed untraced."""
+    app_client = TestClient(
+        create_app(
+            AttestService(edgar=panw_client(titles={"PANW": "Palo Alto Networks Inc"}))
+        )
+    )
+    r = app_client.post(
+        "/tenants/acme/analyze",
+        data={"kind": "script", "entity": "Palo Alto Networks"},
+        files={"file": ("panw_q2.txt", PANW_TRANSCRIPT.encode(), "text/plain")},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["entity"] == "PANW"
+    assert any("Matched 'Palo Alto Networks' to issuer ticker PANW" in w for w in body["warnings"])
+    traced = {v["metric"] for v in body["verdicts"] if v["verdict"] == "traced"}
+    assert "total_revenue" in traced

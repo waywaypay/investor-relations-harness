@@ -59,6 +59,10 @@ export function UploadModal({
   const [candidates, setCandidates] = useState<HistoricalCandidate[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [searching, setSearching] = useState(false);
+  // The issuer ticker the typed entity resolved to ("Palo Alto Networks" ->
+  // "PANW") — shown to the user and handed to the ingest so facts scope to the
+  // symbol the SEC tie-out needs.
+  const [resolvedEntity, setResolvedEntity] = useState("");
   // How many quarters back the search reaches — one result per period, so this is
   // literally the number of periods returned per type.
   const [quarters, setQuarters] = useState(4);
@@ -108,13 +112,15 @@ export function UploadModal({
     setSearching(true);
     setError(null);
     try {
-      const results = await store.searchHistorical(ent, initialDocTypes, quarters);
-      setCandidates(results);
-      setSelected(new Set(results.map((r) => r.url))); // pre-select all for one-click load
-      if (results.length === 0) setError("No historical documents found for that company.");
+      const result = await store.searchHistorical(ent, initialDocTypes, quarters);
+      setCandidates(result.candidates);
+      setResolvedEntity(result.entity || "");
+      setSelected(new Set(result.candidates.map((r) => r.url))); // pre-select all for one-click load
+      if (result.candidates.length === 0) setError("No historical documents found for that company.");
     } catch (e) {
       setCandidates([]);
       setSelected(new Set());
+      setResolvedEntity("");
       setError(e instanceof Error ? e.message : "Search failed.");
     } finally {
       setSearching(false);
@@ -158,9 +164,11 @@ export function UploadModal({
             doc_type: c.doc_type,
             ...(c.period ? { period: c.period } : {}),
           }));
+        // Ingest under the resolved ticker (falling back to what was typed), so
+        // the loaded figures tie out against the right issuer's filed facts.
         // Open the first loaded document so it appears in the main view rather
         // than only as a count in the sidebar.
-        const firstDocId = await store.ingestHistorical(ticker.trim(), items);
+        const firstDocId = await store.ingestHistorical((resolvedEntity || ticker).trim(), items);
         if (firstDocId) onUploaded(firstDocId);
         onClose();
         return;
@@ -306,7 +314,12 @@ export function UploadModal({
             {candidates.length > 0 && (
               <div className="uphlist">
                 <div className="uphlist-h">
-                  <span>{selected.size} of {candidates.length} selected</span>
+                  <span>
+                    {selected.size} of {candidates.length} selected
+                    {resolvedEntity && resolvedEntity.toUpperCase() !== ticker.trim().toUpperCase()
+                      ? ` · issuer ${resolvedEntity}`
+                      : ""}
+                  </span>
                   <button
                     type="button"
                     className="uphall"

@@ -35,10 +35,11 @@ def _inst(end, val, filed="2026-02-18"):
             "fy": 2026, "fp": "Q2"}
 
 
-def panw_client() -> StaticEdgarClient:
+def panw_client(titles: dict[str, str] | None = None) -> StaticEdgarClient:
     """A static client seeded with PANW's real FY2026-Q2 filed values."""
     return StaticEdgarClient(
         tickers={"PANW": PANW_CIK},
+        titles=titles,
         fiscal_year_ends={PANW_CIK: "0731"},  # PANW's fiscal year ends 31 July
         concepts={
             (PANW_CIK, "us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax"): {
@@ -263,3 +264,72 @@ def test_analyze_with_ticker_survives_edgar_outage():
         kind=DocumentKind.RELEASE, entity="PANW", period="FY2026-Q2",
     )
     assert result.counts.get("untraced", 0) >= 1
+
+
+# -- ticker resolution (a typed company name -> the issuer's symbol) -----------
+
+
+def _named_client() -> StaticEdgarClient:
+    return StaticEdgarClient(
+        tickers={"PANW": PANW_CIK, "V": 1403161},
+        fiscal_year_ends={},
+        concepts={},
+        titles={"PANW": "Palo Alto Networks Inc", "V": "VISA INC."},
+    )
+
+
+def test_resolve_ticker_exact_symbol_passes_through():
+    client = _named_client()
+    assert client.resolve_ticker("panw") == "PANW"
+    # A valid symbol is never re-mapped by name matching.
+    assert client.resolve_ticker("V") == "V"
+
+
+def test_resolve_ticker_matches_company_name():
+    client = _named_client()
+    assert client.resolve_ticker("Palo Alto Networks") == "PANW"
+    # Punctuation and legal suffixes don't block the match.
+    assert client.resolve_ticker("palo alto networks, inc.") == "PANW"
+    # "VISA" is the company's name, not its symbol — the name match finds "V".
+    assert client.resolve_ticker("Visa") == "V"
+
+
+def test_resolve_ticker_never_guesses():
+    client = _named_client()
+    assert client.resolve_ticker("Some Unrelated Company") is None
+    assert client.resolve_ticker("") is None
+
+
+def test_service_resolves_entity_through_edgar_then_document_then_fallback():
+    svc = AttestService(edgar=_named_client())
+    # 1) SEC company list: a typed name resolves to the symbol.
+    assert svc.resolve_entity_ticker("Palo Alto Networks") == "PANW"
+    # 2) The document's own self-identification, when the name lookup can't help.
+    assert (
+        svc.resolve_entity_ticker("Acme Holdings", "Acme Corp (NASDAQ: ACME) today reported")
+        == "ACME"
+    )
+    # 3) Honest fallback: ticker-shaped strings upper-cased, names kept as typed.
+    bare = AttestService()
+    assert bare.resolve_entity_ticker("panw") == "PANW"
+    assert bare.resolve_entity_ticker("Atlas Systems Group") == "Atlas Systems Group"
+    assert bare.resolve_entity_ticker(None) is None
+
+
+def test_resolve_entity_survives_edgar_outage():
+    class _Down:
+        def resolve_cik(self, ticker):  # pragma: no cover - not reached
+            return None
+
+        def resolve_ticker(self, query):
+            raise EdgarUnavailable("HTTP 403 from sec.gov")
+
+        def fiscal_year_end(self, cik):  # pragma: no cover - not reached
+            return None
+
+        def company_concept(self, cik, taxonomy, tag):  # pragma: no cover
+            return None
+
+    svc = AttestService(edgar=_Down())
+    # Resolution is best-effort: an outage falls through, never raises.
+    assert svc.resolve_entity_ticker("PANW") == "PANW"

@@ -158,8 +158,10 @@ DEFAULT_POLICY = RoundingPolicy()
 
 
 def _strip(value: Decimal) -> str:
-    """Render a Decimal without scientific notation or trailing zeros."""
-    text = format(value.normalize(), "f")
+    """Render a Decimal without scientific notation or trailing zeros, with
+    thousands separators — a filed $2,300,000,000 must read as money, not as an
+    unparseable digit run, everywhere a verdict or citation surfaces it."""
+    text = format(value.normalize(), ",f")
     return text
 
 

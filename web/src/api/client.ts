@@ -23,6 +23,14 @@ export interface AnalyzeClaim {
   span: [number, number] | null;
 }
 
+/** The source pointer attached to a bound verdict — rich enough to cite. */
+export interface AnalyzeProvenance {
+  source_type: string; // e.g. "edgar_xbrl" | "prior_disclosure" | "management_input"
+  ref: string; // accession+tag, a URL, or "none"
+  label: string; // human citation, e.g. "Form 10-Q · us-gaap:Revenues"
+  excerpt: string; // short source snippet, when the connector captured one
+}
+
 /** The deterministic disposition of one proposed claim. */
 export interface AnalyzeVerdict {
   claim_id: string;
@@ -32,6 +40,8 @@ export interface AnalyzeVerdict {
   verdict: string; // backend vocabulary: traced | needs_review | conflict | untraced
   reason: string;
   source_value: string | null;
+  provenance?: AnalyzeProvenance | null;
+  as_of?: string | null; // ISO date the bound source value was established
 }
 
 /** The full result of uploading/pasting a draft and running it through the spine. */
@@ -99,6 +109,14 @@ export interface HistoricalCandidate {
   period?: string | null; // fiscal period read from the doc, e.g. "FY2026-Q3"
 }
 
+/** A historical search: the reviewable candidates plus the issuer ticker the
+ *  typed entity resolved to ("Palo Alto Networks" -> "PANW"), which the client
+ *  must hand back to the ingest call so facts scope to the symbol. */
+export interface HistoricalSearchResult {
+  entity: string;
+  candidates: HistoricalCandidate[];
+}
+
 /** Summary of ingesting selected historical documents found via web search.
  *  Each document carries its recovered `text` (and resolved `period`) so the client
  *  can render the loaded document in the workspace, not just report a figure count. */
@@ -116,6 +134,8 @@ export interface HistoricalIngestResult {
     verdicts?: AnalyzeVerdict[];
   }[];
   total_ingested: number;
+  /** The issuer ticker the run resolved and scoped reference facts under. */
+  entity?: string;
 }
 
 export interface AttestClient {
@@ -130,7 +150,7 @@ export interface AttestClient {
   /** Auto-fetch the prior quarter's 8-K press release from SEC EDGAR. */
   fetchPriorPeriod(ticker: string, period: string): Promise<PriorPeriodResult>;
   /** Search the web (via Exa) for an issuer's historical earnings docs to review. */
-  searchHistorical(entity: string, docTypes?: string[], quarters?: number): Promise<HistoricalCandidate[]>;
+  searchHistorical(entity: string, docTypes?: string[], quarters?: number): Promise<HistoricalSearchResult>;
   /** Fetch + ingest the selected historical documents as prior-disclosure references. */
   ingestHistorical(
     entity: string,
@@ -359,8 +379,9 @@ export function createLiveClient(baseUrl: string): AttestClient {
         try { const b = await res.json(); if (b?.detail) detail = b.detail; } catch { /**/ }
         throw new Error(`Historical search failed: ${detail}`);
       }
-      const body = (await res.json()) as { candidates: HistoricalCandidate[] };
-      return body.candidates;
+      const body = (await res.json()) as { candidates: HistoricalCandidate[]; entity?: string };
+      // An older backend without entity resolution echoes the typed value back.
+      return { entity: body.entity || entity.trim(), candidates: body.candidates };
     },
 
     async ingestHistorical(entity, items) {

@@ -217,6 +217,11 @@ def _domain(url: str) -> str:
     return host[4:] if host.startswith("www.") else host
 
 
+# What a bare ticker symbol looks like ("PANW", "BRK.B"). Auto-titles upper-case
+# only these; a typed company name keeps its own casing instead of being shouted.
+_TICKER_SHAPE = re.compile(r"[A-Za-z]{1,5}(?:[.\-][A-Za-z0-9]{1,2})?")
+
+
 def _auto_title(
     entity: str, doc_type: str, published_date: str, period: str | None, fallback: str
 ) -> str:
@@ -230,7 +235,9 @@ def _auto_title(
     """
     spec = _DOC_TYPES.get(doc_type)
     label = spec.label if spec else "Disclosure"
-    ent = entity.strip().upper()
+    ent = entity.strip()
+    if _TICKER_SHAPE.fullmatch(ent):
+        ent = ent.upper()
     if period and published_date:
         return f"{ent} {label} · {period} (pub {published_date})"
     if period:
@@ -277,7 +284,12 @@ class HistoricalFetcher:
         self._http = client or LiveExaClient()
 
     def search(
-        self, *, entity: str, doc_types: list[str], quarters: int = 4
+        self,
+        *,
+        entity: str,
+        doc_types: list[str],
+        quarters: int = 4,
+        label_entity: str | None = None,
     ) -> list[ExaCandidate]:
         """One candidate per fiscal period, for the most recent ``quarters`` periods.
 
@@ -286,8 +298,10 @@ class HistoricalFetcher:
         candidate per period — several outlets cover the same quarter, and the
         reviewer wants one release (and one transcript) per quarter, not the same
         period repeated. Returns the newest ``quarters`` periods per type, newest
-        first overall. ``entity`` is a ticker or company name.
+        first overall. ``entity`` is a ticker or company name and drives the search
+        query; ``label_entity`` (e.g. the resolved ticker) drives the auto-titles.
         """
+        title_entity = (label_entity or entity).strip()
         wanted = [d for d in doc_types if d in _DOC_TYPES] or list(_DOC_TYPES)
         # Pull a wider pool than we keep: multiple outlets cover each quarter, so we
         # need headroom to still cover `quarters` distinct periods after collapsing.
@@ -324,7 +338,7 @@ class HistoricalFetcher:
                 pool_candidates.append(
                     ExaCandidate(
                         url=url,
-                        title=_auto_title(entity, doc_type, published, period, result_title),
+                        title=_auto_title(title_entity, doc_type, published, period, result_title),
                         published_date=published,
                         source=_domain(url),
                         snippet=snippet,

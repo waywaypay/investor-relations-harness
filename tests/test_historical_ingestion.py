@@ -113,7 +113,7 @@ class _StubExa:
         return {}
 
 
-def _panw_q3_edgar() -> StaticEdgarClient:
+def _panw_q3_edgar(titles: dict[str, str] | None = None) -> StaticEdgarClient:
     cik = 1327567
 
     def dur(start: str, end: str, val: int | float, accn: str = "0001327567-26-000015") -> dict:
@@ -124,6 +124,7 @@ def _panw_q3_edgar() -> StaticEdgarClient:
 
     return StaticEdgarClient(
         tickers={"PANW": cik},
+        titles=titles,
         fiscal_year_ends={cik: "0731"},
         concepts={
             (cik, "us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax"): {
@@ -551,3 +552,125 @@ def test_search_and_ingest_endpoints(monkeypatch: pytest.MonkeyPatch) -> None:
     # the UI can show each figure's link to its source.
     assert any(v["metric"] == "total_revenue" for v in doc["verdicts"])
     assert any(c["metric"] == "total_revenue" for c in doc["claims"])
+
+
+# -- dynamic entity resolution (company name -> ticker), titles, and linking --
+
+
+def _named_panw_edgar() -> StaticEdgarClient:
+    """The PANW Q3 client, with the registrant title so a name resolves."""
+    return _panw_q3_edgar(titles={"PANW": "Palo Alto Networks Inc"})
+
+
+def test_search_titles_use_resolved_ticker_when_company_name_typed() -> None:
+    # The input invites "PANW or Palo Alto Networks". A typed company name must
+    # produce ticker-labeled candidates ("PANW Earnings release · …"), not a
+    # shouted upper-cased company name.
+    svc = AttestService(edgar=_named_panw_edgar())
+    candidates = svc.search_historical(
+        entity="Palo Alto Networks",
+        doc_types=("release",),
+        exa_client=_StubExa(search=SEARCH),
+    )
+    assert candidates
+    assert all(c.title.startswith("PANW ") for c in candidates)
+
+
+def test_search_without_resolution_keeps_company_name_unshouted() -> None:
+    # No EDGAR client: the name can't resolve, so the auto-title keeps the typed
+    # casing rather than upper-casing a whole company name.
+    svc = AttestService()
+    candidates = svc.search_historical(
+        entity="Palo Alto Networks",
+        doc_types=("release",),
+        exa_client=_StubExa(search=SEARCH),
+    )
+    assert candidates
+    assert all(c.title.startswith("Palo Alto Networks ") for c in candidates)
+    assert not any("PALO ALTO NETWORKS" in c.title for c in candidates)
+
+
+def test_ingest_historical_resolves_company_name_and_traces_to_sec() -> None:
+    # End-to-end regression: a user types the company name, not the ticker. The
+    # run must still scope facts to the symbol (via the SEC company list, falling
+    # back to the document's own "(NASDAQ: PANW)") so figures trace — previously
+    # this path loaded no filed facts and every figure landed untraced.
+    contents = {
+        "results": [
+            {
+                "url": "https://www.paloaltonetworks.com/q3-fy2026",
+                "title": "Palo Alto Networks Reports Fiscal Third Quarter 2026 Financial Results",
+                "publishedDate": "2026-06-02",
+                "text": (
+                    "Palo Alto Networks (NASDAQ: PANW) reported fiscal third quarter 2026 results. "
+                    "Total revenue for the fiscal third quarter 2026 grew 15% year over year to $3.0 billion."
+                ),
+            }
+        ]
+    }
+    svc = AttestService(edgar=_named_panw_edgar())
+    results = svc.ingest_historical(
+        tenant_id="acme",
+        entity="Palo Alto Networks",
+        items=[{
+            "url": "https://www.paloaltonetworks.com/q3-fy2026",
+            "title": "PANW Earnings release · FY2026-Q3",
+            "period": "FY2026-Q3",
+            "doc_type": "release",
+        }],
+        exa_client=_StubExa(contents=contents),
+    )
+
+    assert len(results) == 1
+    r = results[0]
+    assert r.entity == "PANW"  # the run resolved and reports the symbol
+    assert r.title == "PANW Earnings release · FY2026-Q3"  # the reviewed title
+    traced = [v for v in r.analysis.verdicts if v.verdict.value == "traced"]
+    assert any(v.metric == "total_revenue" for v in traced)
+    # Facts (filed and reference alike) are scoped under the resolved ticker.
+    assert all(f.entity.split(":")[0] == "PANW" for f in svc.store.all("acme"))
+
+
+def test_ingest_endpoint_returns_reviewed_title_and_resolved_entity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stub = _StubExa(search=SEARCH, contents=CONTENTS)
+    monkeypatch.setattr("attest.ingestion.exa.LiveExaClient", lambda *a, **k: stub)
+    client = TestClient(create_app(AttestService()))
+
+    r = client.post(
+        "/tenants/acme/historical/ingest",
+        json={
+            "entity": "PANW",
+            "items": [
+                {
+                    "url": "https://www.businesswire.com/panw-q1",
+                    "title": "PANW Earnings release · FY2026-Q1 (pub 2026-01-28)",
+                    "period": "FY2026-Q1",
+                }
+            ],
+        },
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["entity"] == "PANW"
+    # The workspace must name the document as the user reviewed it — the
+    # auto-title sent with the item — never the raw page <title>.
+    assert body["documents"][0]["title"] == "PANW Earnings release · FY2026-Q1 (pub 2026-01-28)"
+    # Bound verdicts carry the source pointer so the UI can cite the document.
+    assert all("provenance" in v for v in body["documents"][0]["verdicts"])
+
+
+def test_search_endpoint_returns_resolved_entity(monkeypatch: pytest.MonkeyPatch) -> None:
+    stub = _StubExa(search=SEARCH)
+    monkeypatch.setattr("attest.ingestion.exa.LiveExaClient", lambda *a, **k: stub)
+    client = TestClient(create_app(AttestService(edgar=_named_panw_edgar())))
+
+    r = client.post(
+        "/tenants/acme/historical/search",
+        json={"entity": "Palo Alto Networks", "doc_types": ["release"]},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["entity"] == "PANW"
+    assert body["candidates"]

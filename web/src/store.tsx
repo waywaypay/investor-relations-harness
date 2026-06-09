@@ -17,7 +17,7 @@ import {
   client,
   type AnalyzeInput,
   type DisclosureInput,
-  type HistoricalCandidate,
+  type HistoricalSearchResult,
 } from "./api/client";
 
 type FigureMap = Record<string, Figure>;
@@ -76,8 +76,9 @@ interface Store {
   ingestEdgar: (ticker: string, maxYears?: number) => Promise<number>;
   /** Auto-fetch the prior quarter's 8-K press release from EDGAR. Returns figures ingested. */
   fetchPriorPeriod: (ticker: string, period: string) => Promise<number>;
-  /** Search the web for an issuer's historical earnings docs to review before loading. */
-  searchHistorical: (entity: string, docTypes?: string[], quarters?: number) => Promise<HistoricalCandidate[]>;
+  /** Search the web for an issuer's historical earnings docs to review before loading.
+   *  Returns the candidates plus the issuer ticker the typed entity resolved to. */
+  searchHistorical: (entity: string, docTypes?: string[], quarters?: number) => Promise<HistoricalSearchResult>;
   /** Fetch the selected historical documents, file their figures as reference, and
    *  add each as a viewable document in the workspace. Returns the id of the first
    *  loaded document to navigate to (or null when none could be rendered). */
@@ -519,7 +520,7 @@ export function StoreProvider({
   );
 
   const searchHistorical = useCallback(
-    async (entity: string, docTypes?: string[], quarters?: number): Promise<HistoricalCandidate[]> => {
+    async (entity: string, docTypes?: string[], quarters?: number): Promise<HistoricalSearchResult> => {
       // Pure lookup — no toast on success (the results render in the modal); a
       // failure (e.g. Exa not configured) surfaces to the caller's catch.
       return client.searchHistorical(entity, docTypes, quarters);
@@ -531,7 +532,9 @@ export function StoreProvider({
     async (entity: string, items: { url: string; title?: string; period?: string; doc_type?: string }[]): Promise<string | null> => {
       const result = await client.ingestHistorical(entity, items);
       const docs = result.documents.length;
-      const sym = entity.toUpperCase();
+      // Prefer the issuer ticker the backend resolved ("Palo Alto Networks" ->
+      // "PANW") so reference rows are labeled by symbol, like everything else.
+      const sym = (result.entity || entity).toUpperCase();
       const kindByUrl = new Map(items.map((i) => [i.url, i.doc_type]));
 
       // A fetched document with recovered prose becomes a viewable library
@@ -592,12 +595,18 @@ export function StoreProvider({
       if (newDocs.length) setLibrary((prev) => [...prev, ...newDocs]);
       if (fallbackEntries.length) setReferenceEntries((prev) => [...prev, ...fallbackEntries]);
 
+      // Say what the user actually cares about: how many of the documents'
+      // figures tied out to a filed SEC source, not just how many were filed.
+      const figTotal = Object.keys(newFigures).length;
+      const traced = Object.values(newFigures).filter((f) => f.st === "v").length;
       showToast(
         docs === 0
           ? "No documents fetched — check the company name or try a ticker symbol."
-          : result.total_ingested
-            ? `Loaded ${docs} document${docs > 1 ? "s" : ""} — ${result.total_ingested} reference figure${result.total_ingested > 1 ? "s" : ""} filed.`
-            : `Loaded ${docs} document${docs > 1 ? "s" : ""} — no figures extracted.`
+          : figTotal
+            ? `Loaded ${docs} document${docs > 1 ? "s" : ""} — ${traced} of ${figTotal} figure${figTotal > 1 ? "s" : ""} traced to filed sources.`
+            : result.total_ingested
+              ? `Loaded ${docs} document${docs > 1 ? "s" : ""} — ${result.total_ingested} reference figure${result.total_ingested > 1 ? "s" : ""} filed.`
+              : `Loaded ${docs} document${docs > 1 ? "s" : ""} — no figures extracted.`
       );
       return newDocs[0]?.id ?? null;
     },

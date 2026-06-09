@@ -33,6 +33,7 @@ import os
 import re
 import urllib.error
 import urllib.request
+from collections.abc import Iterable
 from datetime import date
 from decimal import Decimal
 from typing import Protocol
@@ -110,6 +111,10 @@ class EdgarClient(Protocol):
         """Resolve a ticker to its SEC CIK, or ``None`` if unknown."""
         ...
 
+    def resolve_ticker(self, query: str) -> str | None:
+        """Resolve a typed ticker *or company name* to the issuer's ticker symbol."""
+        ...
+
     def fiscal_year_end(self, cik: int) -> str | None:
         """The issuer's fiscal-year-end as ``MMDD`` (e.g. ``"0731"``), or ``None``."""
         ...
@@ -117,6 +122,52 @@ class EdgarClient(Protocol):
     def company_concept(self, cik: int, taxonomy: str, tag: str) -> dict | None:
         """Raw ``companyconcept`` JSON for one tag, or ``None`` if not reported."""
         ...
+
+
+# Legal suffixes that carry no identity when matching a typed company name against
+# SEC's registrant titles ("Palo Alto Networks" must match "Palo Alto Networks Inc").
+_LEGAL_SUFFIXES = frozenset({
+    "inc", "incorporated", "corp", "corporation", "co", "company", "companies",
+    "ltd", "limited", "plc", "lp", "llp", "llc", "sa", "nv", "ag", "se",
+    "holdings", "holding", "group", "trust", "fund", "international",
+})
+
+
+def _normalize_company(name: str) -> str:
+    """Lowercase, strip punctuation, and drop trailing legal suffixes."""
+    cleaned = re.sub(r"[^a-z0-9 ]+", " ", name.lower())
+    words = cleaned.split()
+    while words and words[-1] in _LEGAL_SUFFIXES:
+        words.pop()
+    return " ".join(words)
+
+
+def match_company_ticker(query: str, rows: Iterable[tuple[str, str]]) -> str | None:
+    """Resolve a typed ticker or company name against SEC ``(ticker, title)`` rows.
+
+    An exact ticker match always wins (a valid symbol is never re-mapped by name).
+    Otherwise the first row whose normalized registrant title equals — or extends —
+    the normalized query wins; SEC orders the company list by market cap, so "apple"
+    resolves to Apple Inc., not a smaller registrant that happens to share the word.
+    Deliberately conservative: a query that is neither a known symbol nor a title
+    prefix resolves to ``None`` rather than guessing.
+    """
+    typed = query.strip()
+    if not typed:
+        return None
+    upper = typed.upper()
+    rows = list(rows)
+    for ticker, _ in rows:
+        if ticker.upper() == upper:
+            return ticker.upper()
+    normalized = _normalize_company(typed)
+    if len(normalized) < 3:
+        return None
+    for ticker, title in rows:
+        candidate = _normalize_company(title)
+        if candidate == normalized or candidate.startswith(normalized + " "):
+            return ticker.upper()
+    return None
 
 
 class HttpEdgarClient:
@@ -136,7 +187,8 @@ class HttpEdgarClient:
             "ATTEST_EDGAR_USER_AGENT", _DEFAULT_USER_AGENT
         )
         self.timeout = timeout
-        self._tickers: dict[str, int] | None = None
+        # (ticker, cik, registrant title) rows in SEC's market-cap order.
+        self._rows: list[tuple[str, int, str]] | None = None
         self._fye: dict[int, str | None] = {}
 
     def _get_json(self, url: str) -> dict | None:
@@ -156,15 +208,27 @@ class HttpEdgarClient:
         except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
             raise EdgarUnavailable(str(exc)) from exc
 
-    def resolve_cik(self, ticker: str) -> int | None:
-        if self._tickers is None:
+    def _company_rows(self) -> list[tuple[str, int, str]]:
+        if self._rows is None:
             data = self._get_json(self._TICKERS_URL) or {}
-            self._tickers = {
-                str(row["ticker"]).upper(): int(row["cik_str"])
+            self._rows = [
+                (str(row["ticker"]).upper(), int(row["cik_str"]), str(row.get("title") or ""))
                 for row in data.values()
                 if row.get("ticker") and row.get("cik_str") is not None
-            }
-        return self._tickers.get(ticker.strip().upper())
+            ]
+        return self._rows
+
+    def resolve_cik(self, ticker: str) -> int | None:
+        wanted = ticker.strip().upper()
+        for symbol, cik, _ in self._company_rows():
+            if symbol == wanted:
+                return cik
+        return None
+
+    def resolve_ticker(self, query: str) -> str | None:
+        return match_company_ticker(
+            query, ((symbol, title) for symbol, _, title in self._company_rows())
+        )
 
     def fiscal_year_end(self, cik: int) -> str | None:
         if cik not in self._fye:
@@ -189,14 +253,22 @@ class StaticEdgarClient:
         tickers: dict[str, int],
         fiscal_year_ends: dict[int, str],
         concepts: dict[tuple[int, str], dict],
+        titles: dict[str, str] | None = None,
     ) -> None:
         self._tickers = {k.upper(): v for k, v in tickers.items()}
+        # ticker -> registrant title, for company-name resolution (optional).
+        self._titles = {k.upper(): v for k, v in (titles or {}).items()}
         self._fye = fiscal_year_ends
         # keyed by (cik, "taxonomy:tag")
         self._concepts = concepts
 
     def resolve_cik(self, ticker: str) -> int | None:
         return self._tickers.get(ticker.strip().upper())
+
+    def resolve_ticker(self, query: str) -> str | None:
+        return match_company_ticker(
+            query, ((t, self._titles.get(t, "")) for t in self._tickers)
+        )
 
     def fiscal_year_end(self, cik: int) -> str | None:
         return self._fye.get(cik)

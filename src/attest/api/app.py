@@ -39,7 +39,6 @@ from attest.api.schemas import (
     VerifyResponse,
 )
 from attest.domain.document import Document, DocumentKind
-from attest.extraction.claims import infer_entity_ticker
 from attest.extraction.text import extract_text
 from attest.ingestion.edgar import EdgarUnavailable
 from attest.ingestion.exa import ExaNotConfigured, ExaUnavailable
@@ -185,8 +184,11 @@ def create_app(service: AttestService | None = None) -> FastAPI:
                 status_code=422,
                 detail="no readable text could be recovered from the disclosure",
             )
+        # A typed ticker passes through; a typed company name resolves to its SEC
+        # symbol; nothing typed recovers the ticker from the document itself.
         resolved_entity = (
-            entity or infer_entity_ticker(label or "", doc_text) or svc.default_entity(tenant_id)
+            svc.resolve_entity_ticker(entity, label or "", doc_text)
+            or svc.default_entity(tenant_id)
         )
         report = svc.ingest_disclosure(
             text=doc_text,
@@ -307,6 +309,10 @@ def create_app(service: AttestService | None = None) -> FastAPI:
         except ExaUnavailable as exc:
             raise HTTPException(status_code=502, detail=f"Historical search failed: {exc}") from exc
         return HistoricalSearchResponse(
+            # The resolved issuer ticker ("Palo Alto Networks" -> "PANW"), so the
+            # client scopes the subsequent ingest — and the facts behind it — to the
+            # symbol the SEC tie-out actually needs, not the raw typed name.
+            entity=svc.resolve_entity_ticker(req.entity) or req.entity.strip(),
             candidates=[
                 HistoricalCandidate(
                     url=c.url,
@@ -318,7 +324,7 @@ def create_app(service: AttestService | None = None) -> FastAPI:
                     period=c.period,
                 )
                 for c in candidates
-            ]
+            ],
         )
 
     @app.post("/tenants/{tenant_id}/historical/ingest", response_model=HistoricalIngestResponse)
@@ -345,7 +351,11 @@ def create_app(service: AttestService | None = None) -> FastAPI:
         documents = [
             HistoricalIngestDoc(
                 url=r.document.url,
-                title=r.document.title,
+                # The resolved display title — the auto-title the user reviewed and
+                # selected (falling back to the page's own) — so the workspace names
+                # the loaded document exactly as it appeared in the review list,
+                # never by a raw page <title> or bare URL.
+                title=r.title or r.document.title,
                 published_date=r.document.published_date,
                 ingested=r.report.ingested,
                 skipped=r.report.skipped,
@@ -359,6 +369,11 @@ def create_app(service: AttestService | None = None) -> FastAPI:
         return HistoricalIngestResponse(
             documents=documents,
             total_ingested=sum(r.report.ingested for r in results),
+            entity=(
+                results[0].entity
+                if results
+                else svc.resolve_entity_ticker(req.entity) or req.entity.strip()
+            ),
         )
 
 
@@ -420,16 +435,22 @@ def create_app(service: AttestService | None = None) -> FastAPI:
         except ValueError:
             doc_kind = DocumentKind.OTHER
 
-        # No ticker typed? Recover it from the draft itself — earnings materials
-        # name the issuer as "Company (NASDAQ: TICKER)" — so the upload ties out
-        # to the right company with nothing to type.
-        if not entity:
-            detected = infer_entity_ticker(resolved_title or "", doc_text)
-            if detected:
-                entity = detected
-                warnings = warnings + [
-                    f"Detected issuer ticker {detected} in the document."
-                ]
+        # Resolve the issuer to its ticker: a typed company name maps to its SEC
+        # symbol, nothing typed recovers the "Company (NASDAQ: TICKER)" self-
+        # identification from the draft itself — so the upload ties out to the
+        # right company whether the user typed "PANW", "Palo Alto Networks", or
+        # nothing at all. Each resolution is said out loud, never silent.
+        typed_entity = (entity or "").strip()
+        resolved = svc.resolve_entity_ticker(typed_entity, resolved_title or "", doc_text)
+        if resolved and not typed_entity:
+            warnings = warnings + [
+                f"Detected issuer ticker {resolved} in the document."
+            ]
+        elif resolved and resolved.upper() != typed_entity.upper():
+            warnings = warnings + [
+                f"Matched '{typed_entity}' to issuer ticker {resolved}."
+            ]
+        entity = resolved
 
         # When an issuer ticker is supplied (or detected) and live EDGAR ingestion
         # is enabled, load that issuer's filed facts first so the draft ties out

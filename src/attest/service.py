@@ -8,6 +8,7 @@ accountability: Attest never silently changes a disclosure.
 
 from __future__ import annotations
 
+import re
 import uuid
 from dataclasses import dataclass
 
@@ -19,7 +20,13 @@ from attest.domain.document import Document, DocumentKind
 from attest.domain.facts import UNDATED_AS_OF
 from attest.domain.metrics import DEFAULT_REGISTRY, MetricRegistry
 from attest.domain.money import DEFAULT_POLICY, RoundingPolicy
-from attest.extraction.claims import DEFAULT_ALIASES, AliasConfig, ClaimExtractor, infer_period
+from attest.extraction.claims import (
+    DEFAULT_ALIASES,
+    AliasConfig,
+    ClaimExtractor,
+    infer_entity_ticker,
+    infer_period,
+)
 from attest.edge.service import EdgeService
 from attest.factstore.repository import FactStore, InMemoryFactStore
 from attest.ingestion.base import IngestionReport
@@ -39,6 +46,9 @@ _HISTORICAL_DOC_KIND: dict[str, DocumentKind] = {
     "transcript": DocumentKind.SCRIPT,
 }
 
+# What a bare ticker symbol looks like ("PANW", "BRK.B") — vs. a company name.
+_TICKER_SHAPE = re.compile(r"[A-Za-z]{1,5}(?:[.\-][A-Za-z0-9]{1,2})?")
+
 
 @dataclass
 class HistoricalDocResult:
@@ -47,7 +57,10 @@ class HistoricalDocResult:
     ``report`` summarizes filing it as a prior-disclosure reference fact; ``analysis``
     is the verdict the spine renders for the document's own figures against the
     issuer's filed (EDGAR/XBRL) sources, so each highlighted figure links to the SEC
-    source instead of reading as an unattributed reference number.
+    source instead of reading as an unattributed reference number. ``title`` is the
+    display title the run resolved (the reviewed candidate's, falling back to the
+    page's own) and ``entity`` the issuer ticker the run resolved — both echoed to
+    the caller so the rendered document matches what the user reviewed.
     """
 
     document: ExaDocument
@@ -55,6 +68,8 @@ class HistoricalDocResult:
     period: str | None
     analyzed: Document
     analysis: VerificationResult
+    title: str = ""
+    entity: str = ""
 
 
 class AttestService:
@@ -218,6 +233,37 @@ class AttestService:
             payload=report.model_dump(),
         )
         return report
+
+    def resolve_entity_ticker(self, entity: str | None, *texts: str) -> str | None:
+        """Resolve what a user typed — a ticker *or a company name* — to the ticker.
+
+        The UI invites either form ("PANW or Palo Alto Networks"), but every
+        downstream step (EDGAR fact loading, fact scoping, auto-titles) needs the
+        symbol: a company name resolves no CIK, loads no filed facts, and leaves
+        every figure untraced. Resolution order, all best-effort:
+
+        1. SEC's company-tickers map via the EDGAR client — an exact symbol passes
+           through unchanged; a company name matches the registrant title.
+        2. The documents themselves: earnings materials identify the issuer as
+           "Company (NASDAQ: TICKER)", which works even with EDGAR disabled.
+        3. Honest fallback: a ticker-shaped string upper-cased, anything else as
+           typed — never a guess.
+        """
+        typed = (entity or "").strip()
+        resolver = getattr(self.edgar, "resolve_ticker", None) if self.edgar else None
+        if typed and resolver is not None:
+            try:
+                resolved = resolver(typed)
+            except EdgarUnavailable:
+                resolved = None  # resolution is best-effort; an outage never blocks
+            if resolved:
+                return resolved
+        detected = infer_entity_ticker(*texts)
+        if detected:
+            return detected
+        if not typed:
+            return None
+        return typed.upper() if _TICKER_SHAPE.fullmatch(typed) else typed
 
     def ensure_issuer_facts(self, tenant_id: str, ticker: str) -> list[str]:
         """Best-effort: make sure ``ticker``'s filed facts are loaded for tie-out.
@@ -533,7 +579,16 @@ class AttestService:
         an empty result.
         """
         fetcher = HistoricalFetcher(client=exa_client)
-        return fetcher.search(entity=entity, doc_types=list(doc_types), quarters=quarters)
+        # Search the web with what the user typed (a company name finds its own IR
+        # pages better than a bare symbol), but label the candidates with the
+        # resolved ticker so every auto-title reads "PANW …", not a shouted name.
+        label_entity = self.resolve_entity_ticker(entity) or entity
+        return fetcher.search(
+            entity=entity,
+            doc_types=list(doc_types),
+            quarters=quarters,
+            label_entity=label_entity,
+        )
 
     def ingest_historical(
         self,
@@ -573,6 +628,13 @@ class AttestService:
         period_by_url = {it["url"]: it.get("period") for it in items if it.get("url")}
         kind_by_url = {it["url"]: it.get("doc_type") for it in items if it.get("url")}
         docs = fetcher.fetch_contents(urls=list(title_by_url))
+
+        # Resolve the typed entity (ticker or company name) to the issuer's ticker,
+        # falling back to the fetched documents' own "(NASDAQ: XXXX)" self-
+        # identification — otherwise a company-name entity resolves no CIK, loads
+        # no filed facts, and every figure below lands untraced.
+        doc_texts = [s for d in docs for s in (d.title, d.text)]
+        entity = self.resolve_entity_ticker(entity, *doc_texts) or entity
 
         # Load the issuer's filed facts up front (best-effort) so the documents'
         # figures can trace to the SEC source. Honest no-op when EDGAR is disabled.
@@ -626,6 +688,8 @@ class AttestService:
                     period=period,
                     analyzed=document,
                     analysis=result,
+                    title=document.title,
+                    entity=entity,
                 )
             )
 

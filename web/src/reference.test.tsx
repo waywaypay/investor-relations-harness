@@ -51,9 +51,11 @@ describe("historical reference: grouping and category placement", () => {
     window.localStorage.clear();
     mock.searchHistorical.mockReset();
     mock.ingestHistorical.mockReset();
-    // Backend returns newest-first across both types — interleaved on the wire.
-    mock.searchHistorical.mockResolvedValue([TRANSCRIPT, RELEASE]);
+    // Backend returns newest-first across both types — interleaved on the wire —
+    // plus the issuer ticker the typed entity resolved to.
+    mock.searchHistorical.mockResolvedValue({ entity: "PANW", candidates: [TRANSCRIPT, RELEASE] });
     mock.ingestHistorical.mockResolvedValue({
+      entity: "PANW",
       documents: [
         {
           url: RELEASE.url, title: "PANW Q3 release", published_date: "2026-06-02",
@@ -123,6 +125,24 @@ describe("historical reference: grouping and category placement", () => {
     expect(within(press).queryByText("PANW Q3 transcript")).not.toBeInTheDocument();
     expect(await within(scripts).findByText("PANW Q3 transcript")).toBeInTheDocument();
     expect(within(scripts).queryByText("PANW Q3 release")).not.toBeInTheDocument();
+  });
+
+  it("ingests under the resolved ticker when the user typed a company name", async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Fetch historical" }));
+    fireEvent.change(screen.getByPlaceholderText(/PANW or Palo Alto Networks/i), {
+      target: { value: "Palo Alto Networks" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    await screen.findByText(RELEASE.title);
+
+    // The review header tells the user what the name resolved to.
+    expect(screen.getByText(/issuer PANW/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Load 2 selected/i }));
+    await waitFor(() => expect(mock.ingestHistorical).toHaveBeenCalledTimes(1));
+    // The ingest is scoped to the resolved symbol — that's what the SEC tie-out
+    // keys facts under — not the raw typed name.
+    expect(mock.ingestHistorical.mock.calls[0][0]).toBe("PANW");
   });
 
   it("passes the chosen number of quarters back to the search", async () => {
