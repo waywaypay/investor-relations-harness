@@ -400,7 +400,7 @@ body{font-family:var(--ui);background:var(--paper);color:var(--ink);
 .pop .badge{font-size:9.5px;font-weight:700;letter-spacing:.4px;color:#fff;background:var(--accent);padding:3px 7px;border-radius:5px}
 .pop .badge.r{background:var(--review)} .pop .badge.f{background:var(--flag)}
 .pop .st{font-size:10px;font-weight:700;letter-spacing:.3px;display:flex;align-items:center;gap:4px}
-.pop .st.v{color:var(--verified)} .pop .st.r{color:var(--review)} .pop .st.f{color:var(--flag)}
+.pop .st.v{color:var(--verified)} .pop .st.r{color:var(--review)} .pop .st.f{color:var(--flag)} .pop .st.u{color:#516170}
 .pop .pop-doc{position:relative;height:198px;overflow:hidden;padding:13px 14px;background:#FBFAF6}
 .pop .pop-doc::after{content:'';position:absolute;left:0;right:0;bottom:0;height:40px;background:linear-gradient(transparent,#FBFAF6);pointer-events:none}
 .pop .pop-doc .filing .fhd{font-size:11px}

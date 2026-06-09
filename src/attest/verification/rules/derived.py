@@ -81,6 +81,76 @@ def _expected(kind: str, current: Decimal, prior: Decimal) -> tuple[Decimal, Uni
 # ratio/ratio_pct = a / b (×100), sum = Σ components, difference = base − subtrahend.
 CURRENT_PERIOD_KINDS = frozenset({"ratio", "ratio_pct", "sum", "difference"})
 
+# Derived kinds computed against a *prior* period: YoY/QoQ growth of a base
+# metric, and a rate's change in basis points.
+PRIOR_PERIOD_KINDS = frozenset(_SUPPORTED)
+
+
+def recompute_prior_period(
+    spec: MetricSpec,
+    store: FactStore,
+    tenant_id: str,
+    entity: str,
+    period: str,
+    *,
+    require_filed: bool,
+    registry: MetricRegistry | None = None,
+) -> tuple[Quantity, list[Fact], str] | None:
+    """Recompute a prior-period derived metric (YoY/QoQ growth, bps delta).
+
+    The engine's path for a growth figure with no stored fact of its own — the
+    normal case for an issuer ingested live from EDGAR, where only the *levels*
+    (revenue, RPO) are filed. ``"revenue grew 14%"`` recomputes from the current
+    and prior-year filed levels, so it renders ``traced``/``conflict`` instead of
+    falling to untraced. The restatement story carries over for free: the base
+    values come from ``store.latest``, so a restated prior-year base moves the
+    recomputation exactly as it does for the reference close pack.
+
+    A base that is itself a same-period identity (``delta_bps`` over a margin)
+    resolves through :func:`recompute_current_period` when ``registry`` is given.
+    Returns ``(expected, operand_facts, prior_period)`` or ``None`` when either
+    period's base can't be sourced — the caller falls through to untraced and
+    never asserts a number it cannot source.
+    """
+    base_id = spec.derived_base
+    if not base_id or spec.derived_kind not in PRIOR_PERIOD_KINDS:
+        return None
+    prior = (
+        _prior_quarter_period(period)
+        if spec.derived_kind == "qoq_growth"
+        else _prior_year_period(period)
+    )
+    if not prior:
+        return None
+
+    def base_value(p: str) -> tuple[Decimal, list[Fact]] | None:
+        fact = store.latest(tenant_id, entity, base_id, p)
+        if fact is not None and (fact.is_filed or not require_filed):
+            return fact.value, [fact]
+        if registry is not None:
+            base_spec = registry.get(base_id)
+            if base_spec is not None and base_spec.derived_kind in CURRENT_PERIOD_KINDS:
+                rec = recompute_current_period(
+                    base_spec, store, tenant_id, entity, p, require_filed=require_filed
+                )
+                if rec is not None:
+                    return rec[0].value, rec[1]
+        return None
+
+    current = base_value(period)
+    previous = base_value(prior)
+    if current is None or previous is None:
+        return None
+    expected = _expected(spec.derived_kind, current[0], previous[0])
+    if expected is None:
+        return None
+    value, unit, _suffix = expected
+    return (
+        Quantity(value=value, unit=unit, quantum=Decimal(0)),
+        current[1] + previous[1],
+        prior,
+    )
+
 
 def recompute_current_period(
     spec: MetricSpec,

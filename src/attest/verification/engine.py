@@ -36,6 +36,7 @@ from attest.domain.verdicts import (
 from attest.factstore.repository import FactStore
 from attest.verification.rules import (
     CURRENT_PERIOD_KINDS,
+    PRIOR_PERIOD_KINDS,
     check_cross_document_consistency,
     check_intra_document_consistency,
     check_derived_consistency,
@@ -46,6 +47,7 @@ from attest.verification.rules import (
     check_reg_g,
     check_unit_consistency,
     recompute_current_period,
+    recompute_prior_period,
 )
 
 
@@ -247,20 +249,43 @@ class VerificationEngine:
     _IDENTITY_JOIN = {"ratio": " / ", "ratio_pct": " / ", "difference": " - ", "sum": " + "}
 
     def _bind_derived(self, claim: FigureClaim, tenant_id: str) -> FigureVerdict | None:
-        """Verify a derived metric (margin / FCF) by recomputing its identity from
-        filed operands. Returns ``None`` when the metric isn't a same-period identity
-        or its operands aren't all filed — so the caller falls through to untraced and
-        never asserts a number it cannot source."""
+        """Verify a derived metric by recomputing its identity from filed operands.
+
+        Same-period identities (margin / FCF) recompute from this period's filed
+        facts; prior-period kinds (YoY/QoQ growth, bps delta) recompute from this
+        period's and the comparison period's — so "revenue grew 14%" ties out (or
+        conflicts) against the filed levels for any live-ingested issuer, exactly
+        as the reference pack's cloud-growth story does over stored facts. Returns
+        ``None`` when the metric isn't derived or its operands aren't all filed —
+        the caller falls through to untraced and never asserts a number it cannot
+        source."""
         spec = self.registry.get(claim.metric)
-        if spec is None or spec.derived_kind not in CURRENT_PERIOD_KINDS:
+        if spec is None:
             return None
-        recomputed = recompute_current_period(
-            spec, self.store, tenant_id, claim.entity, claim.period, require_filed=True
-        )
-        if recomputed is None:
+        if spec.derived_kind in CURRENT_PERIOD_KINDS:
+            recomputed = recompute_current_period(
+                spec, self.store, tenant_id, claim.entity, claim.period, require_filed=True
+            )
+            if recomputed is None:
+                return None
+            expected, operands = recomputed
+            identity = self._IDENTITY_JOIN[spec.derived_kind].join(_operand_ids(spec))
+        elif spec.derived_kind in PRIOR_PERIOD_KINDS:
+            prior_recomputed = recompute_prior_period(
+                spec,
+                self.store,
+                tenant_id,
+                claim.entity,
+                claim.period,
+                require_filed=True,
+                registry=self.registry,
+            )
+            if prior_recomputed is None:
+                return None
+            expected, operands, prior_period = prior_recomputed
+            identity = f"{spec.derived_base} {claim.period} vs {prior_period}"
+        else:
             return None
-        expected, operands = recomputed
-        identity = self._IDENTITY_JOIN[spec.derived_kind].join(_operand_ids(spec))
 
         def synth(quantum):
             as_of = max((o.as_of for o in operands), default=UNDATED_AS_OF)

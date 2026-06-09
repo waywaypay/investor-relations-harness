@@ -10,8 +10,10 @@ from attest.verification.rules.consistency import (
 )
 from attest.verification.rules.derived import (
     CURRENT_PERIOD_KINDS,
+    PRIOR_PERIOD_KINDS,
     check_derived_consistency,
     recompute_current_period,
+    recompute_prior_period,
 )
 from attest.verification.rules.directional import check_directional_language
 from attest.verification.rules.forward_looking import check_forward_looking
@@ -30,5 +32,7 @@ __all__ = [
     "check_directional_language",
     "check_unit_consistency",
     "recompute_current_period",
+    "recompute_prior_period",
     "CURRENT_PERIOD_KINDS",
+    "PRIOR_PERIOD_KINDS",
 ]

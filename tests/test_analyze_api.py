@@ -62,13 +62,19 @@ def test_ingest_xbrl_isolated_across_tenants(client):
     assert len(client.get("/tenants/beta/facts").json()) == 15
 
 
-def test_reingest_same_xbrl_returns_409_not_500(client):
+def test_reingest_same_xbrl_is_idempotent_not_an_error(client):
+    """Re-ingesting the same source must be a clean no-op with honest counts —
+    skip what's already on file, never a 4xx/500. (The same seam keeps a re-load
+    of the same historical release, or an EDGAR re-pull, from crashing.)"""
     from attest.ingestion.edgar_xbrl import load_fixture
     instance = load_fixture("atlas_q1_fy2026")
-    assert client.post("/tenants/acme/ingest/xbrl", json=instance).status_code == 200
+    first = client.post("/tenants/acme/ingest/xbrl", json=instance)
+    assert first.status_code == 200
     r = client.post("/tenants/acme/ingest/xbrl", json=instance)
-    assert r.status_code == 409
-    assert "duplicate" in r.json()["detail"].lower()
+    assert r.status_code == 200
+    body = r.json()
+    assert body["ingested"] == 0  # nothing new
+    assert body["skipped"] >= first.json()["ingested"]  # all re-filed facts skipped
 
 
 def test_analyze_pasted_text_ties_out_against_filed_sources(client):

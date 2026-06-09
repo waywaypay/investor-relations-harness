@@ -104,11 +104,43 @@ class AttestService:
 
     # -- ingestion -----------------------------------------------------------
 
+    def _file_facts(self, facts: list, report: IngestionReport) -> IngestionReport:
+        """Land connector output in the store idempotently, with honest counts.
+
+        Fact ids are deterministic over the source (accession/URL + metric +
+        period), so re-ingesting the same source — a user re-loading the same
+        historical release, or re-pulling EDGAR after a new quarter files — must
+        skip what's already on file and add only what's new, never crash on a
+        duplicate id. A *changed* value under an existing id (a corrected source
+        re-published at the same locator) is not dropped: it lands as a new,
+        disambiguated version, so restatement detection still sees it.
+        """
+        added = 0
+        skipped = 0
+        for fact in facts:
+            existing = self.store.get(fact.id, fact.tenant_id)
+            if existing is None:
+                self.store.add(fact)
+                added += 1
+            elif existing.value == fact.value and existing.unit == fact.unit:
+                skipped += 1  # the same fact re-filed — a no-op
+            else:
+                version = len(
+                    self.store.versions(fact.tenant_id, fact.entity, fact.metric, fact.period)
+                ) + 1
+                self.store.add(fact.model_copy(update={"id": f"{fact.id}:r{version}"}))
+                added += 1
+        if added == len(facts):
+            return report
+        return report.model_copy(
+            update={"ingested": added, "skipped": report.skipped + skipped}
+        )
+
     def ingest_xbrl(
         self, instance: dict, tenant_id: str, actor: str = "system:ingestion"
     ) -> IngestionReport:
         facts, report = XBRLConnector(self.registry).fetch(instance, tenant_id)
-        self.store.add_many(facts)
+        report = self._file_facts(facts, report)
         self.audit_log.append(
             actor=actor,
             type=EventType.INGEST,
@@ -145,7 +177,7 @@ class AttestService:
             as_of=as_of,
             label=label,
         )
-        self.store.add_many(facts)
+        report = self._file_facts(facts, report)
         self.audit_log.append(
             actor=actor,
             type=EventType.INGEST,
@@ -192,7 +224,7 @@ class AttestService:
             source_ref=source_ref,
             label=label,
         )
-        self.store.add_many(facts)
+        report = self._file_facts(facts, report)
         self.audit_log.append(
             actor=actor,
             type=EventType.INGEST,
@@ -225,7 +257,7 @@ class AttestService:
         facts, report = EdgarConnector(self.registry, self.edgar).fetch(
             ticker, tenant_id, max_years=max_years
         )
-        self.store.add_many(facts)
+        report = self._file_facts(facts, report)
         self.audit_log.append(
             actor=actor,
             type=EventType.INGEST,
@@ -547,7 +579,7 @@ class AttestService:
                 as_of=exhibit.filing_date,
                 label=exhibit.label,
             )
-            self.store.add_many(facts)
+            report = self._file_facts(facts, report)
             self.audit_log.append(
                 actor=actor,
                 type=EventType.INGEST,
@@ -674,7 +706,7 @@ class AttestService:
                 source_ref=doc.url,
                 label=title_by_url.get(doc.url) or doc.title,
             )
-            self.store.add_many(facts)
+            report = self._file_facts(facts, report)
             self.audit_log.append(
                 actor=actor,
                 type=EventType.INGEST,

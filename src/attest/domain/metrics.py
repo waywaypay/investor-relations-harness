@@ -119,6 +119,25 @@ DEFAULT_REGISTRY = MetricRegistry(
             derived_kind="yoy_growth",
             derived_base="cloud_revenue",
         ),
+        # Generic growth figures every release states ("total revenue grew 14%
+        # year over year", "RPO grew 36%"). Like the margins below they have no
+        # XBRL tag of their own — the engine recomputes them from the filed levels
+        # of this period and the prior-year period, so they trace (or conflict)
+        # for any live-ingested issuer instead of reading as unattributed numbers.
+        MetricSpec(
+            id="revenue_growth_yoy",
+            label="Total revenue growth, YoY",
+            unit=Unit.PERCENT,
+            derived_kind="yoy_growth",
+            derived_base="total_revenue",
+        ),
+        MetricSpec(
+            id="rpo_growth_yoy",
+            label="RPO growth, YoY",
+            unit=Unit.PERCENT,
+            derived_kind="yoy_growth",
+            derived_base="total_rpo",
+        ),
         MetricSpec(
             id="gaap_diluted_eps",
             label="GAAP diluted EPS",

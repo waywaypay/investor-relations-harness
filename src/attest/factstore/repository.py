@@ -32,6 +32,10 @@ class FactStore(Protocol):
 
     def all(self, tenant_id: str | None = None) -> list[Fact]: ...
 
+    def get(self, fact_id: str, tenant_id: str | None = None) -> Fact | None:
+        """The fact with this id (scoped to a tenant when given), or ``None``."""
+        ...
+
 
 class InMemoryFactStore:
     """A dict-backed reference store. The persistence boundary is intentionally

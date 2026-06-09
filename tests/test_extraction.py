@@ -152,16 +152,22 @@ def test_extractor_maps_real_release_prose_to_canonical_metrics():
     assert guidance.metric == "q2_revenue_guidance" and guidance.period == "FY2026-Q2"
 
 
-def test_extractor_overdetects_but_never_asserts_unknowns():
+def test_extractor_attributes_growth_percent_but_engine_never_asserts_it():
     svc = seeded_service()
     claims = ClaimExtractor(svc.registry, svc.store).extract(
         RELEASE, document_id="release", tenant_id="atlas", entity="ATLS", period="FY2026-Q1"
     )
-    # The unattributed 18% growth figure is still surfaced, but as a low-confidence
-    # 'unidentified' claim — the engine will route/leave it rather than assert it.
-    unknown = next(c for c in claims if c.displayed_text == "18%")
-    assert unknown.metric == "unidentified"
-    assert unknown.detect_confidence == Confidence.LOW
+    # "total revenue of $1.24 billion, up 18% year over year" — the growth percent
+    # attributes structurally to the figure it grows (revenue_growth_yoy), instead
+    # of landing unidentified. The trust model is unchanged: only a recompute from
+    # *filed* levels may say traced, and the seeded store has no prior-year
+    # revenue, so the figure is surfaced but never asserted.
+    growth = next(c for c in claims if c.displayed_text == "18%")
+    assert growth.metric == "revenue_growth_yoy"
+    assert growth.entity == "ATLS"
+    assert growth.detect_confidence == Confidence.HIGH
+    verdict = svc.engine.verify_claim(growth, "atlas")
+    assert verdict.verdict.value == "untraced"  # no prior-year filed level to recompute from
 
 
 def test_every_claim_carries_a_span_for_highlighting():
