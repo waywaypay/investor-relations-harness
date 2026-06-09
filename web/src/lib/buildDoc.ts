@@ -53,6 +53,8 @@ const esc = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
 const prettyMetric = (m: string) => {
+  // The edge's absence-of-an-identity sentinel reads poorly as a label.
+  if (m === "unidentified") return "Unattributed figure";
   const s = m.replace(/_/g, " ").trim();
   return s.charAt(0).toUpperCase() + s.slice(1);
 };
@@ -69,7 +71,10 @@ function sourcePanel(
   metric: string,
   period: string,
   sourceValue: string | null,
-  st: VerdictState
+  st: VerdictState,
+  sourceLabel?: string,
+  sourceExcerpt?: string,
+  asOf?: string | null
 ): string {
   const valueRow =
     sourceValue != null
@@ -83,13 +88,20 @@ function sourcePanel(
         : st === "f"
           ? "Bound to a source, but the value differs. Reconcile before publish."
           : "Matched to a filed source within the tenant's rounding policy.";
+  // The citation line under the metric header: which source document this value
+  // comes from (e.g. "Form 10-Q · us-gaap:Revenues · as of 2026-02-20").
+  const citation = [sourceLabel, asOf ? `as of ${asOf}` : ""].filter(Boolean).join(" · ");
+  const sub = [period, citation].filter(Boolean).join(" · ");
+  const excerpt = sourceExcerpt?.trim()
+    ? `<p class="note">“${esc(sourceExcerpt.trim())}”</p>`
+    : "";
   return (
     `<div class="filing"><div class="fhd">${esc(prettyMetric(metric))}</div>` +
-    `<div class="fsub">${esc(period)}</div>` +
+    `<div class="fsub">${esc(sub)}</div>` +
     `<table class="ftable"><tr class="head"><td>Metric</td><td class="num">Value</td></tr>` +
     `<tr><td>${esc(lbl)}</td><td class="num"></td></tr>` +
     valueRow +
-    `</table><p class="note">${esc(note)}</p></div>`
+    `</table>${excerpt}<p class="note">${esc(note)}</p></div>`
   );
 }
 
@@ -102,14 +114,27 @@ function makeFigure(
   const text = (claim?.displayed_text ?? verdict.displayed_text ?? "").trim();
   const filed = st === "v" || st === "f" ? verdict.source_value : null;
   const lbl = `${prettyMetric(verdict.metric)} · ${verdict.period}`;
+  // Cite the actual source document when the engine bound one ("Form 10-Q ·
+  // us-gaap:Revenues"), not just the metric name — that's the link the user
+  // follows to prove the number.
+  const srcLabel = verdict.provenance?.label?.trim() || "";
+  const srcRef = `${prettyMetric(verdict.metric)} (${verdict.period})`;
   const cite =
     st === "v"
-      ? `Traced to ${verdict.metric} (${verdict.period})`
+      ? `Traced to ${srcLabel || srcRef}`
       : st === "f"
-        ? `Conflict · ${verdict.metric} (${verdict.period})`
+        ? `Conflict · ${srcLabel || srcRef}`
         : st === "r"
-          ? `Needs sign-off · ${verdict.metric}`
+          ? `Needs sign-off · ${srcLabel || srcRef}`
           : "No source bound yet";
+  const fields = [
+    { label: "As written", value: text || "—" },
+    { label: "Source value", value: verdict.source_value ?? "—", tone: st === "f" ? ("bad" as const) : ("" as const) },
+    { label: "Metric", value: prettyMetric(verdict.metric) },
+    { label: "Period", value: verdict.period },
+  ];
+  if (srcLabel) fields.push({ label: "Source", value: srcLabel });
+  if (verdict.as_of) fields.push({ label: "As of", value: verdict.as_of });
   return {
     id: figureId,
     v: text,
@@ -122,14 +147,18 @@ function makeFigure(
     editedFrom: null,
     snip: "",
     cite,
-    page: sourcePanel(lbl, verdict.metric, verdict.period, verdict.source_value, st),
+    page: sourcePanel(
+      lbl,
+      verdict.metric,
+      verdict.period,
+      verdict.source_value,
+      st,
+      srcLabel,
+      verdict.provenance?.excerpt,
+      verdict.as_of
+    ),
     reason: esc(verdict.reason || ""),
-    fields: [
-      { label: "As written", value: text || "—" },
-      { label: "Source value", value: verdict.source_value ?? "—", tone: st === "f" ? "bad" : "" },
-      { label: "Metric", value: prettyMetric(verdict.metric) },
-      { label: "Period", value: verdict.period },
-    ],
+    fields,
   };
 }
 

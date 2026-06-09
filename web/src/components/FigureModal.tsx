@@ -28,44 +28,76 @@ export function FigureModal({ fig, onClose }: { fig: Figure; onClose: () => void
   // When set, the full source document opens scrolled to this figure's number.
   const [srcDocOpen, setSrcDocOpen] = useState(false);
 
-  // Untraced (newly typed) figure -> bind flow.
+  // Untraced figure. A figure from an uploaded/fetched document (namespaced
+  // `version::claim` id) gets the engine's honest reason and the claim details —
+  // never the demo close pack's bind options, which belong to a different issuer.
+  // A figure typed into the demo draft keeps the bind flow.
   if (fig.st === "u") {
+    const isUploadFigure = fig.id.includes("::");
     return (
       <Scrim onClose={onClose}>
         <div className="mbar">
-          <span className="badge" style={{ background: "#516170" }}>UNBOUND</span>
+          <span className="badge" style={{ background: "#516170" }}>UNTRACED</span>
           <div>
             <div className="ttl">{fig.cur}</div>
-            <div className="sub">Detected in the draft · not yet traced</div>
+            <div className="sub">{isUploadFigure ? fig.lbl || "Not yet traced" : "Detected in the draft · not yet traced"}</div>
           </div>
           <button className="x" onClick={onClose}>×</button>
         </div>
         <div className="mbody">
           <div className="detail" style={{ width: "100%" }}>
             <div className="statusbar" style={{ background: "#EAEEF2", color: "#516170" }}>
-              <Eye /><span>Untraced figure — bind it to a source</span>
+              <Eye />
+              <span>
+                {isUploadFigure
+                  ? "Untraced — no filed source matched this figure"
+                  : "Untraced figure — bind it to a source"}
+              </span>
             </div>
-            <div className="reason">
-              This number was typed into the draft but isn’t linked to a filing yet. Bind it to a
-              source so it traces like everything else — or remove it.
-            </div>
-            <div className="bindlist">
-              {BIND_OPTIONS.map((o) => (
-                <div key={o.name} className="bindopt"
-                  onClick={() => { store.bindFigure(fig.id, o.name); onClose(); }}>
-                  <div>
-                    <div className="bn">{o.name}</div>
-                    <div className="bc">{o.ctx}</div>
+            {isUploadFigure ? (
+              <>
+                {fig.reason && (
+                  <div className="reason" dangerouslySetInnerHTML={{ __html: fig.reason }} />
+                )}
+                {fig.fields?.length > 0 && (
+                  <div className="fields">
+                    {fig.fields.map((f, i) => (
+                      <div className="field" key={i}>
+                        <span>{f.label}</span>
+                        <span className={f.tone || ""}>{f.value}</span>
+                      </div>
+                    ))}
                   </div>
-                  <span className="badge">Bind</span>
+                )}
+                <div className="acts">
+                  <button className="btn" onClick={onClose}>Close</button>
                 </div>
-              ))}
-            </div>
-            <div className="acts">
-              <button className="btn" onClick={() => { store.removeFigure(fig.id); onClose(); }}>
-                Remove from draft
-              </button>
-            </div>
+              </>
+            ) : (
+              <>
+                <div className="reason">
+                  This number was typed into the draft but isn’t linked to a filing yet. Bind it to a
+                  source so it traces like everything else — or remove it.
+                </div>
+                <div className="bindlist">
+                  {BIND_OPTIONS.map((o) => (
+                    <div key={o.name} className="bindopt"
+                      onClick={() => { store.bindFigure(fig.id, o.name); onClose(); }}>
+                      <div>
+                        <div className="bn">{o.name}</div>
+                        <div className="bc">{o.ctx}</div>
+                      </div>
+                      <span className="badge">Bind</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="acts">
+                  <button className="btn" onClick={() => { store.removeFigure(fig.id); onClose(); }}>
+                    Remove from draft
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </Scrim>

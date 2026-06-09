@@ -169,6 +169,10 @@ class HistoricalCandidate(BaseModel):
 
 class HistoricalSearchResponse(BaseModel):
     candidates: list[HistoricalCandidate]
+    entity: str = Field(
+        default="",
+        description="the issuer ticker the typed entity resolved to (e.g. 'Palo Alto Networks' -> 'PANW')",
+    )
 
 
 class HistoricalIngestItem(BaseModel):
@@ -217,3 +221,7 @@ class HistoricalIngestResponse(BaseModel):
 
     documents: list[HistoricalIngestDoc]
     total_ingested: int
+    entity: str = Field(
+        default="",
+        description="the issuer ticker the run resolved and scoped facts under",
+    )
