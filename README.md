@@ -80,6 +80,7 @@ src/attest/
                        forward_looking FLS detection -> safe-harbor requirement
   audit/           append-only, event-sourced, sha256 hash-chained log
   ingestion/       connectors (EDGAR/XBRL adapter, 8-K EX-99.1 guidance adapter,
+                                EDGAR 8-K release fetcher, constrained Exa fetcher,
                                 sample filing + press-release fixtures)
   eval/            the golden-set harness + CI gate (figure FN rate must be 0)
   api/             stateless FastAPI surface over the service
@@ -185,6 +186,48 @@ in a filed 8-K exhibit is a real, citable disclosure, these facts are `filing_li
 (traceable), distinct from the internal pre-filing planning guidance that ingests
 as non-filed `management_input`. A later draft that reaffirms prior guidance then
 ties out to the exact published sentence.
+
+### Getting the releases themselves — enumerate EDGAR, don't search
+
+"Fetch the last four quarters of press releases" is an *enumeration*, and a
+semantic search engine is structurally the wrong tool for one: an embedding
+query returns the top-k most *similar* pages, every quarter exists as half a
+dozen near-duplicate mirrors (so dedupe + recency bias yields two distinct
+quarters out of ten results), the advisory sibling ("*Company to Announce …
+Results*", which contains **zero** figures) is nearly identical in embedding
+space to the release it advertises, and the issuer's IR landing page is a
+JavaScript shell whose cached crawl has no numbers — the tables live one hop
+away, in the exhibit PDF or the EDGAR filing.
+
+EDGAR is the authoritative enumeration instead: every earnings release is
+filed as an **8-K announcing Item 2.02** with the release attached verbatim as
+**Exhibit 99.1** — static HTML, no JavaScript, no bot wall, complete tables,
+one filing per quarter by construction. `EdgarReleaseConnector` walks the
+`data.sec.gov` submissions index (paging into the archive files for longer
+lookbacks), locates each EX-99.1 from the filing index, and recovers the prose
+with the same extractor the upload path uses:
+
+```bash
+attest releases META --quarters 4 --out ./releases \
+  --user-agent "Your Name you@example.com"   # SEC fair-access policy
+```
+
+The output prints a **figure count per release** on purpose: an earnings
+release whose text contains no detectable figures is the wrong artifact (an
+advisory or a shell page), and that should be visible at fetch time, not at
+verification time. Whatever the index could not satisfy is listed as
+`MISSING` with the reason — reported, never papered over. The recovered text
+feeds straight into `POST /analyze` or the guidance connector
+(`base_period` = the release's inferred `FY…-Q…`).
+
+If you do want a search engine in the loop, `--source exa` (needs
+`EXA_API_KEY`) runs `ExaReleaseFetcher`, which constrains Exa to what it is
+good at and verifies everything: one **keyword** query per quarter built from
+the release-title convention, domains pinned to where full text actually
+lives (EDGAR, the q4cdn exhibit CDN, the wires — pointedly *not* the IR
+landing page), full-text contents with `livecrawl: preferred` (never
+highlights, which drop the tables), advisory titles rejected, and a candidate
+accepted only when its text demonstrably contains figures.
 
 ## Scope of this v1
 
