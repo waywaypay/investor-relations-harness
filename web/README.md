@@ -4,13 +4,13 @@ A React + TypeScript port of the Attest disclosure-drafting workspace: the
 editor, figure-verification popovers/modals, narrative & commitment checks,
 Street consensus, and the earnings calendar.
 
-The workspace opens on the bundled reference close pack, but it is a **document
-library**, not a fixed demo: use **+ Upload** in the sidebar to drop in (or
+The workspace opens **empty**: use **+ Upload** in the sidebar to drop in (or
 paste) your own release / script / Q&A. Each upload is run through the engine,
 its figures are tied out and highlighted in place, and it's added to the library
 grouped by period — so you can keep and switch between multiple/historical
 documents, and remove uploads you no longer need. Uploads persist across reloads
-(localStorage); the reference close pack is always re-seeded as removable samples.
+(localStorage). The bundled Atlas reference close pack is no longer seeded on
+load; it remains available as seed data for the tests (`<App seedDemo />`).
 
 ### Versions & document management
 
@@ -23,9 +23,9 @@ restore an earlier one at any time.
 **Manage** (next to **+ Upload**, or **History** on the draft) opens the document
 manager: a single place to rename documents, review each version with its tie-out
 coverage and an optional "what changed" note, make a version active or delete it,
-file a new version, or remove a whole document. (Versions layered onto the demo
-samples are session-only; upload your own document to keep its history across
-reloads.)
+file a new version, or remove a whole document. (Versions layered onto seeded
+sample documents are session-only; upload your own document to keep its history
+across reloads.)
 
 ## Run it
 
@@ -77,8 +77,7 @@ The upload dialog has an optional **Issuer ticker** field. Fill it in (e.g.
 `PANW`) and — when the backend has live EDGAR enabled (`attest serve` does by
 default) — the upload first loads that issuer's real filed facts from SEC, so the
 draft's figures tie out against the as-filed numbers instead of all coming back
-untraced. The static GitHub Pages build has no backend, so it can't reach SEC;
-run `attest serve` (or point `VITE_ATTEST_API` at a backend) for live tie-out.
+untraced.
 
 ### Live verification against the backend
 
