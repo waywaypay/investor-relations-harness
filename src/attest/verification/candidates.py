@@ -14,12 +14,22 @@ from dataclasses import dataclass
 
 from attest.domain.money import Quantity, QuantityParseError, parse_quantity
 
-# Greedy: currency with optional scale word, percentages, basis points.
+# Greedy: currency with optional scale word, percentages, basis points, and
+# bare numbers carrying a full scale word ("1,000 million" — how a rendered
+# statement table states a $-less cell). Negatives are first-class: a leading
+# minus ("-$1,409", "-12.4%") and the financial-statement convention of a
+# dollar sign *outside* parentheses ("$ (1,409 )", "$(1.53)") both detect. A
+# dollar sign *inside* parentheses ("($1.2 billion)") stays a positive figure
+# — in prose that is an aside, not a negative.
+_SCALE_WORDS = r"(?:billion|million|thousand|trillion|bn|mm|[bmkt])"
+_FULL_SCALE_WORDS = r"(?:billion|million|thousand|trillion)"
 _CANDIDATE_RE = re.compile(
-    r"""
-    (?P<cur>\$\s?\d[\d,]*(?:\.\d+)?\s*(?:billion|million|thousand|trillion|bn|mm|[bmkt])?\b)
-    | (?P<pct>\b\d{1,3}(?:\.\d+)?\s?%)
-    | (?P<bps>\b\d{1,4}(?:\.\d+)?\s?(?:bps|basis\ points)\b)
+    rf"""
+    (?P<cur>(?<![\d.])-?\$\s?\(\s?\d[\d,]*(?:\.\d+)?\s*{_SCALE_WORDS}?\s?\)   # $ (1,409) — table negative
+        | (?<![\d.])-?\$\s?-?\d[\d,]*(?:\.\d+)?\s*{_SCALE_WORDS}?\b
+        | (?<![\d.$])-?\b\d[\d,]*(?:\.\d+)?\s{_FULL_SCALE_WORDS}\b)          # bare "1,000 million"
+    | (?P<pct>(?<![\d.])-?\b\d{{1,3}}(?:\.\d+)?\s?%)
+    | (?P<bps>\b\d{{1,4}}(?:\.\d+)?\s?(?:bps|basis\ points)\b)
     """,
     re.IGNORECASE | re.VERBOSE,
 )

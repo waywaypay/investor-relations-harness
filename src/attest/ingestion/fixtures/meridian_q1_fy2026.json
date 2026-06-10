@@ -179,7 +179,7 @@
       "as_of": "2025-04-28"
     },
     {
-      "metric": "q2_revenue_guidance",
+      "metric": "revenue_guidance",
       "period": "FY2026-Q2",
       "value": "1325000000",
       "unit": "USD",

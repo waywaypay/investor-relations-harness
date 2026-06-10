@@ -33,48 +33,26 @@ from __future__ import annotations
 import json
 import os
 import re
-import time
-import urllib.request
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 from dataclasses import dataclass
 
 from attest.extraction.text import extract_text
 from attest.ingestion.releases import EarningsRelease, ReleaseFetchReport, infer_period
+from attest.ingestion.sec import (  # noqa: F401  (TICKERS_URL re-exported for callers)
+    DEFAULT_USER_AGENT,
+    TICKERS_URL,
+    Fetcher,
+    UrlFetcher,
+    resolve_cik,
+)
 
-Fetcher = Callable[[str], bytes]
-
-TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
 SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik:010d}.json"
 ARCHIVE_URL = "https://data.sec.gov/submissions/{name}"
 FILING_BASE = "https://www.sec.gov/Archives/edgar/data/{cik}/{acc_nodash}"
 
-_DEFAULT_UA = "attest/0.1 (contact unset; pass user_agent or set ATTEST_SEC_USER_AGENT)"
-
 _ROW_RE = re.compile(r"<tr[^>]*>(.*?)</tr>", re.IGNORECASE | re.DOTALL)
 _HREF_RE = re.compile(r'href="([^"]+)"', re.IGNORECASE)
 _EXHIBIT_NAME_RE = re.compile(r"ex.{0,3}99|press", re.IGNORECASE)
-
-
-class _UrlFetcher:
-    """SEC fair-access transport: declared User-Agent, spaced requests."""
-
-    def __init__(self, user_agent: str, min_interval: float = 0.12) -> None:
-        self.user_agent = user_agent
-        self.min_interval = min_interval
-        self._last = 0.0
-
-    def __call__(self, url: str) -> bytes:
-        wait = self._last + self.min_interval - time.monotonic()
-        if wait > 0:
-            time.sleep(wait)
-        request = urllib.request.Request(
-            url,
-            headers={"User-Agent": self.user_agent, "Accept-Encoding": "identity"},
-        )
-        with urllib.request.urlopen(request, timeout=30) as response:
-            data = response.read()
-        self._last = time.monotonic()
-        return data
 
 
 @dataclass(frozen=True)
@@ -132,16 +110,12 @@ class EdgarReleaseConnector:
     """Enumerates and fetches quarterly earnings releases from EDGAR."""
 
     def __init__(self, *, user_agent: str | None = None, fetch: Fetcher | None = None) -> None:
-        agent = user_agent or os.environ.get("ATTEST_SEC_USER_AGENT") or _DEFAULT_UA
-        self._fetch = fetch or _UrlFetcher(agent)
+        agent = user_agent or os.environ.get("ATTEST_SEC_USER_AGENT") or DEFAULT_USER_AGENT
+        self._fetch = fetch or UrlFetcher(agent)
 
     def resolve_cik(self, ticker: str) -> int:
         """Ticker -> CIK via SEC's own mapping file."""
-        table = json.loads(self._fetch(TICKERS_URL))
-        for row in table.values():
-            if row.get("ticker", "").upper() == ticker.upper():
-                return int(row["cik_str"])
-        raise LookupError(f"Ticker {ticker!r} not found in SEC's company_tickers.json")
+        return resolve_cik(self._fetch, ticker)
 
     def fetch_quarterly(
         self, issuer: str, quarters: int = 4

@@ -34,16 +34,64 @@ from attest.verification.candidates import detect_candidates
 # (:class:`AliasConfig`); the shape stays the same whether it's this table, tenant
 # config, or a learned model.
 _ALIASES: dict[str, tuple[str, ...]] = {
-    "total_revenue": ("total revenue", "total net revenue", "net revenue", "revenue", "net sales", "total sales", "sales"),
-    "cloud_revenue": ("cloud segment revenue", "cloud revenue", "cloud segment", "cloud business"),
-    "cloud_growth_yoy": ("cloud growth", "cloud segment revenue grew", "cloud revenue grew", "cloud"),
+    # income statement
+    "total_revenue": ("total revenues", "total revenue", "total net revenue", "net revenue", "revenues", "revenue", "net sales", "total sales", "sales"),
+    "cost_of_revenue": ("cost of revenue", "cost of sales", "cost of goods sold", "cost of products sold"),
+    "gross_profit": ("gross profit",),
+    "rnd_expense": ("research and development", "r&d expense"),
+    "sga_expense": ("selling, general and administrative", "sg&a"),
+    "total_costs_and_expenses": ("total operating costs and expenses", "total operating costs", "total costs and expenses", "total operating expenses"),
+    "operating_income": ("earnings from operations", "income from operations", "operating income", "operating earnings"),
+    "pretax_income": ("earnings before income taxes", "income before income taxes", "pre-tax income", "pretax income"),
+    "income_tax_expense": ("provision for income taxes", "income tax provision"),
+    "net_income": ("net earnings attributable", "net earnings", "net income attributable", "net income"),
+    "gaap_basic_eps": ("basic earnings per share", "basic eps"),
     "gaap_diluted_eps": ("gaap diluted eps", "gaap eps", "gaap diluted earnings per share", "diluted eps", "diluted earnings per share", "earnings per share"),
-    "non_gaap_diluted_eps": ("non-gaap diluted eps", "non gaap diluted eps", "adjusted diluted eps", "non-gaap eps", "adjusted eps", "non-gaap diluted earnings per share"),
-    "operating_cash_flow": ("operating cash flow", "cash flow from operations", "cash provided by operating activities", "cash from operations"),
-    "share_repurchases": ("share repurchases", "repurchases of common stock", "repurchase of common stock", "repurchased", "stock buyback", "buyback"),
+    "non_gaap_diluted_eps": ("non-gaap diluted eps", "non gaap diluted eps", "adjusted diluted eps", "non-gaap eps", "adjusted eps", "non-gaap diluted earnings per share", "adjusted earnings per share", "adjusted net earnings per share"),
+    "basic_shares": ("weighted-average basic shares", "basic weighted-average shares"),
+    "diluted_shares": ("weighted-average diluted shares", "diluted weighted-average shares", "diluted shares outstanding"),
+    # balance sheet
+    "total_assets": ("total assets",),
+    "total_liabilities": ("total liabilities",),
+    "stockholders_equity": ("shareholders' equity", "stockholders' equity", "total equity"),
+    "cash_and_equivalents": ("cash and cash equivalents", "cash and equivalents"),
+    "long_term_debt": ("long-term debt",),
+    # cash flow
+    "operating_cash_flow": ("cash flows from operations", "operating cash flow", "cash flow from operations", "cash provided by operating activities", "cash from operations", "cash flows from operating activities"),
+    "investing_cash_flow": ("cash flows from investing activities", "cash used for investing activities"),
+    "financing_cash_flow": ("cash flows from financing activities", "cash used for financing activities"),
+    "capex": ("capital expenditures", "purchases of property, plant and equipment", "purchases of property and equipment", "capex"),
+    "dividends_paid": ("cash dividends paid", "dividends paid"),
+    "share_repurchases": ("share repurchases", "repurchases of common stock", "repurchase of common stock", "common stock repurchases", "repurchased", "stock buyback", "buyback"),
+    # margins / ratios
     "operating_margin": ("operating margin", "margin from operations"),
     "operating_margin_change_bps": ("operating margin expanded", "operating margin improved", "margin expansion", "basis points"),
-    "q2_revenue_guidance": ("revenue in the range", "revenue guidance", "expects total revenue", "guidance"),
+    "medical_care_ratio": ("medical care ratio", "medical loss ratio", "care ratio"),
+    "operating_cost_ratio": ("operating cost ratio",),
+    "return_on_equity": ("return on equity",),
+    # payer income-statement lines
+    "premium_revenue": ("premium revenues", "premium revenue", "premiums"),
+    "medical_costs": ("medical costs", "medical cost trend"),
+    "medical_costs_payable": ("medical costs payable",),
+    # guidance (period-agnostic targets; the claim period carries the quarter/year)
+    "revenue_guidance": ("revenue in the range", "revenue guidance", "expects total revenue", "revenue outlook", "guidance"),
+    "eps_guidance": ("eps guidance", "earnings per share guidance", "net earnings outlook", "eps outlook"),
+    "adjusted_eps_guidance": ("adjusted eps guidance", "adjusted earnings per share guidance", "adjusted net earnings outlook"),
+    # Meridian demo issuer vocabulary
+    "cloud_revenue": ("cloud segment revenue", "cloud revenue", "cloud segment", "cloud business"),
+    "cloud_growth_yoy": ("cloud growth", "cloud segment revenue grew", "cloud revenue grew", "cloud"),
+    # UNH issuer vocabulary: the segment rows as the table renderer labels them
+    # ("<section> — <row label>"), plus the bare segment names.
+    "unitedhealthcare_revenue": ("revenues — unitedhealthcare", "unitedhealthcare revenue", "unitedhealthcare"),
+    "optum_revenue": ("revenues — optum", "optum revenue", "total optum"),
+    "optum_health_revenue": ("revenues — optum health", "optum health revenue", "optum health"),
+    "optum_insight_revenue": ("revenues — optum insight", "optum insight revenue", "optum insight"),
+    "optum_rx_revenue": ("revenues — optum rx", "optum rx revenue", "optum rx"),
+    "unitedhealthcare_operating_earnings": ("earnings from operations — unitedhealthcare", "unitedhealthcare earnings from operations"),
+    "optum_operating_earnings": ("earnings from operations — optum", "optum earnings from operations"),
+    "optum_health_operating_earnings": ("earnings from operations — optum health", "optum health earnings from operations"),
+    "optum_insight_operating_earnings": ("earnings from operations — optum insight", "optum insight earnings from operations"),
+    "optum_rx_operating_earnings": ("earnings from operations — optum rx", "optum rx earnings from operations"),
 }
 
 # Words that, near a percentage, signal a year-over-year growth figure.
@@ -56,12 +104,45 @@ _GUIDANCE_NEAR = re.compile(
     re.IGNORECASE,
 )
 
-# A guidance range stated as a single span: "$1.31 to $1.34 billion", "$1.31–1.34B".
+# A guidance range stated as a single span: "$1.31 to $1.34 billion", "$1.31–1.34B",
+# or a percent range ("22% to 23%") for margin-style guidance.
 _RANGE_RE = re.compile(
     r"\$\s?\d[\d,]*(?:\.\d+)?\s*(?:to|through|and|[-–—])\s*\$?\s?\d[\d,]*(?:\.\d+)?\s*"
-    r"(?:billion|million|thousand|trillion|bn|mm|[bmkt])?",
+    r"(?:billion|million|thousand|trillion|bn|mm|[bmkt])?"
+    r"|\d{1,3}(?:\.\d+)?\s?%\s*(?:to|through|and|[-–—])\s*\d{1,3}(?:\.\d+)?\s?%",
     re.IGNORECASE,
 )
+
+# Cues that attribute a guidance range to its metric and period. The range's own
+# label often trails it ("$24.65 to $25.15 per share"), so cues are read from a
+# window on both sides, clipped at the first clause break after the range.
+_EPS_CUE = re.compile(r"\bper\s+(?:diluted\s+|basic\s+)?share\b|\beps\b|\bearnings\s+per\s+share\b", re.IGNORECASE)
+_ADJUSTED_CUE = re.compile(r"\badjusted\b|\bnon-?gaap\b", re.IGNORECASE)
+_REVENUE_CUE = re.compile(r"\brevenues?\b|\bsales\b|\btopline\b", re.IGNORECASE)
+_MARGIN_CUE = re.compile(r"\bmargin\b", re.IGNORECASE)
+_FULL_YEAR_CUE = re.compile(
+    r"\bfull[- ]year\b[\s,]*(20\d\d)?|\bfiscal\s+(?:year\s+)?(20\d\d)\b|\bfy\s?(20\d\d)\b",
+    re.IGNORECASE,
+)
+_QUARTER_CUE = re.compile(
+    r"\b(first|second|third|fourth)\s+quarter\b(?:[\s,]*(?:of\s+)?(?:fiscal\s+)?(20\d\d))?",
+    re.IGNORECASE,
+)
+
+# The table renderer annotates each value with its column period — "$99,797
+# million (FY2025-Q1)" — so a prior-year comparative binds to *its own* period.
+_PERIOD_ANNOT_RE = re.compile(r"^\s*\((FY\d{4}(?:-(?:Q[1-4]|H[12]|9M))?)\)")
+
+# Prose comparatives qualify the figure they trail: "compared to 84.3% last
+# year" asserts the *prior-year* value, and must not bind (or conflict) against
+# the current period.
+_PRIOR_PERIOD_NEAR = re.compile(
+    r"\b(?:prior[- ]year|last year|a year ago|year[- ]earlier)\b", re.IGNORECASE
+)
+
+# Currency metrics that assert per-share values; a "per share" tail next to a
+# figure restricts attribution to these (and never to a dollar aggregate).
+_PER_SHARE_TAIL_RE = re.compile(r"^\s*(?:\(FY[^)]{1,12}\)\s*)?per\s+(?:\w+\s+)?share\b", re.IGNORECASE)
 
 # Where a figure's own trailing label ends and the next clause begins. A trailing
 # label is a tight prepositional tail ("$338 million of operating cash flow"); once
@@ -172,6 +253,16 @@ def _next_period(period: str | None) -> str | None:
     return f"FY{year + 1}-Q1" if q == 4 else f"FY{year}-Q{q + 1}"
 
 
+def _prior_year(period: str | None) -> str | None:
+    """'FY2026-Q1' -> 'FY2025-Q1'; 'FY2026' -> 'FY2025'."""
+    if not period:
+        return None
+    m = re.match(r"FY(\d{4})(-.*)?$", period, re.IGNORECASE)
+    if not m:
+        return None
+    return f"FY{int(m.group(1)) - 1}{m.group(2) or ''}"
+
+
 class ClaimExtractor:
     """Proposes :class:`FigureClaim` s from raw prose (the model-free edge)."""
 
@@ -185,6 +276,14 @@ class ClaimExtractor:
         self.store = store
         self.aliases = aliases or DEFAULT_ALIASES
         self._views = self._build_views(registry, self.aliases)
+        # Currency metrics that assert per-share values (EPS family, per-share
+        # guidance) — the only legal targets for a figure with a "per share" tail.
+        self._per_share_ids = {
+            spec.id
+            for spec in registry.metrics()
+            if spec.unit is Unit.CURRENCY
+            and ("eps" in spec.id or "per share" in spec.label.lower())
+        }
 
     @staticmethod
     def _build_views(registry: MetricRegistry, aliases: AliasConfig) -> list[_MetricView]:
@@ -224,6 +323,69 @@ class ClaimExtractor:
         entity resolution already is.
         """
         return {f.metric for f in self.store.all(tenant_id) if f.entity == entity}
+
+    @staticmethod
+    def _range_tail(text: str, end: int) -> str:
+        """The clause right after a guidance range — where a trailing label lives
+        ("$24.65 to $25.15 per share"), clipped before the next clause's subject."""
+        tail = text[end : end + 40]
+        if (brk := _CLAUSE_BREAK.search(tail)) is not None:
+            tail = tail[: brk.start()]
+        return tail.lower()
+
+    def _guidance_metric(self, before: str, tail: str, range_text: str) -> tuple[str | None, Confidence]:
+        """Attribute a guidance range to its metric from the surrounding clause.
+
+        EPS cues outrank revenue cues (an EPS range often sits in a sentence that
+        also says "revenue"); "adjusted"/"non-GAAP" splits the EPS family so two
+        same-period ranges (GAAP and adjusted) never collide on one metric. A
+        percent range is only asserted when a margin cue is present; an
+        uncued dollar range falls back to revenue guidance at low confidence —
+        proposed for review, never asserted.
+        """
+        ctx = f"{before} {tail}"
+        if "%" in range_text:
+            if _MARGIN_CUE.search(ctx) and "operating_margin_guidance" in self.registry:
+                return "operating_margin_guidance", Confidence.HIGH
+            return None, Confidence.LOW
+        if _EPS_CUE.search(ctx):
+            if _ADJUSTED_CUE.search(ctx) and "adjusted_eps_guidance" in self.registry:
+                return "adjusted_eps_guidance", Confidence.HIGH
+            if "eps_guidance" in self.registry:
+                return "eps_guidance", Confidence.HIGH
+        if "revenue_guidance" in self.registry:
+            confident = bool(_REVENUE_CUE.search(ctx))
+            return "revenue_guidance", Confidence.HIGH if confident else Confidence.LOW
+        return None, Confidence.LOW
+
+    @staticmethod
+    def _guidance_range_period(window: str, doc_period: str | None, fallback: str | None) -> str:
+        """The period a guidance range is *for*, read from its own clause.
+
+        "full year 2026" -> FY2026; "the second quarter" -> that quarter (rolling
+        into next year when the named quarter is not after the document's own);
+        otherwise the next period after the document's, as before.
+        """
+        doc = re.match(r"FY(\d{4})-Q([1-4])", doc_period or "", re.IGNORECASE)
+        doc_year = int(doc.group(1)) if doc else None
+        doc_quarter = int(doc.group(2)) if doc else None
+
+        fy = _FULL_YEAR_CUE.search(window)
+        if fy:
+            year = next((g for g in fy.groups() if g), None)
+            if year:
+                return f"FY{year}"
+            if doc_year:
+                return f"FY{doc_year}"
+        q = _QUARTER_CUE.search(window)
+        if q:
+            quarter = _QUARTER_WORDS[q.group(1).lower()]
+            if q.group(2):
+                return f"FY{q.group(2)}-Q{quarter}"
+            if doc_year and doc_quarter:
+                year = doc_year + 1 if quarter <= doc_quarter else doc_year
+                return f"FY{year}-Q{quarter}"
+        return fallback or doc_period or ""
 
     def _match_metric(
         self, before: str, after: str, unit: Unit, preferred: set[str] | None = None
@@ -265,7 +427,10 @@ class ClaimExtractor:
             return None, False, None
         metric_id, trailing_span = best
         spec = self.registry.get(metric_id)
-        is_growth = bool(spec and spec.derived_kind)
+        # Growth-like derived kinds assert a *change* and need growth wording
+        # nearby; identity kinds (a ratio like the medical care ratio, a sum)
+        # are levels and must not be treated as growth claims.
+        is_growth = bool(spec and spec.derived_kind in ("yoy_growth", "qoq_growth", "delta_bps"))
         return metric_id, is_growth, trailing_span
 
     def extract(
@@ -284,12 +449,19 @@ class ClaimExtractor:
         seq = 0
 
         # 1) Guidance ranges first — they own their whole span and feed the range rules.
+        # The metric (revenue vs EPS vs adjusted EPS vs margin) and the period
+        # (full year vs a named quarter) are read from the surrounding clause,
+        # never hardcoded: "full year 2026 ... $24.65 to $25.15 per share" is
+        # FY2026 EPS guidance, not next-quarter revenue.
         for m in _RANGE_RE.finditer(text):
             span = (m.start(), m.end())
-            window = text[max(0, span[0] - 90) : span[0]].lower()
+            window = text[max(0, span[0] - 140) : span[0]].lower()
             if not _GUIDANCE_NEAR.search(window):
                 continue
-            metric = "q2_revenue_guidance" if "q2_revenue_guidance" in self.registry else "revenue_guidance"
+            tail = self._range_tail(text, span[1])
+            metric, confidence = self._guidance_metric(window, tail, m.group(0))
+            if metric is None:
+                continue
             seq += 1
             claims.append(
                 FigureClaim(
@@ -297,10 +469,10 @@ class ClaimExtractor:
                     document_id=document_id,
                     entity=entity,
                     metric=metric,
-                    period=guidance_period or period or "",
+                    period=self._guidance_range_period(window, period, guidance_period),
                     displayed_text=m.group(0).strip(),
                     span=span,
-                    detect_confidence=Confidence.HIGH,
+                    detect_confidence=confidence,
                 )
             )
             consumed.append(span)
@@ -321,8 +493,15 @@ class ClaimExtractor:
         for i, cand in enumerate(figures):
             unit = _unit_of_candidate(cand.text, cand.quantity.unit if cand.quantity else None)
             # Preceding window: the usual 90 chars, with prior figures' trailing
-            # labels masked so they are not re-attributed here.
-            win_start = max(cand.span[0] - 90, 0)
+            # labels masked so they are not re-attributed here. On a labelled row
+            # (a rendered table line, "Label: values…") the window additionally
+            # stops at the line start, so the previous row's label can never leak
+            # into this row's attribution.
+            line_start = text.rfind("\n", 0, cand.span[0]) + 1
+            floor = cand.span[0] - 90
+            if ":" in text[line_start : cand.span[0]]:
+                floor = max(floor, line_start)
+            win_start = max(floor, 0)
             before_chars = list(text[win_start : cand.span[0]].lower())
             for ls, le in claimed_labels:
                 a, b = max(ls, win_start), min(le, cand.span[0])
@@ -361,6 +540,21 @@ class ClaimExtractor:
             metric, is_growth, trailing_span = self._match_metric(
                 before, after, unit, preferred
             )
+
+            # A "per share" tail pins the figure to a per-share metric: "net
+            # earnings of $6.85 per share" asserts EPS, never the $-aggregate.
+            if unit is Unit.CURRENCY and _PER_SHARE_TAIL_RE.match(
+                text[cand.span[1] : cand.span[1] + 40]
+            ):
+                if metric is None or metric not in self._per_share_ids:
+                    swap = (
+                        "non_gaap_diluted_eps"
+                        if _ADJUSTED_CUE.search(before)
+                        else "gaap_diluted_eps"
+                    )
+                    if swap in self.registry:
+                        metric, is_growth, trailing_span = swap, False, None
+
             claim_period = period or ""
             confidence = Confidence.HIGH
 
@@ -377,6 +571,26 @@ class ClaimExtractor:
             # to the guidance period so it binds (and trips safe-harbor) correctly.
             if guidance_period and metric != "unidentified" and _GUIDANCE_NEAR.search(before) and unit is Unit.CURRENCY and "guidance" in metric:
                 claim_period = guidance_period
+
+            # A rendered table value carries its own column period — "$99,797
+            # million (FY2025-Q1)" — which is the most specific signal there is:
+            # a prior-year comparative binds to its own period, not the document's.
+            annot = _PERIOD_ANNOT_RE.match(text[cand.span[1] : cand.span[1] + 16])
+            if annot:
+                claim_period = annot.group(1).upper()
+            elif (
+                "guidance" not in metric
+                and _PRIOR_PERIOD_NEAR.search(after)
+                and not is_growth
+                and not _GROWTH_NEAR.search(before + " " + after)
+            ):
+                # A trailing "last year"-style qualifier shifts a prose
+                # comparative to the prior-year period: "compared to 84.3% last
+                # year" asserts last year's value. The window is already clipped
+                # at the next figure, so only the comparative shifts — and a
+                # growth phrasing ("up 31% from the prior-year period") names
+                # its baseline, not the figure's own period, so it never shifts.
+                claim_period = _prior_year(claim_period) or claim_period
 
             # Record a trailing label this figure just consumed so later figures don't
             # re-attribute it — but only when it sits closer to this figure than to the

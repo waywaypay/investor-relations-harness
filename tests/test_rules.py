@@ -56,7 +56,7 @@ def test_reg_g_flags_missing_reconciliation_source():
 def test_forward_looking_requires_safe_harbor():
     service = seeded_service()
     doc = _doc("fls", "For the second quarter we expect revenue to grow.",
-               [_claim("q2_revenue_guidance", "$1.31 to $1.34 billion", period="FY2026-Q2")])
+               [_claim("revenue_guidance", "$1.31 to $1.34 billion", period="FY2026-Q2")])
     findings = check_forward_looking(doc, service.store)
     assert any(f.rule == "forward_looking.safe_harbor_required" for f in findings)
 
@@ -64,7 +64,7 @@ def test_forward_looking_requires_safe_harbor():
 def test_forward_looking_satisfied_with_safe_harbor():
     service = seeded_service()
     doc = _doc("fls", "We expect growth. Refer to our safe-harbor statement.",
-               [_claim("q2_revenue_guidance", "$1.31 to $1.34 billion", period="FY2026-Q2")])
+               [_claim("revenue_guidance", "$1.31 to $1.34 billion", period="FY2026-Q2")])
     findings = check_forward_looking(doc, service.store)
     assert findings == []
 

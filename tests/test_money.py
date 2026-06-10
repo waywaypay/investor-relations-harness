@@ -71,3 +71,15 @@ def test_unparseable_raises():
         parse_quantity("a lot of money")
     with pytest.raises(QuantityParseError):
         parse_quantity("$1.31 to $1.34 billion")  # a range is not a single quantity
+
+
+def test_negative_conventions_parse():
+    # Leading minus — how the table renderer states a merged split-cell negative.
+    assert parse_quantity("-$1,409 million").value == Decimal(-1_409_000_000)
+    assert parse_quantity("-1.53").value == Decimal("-1.53")
+    assert parse_quantity("-12.4%").value == Decimal("-12.4")
+    # Dollar outside the parens — the raw statement-table convention.
+    assert parse_quantity("$ (1,409 )").value == Decimal(-1409)
+    assert parse_quantity("$(1.53)").value == Decimal("-1.53")
+    # Whole-string parens, as before.
+    assert parse_quantity("(250.0)").value == Decimal("-250.0")

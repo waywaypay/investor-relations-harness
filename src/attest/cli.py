@@ -3,6 +3,7 @@
     attest demo                  # ingest the Meridian filing, verify the close pack
     attest serve                 # run the API with uvicorn
     attest releases META         # fetch the last 4 quarterly earnings releases (EDGAR)
+    attest facts UNH             # preview EDGAR companyfacts ingestion coverage
 """
 
 from __future__ import annotations
@@ -96,6 +97,39 @@ def _run_releases(args: argparse.Namespace) -> int:
     return 0 if report.fetched == report.requested else 1
 
 
+def _run_facts(args: argparse.Namespace) -> int:
+    """Ingest an issuer's companyfacts and show what the registry could map.
+
+    A coverage diagnostic: which canonical metrics now have facts (and for which
+    periods), and how many concepts were skipped for lack of a mapping. The
+    persistent flow is the API (`POST /tenants/{t}/ingest/companyfacts`); this
+    command answers "what would land?" before you wire it in.
+    """
+    from collections import defaultdict
+
+    from attest.service import AttestService
+
+    service = AttestService()
+    report = service.ingest_companyfacts(
+        args.issuer, tenant_id=args.tenant, quarters=args.quarters, user_agent=args.user_agent
+    )
+    print(f"Ingested {report.ingested} facts via {report.source} "
+          f"({report.skipped} unmapped concepts skipped)")
+
+    periods_by_metric: dict[str, set[str]] = defaultdict(set)
+    for fact in service.store.all(args.tenant):
+        periods_by_metric[fact.metric].add(fact.period)
+    for metric in sorted(periods_by_metric):
+        periods = sorted(periods_by_metric[metric])
+        shown = ", ".join(periods[-6:])
+        more = f" (+{len(periods) - 6} earlier)" if len(periods) > 6 else ""
+        print(f"  {metric:<28} {shown}{more}")
+    if args.show_skipped:
+        for tag in report.skipped_tags:
+            print(f"  skipped: {tag}")
+    return 0
+
+
 def _run_serve(host: str, port: int) -> int:
     import uvicorn
 
@@ -132,6 +166,18 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="SEC fair-access User-Agent: 'name contact@email' (or ATTEST_SEC_USER_AGENT)",
     )
+    facts = sub.add_parser(
+        "facts", help="ingest EDGAR companyfacts for an issuer and show coverage"
+    )
+    facts.add_argument("issuer", help="ticker or CIK")
+    facts.add_argument("--tenant", default=None, help="tenant id (defaults to the issuer, lowercased)")
+    facts.add_argument("--quarters", type=int, default=12, help="lookback window, in quarters")
+    facts.add_argument("--show-skipped", action="store_true", help="list unmapped concepts")
+    facts.add_argument(
+        "--user-agent",
+        default=None,
+        help="SEC fair-access User-Agent: 'name contact@email' (or ATTEST_SEC_USER_AGENT)",
+    )
 
     args = parser.parse_args(argv)
     if args.command == "demo":
@@ -140,6 +186,10 @@ def main(argv: list[str] | None = None) -> int:
         return _run_serve(args.host, args.port)
     if args.command == "releases":
         return _run_releases(args)
+    if args.command == "facts":
+        if args.tenant is None:
+            args.tenant = args.issuer.lower()
+        return _run_facts(args)
     return 1
 
 

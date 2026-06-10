@@ -21,6 +21,8 @@ import zipfile
 import zlib
 from dataclasses import dataclass, field
 
+from attest.extraction.tables import render_financial_tables
+
 _TEXT_EXTS = {
     "txt", "text", "md", "markdown", "mdown", "rst",
     "csv", "tsv", "log", "json", "yaml", "yml",
@@ -65,6 +67,10 @@ def _tidy(text: str) -> str:
 
 def _strip_html(raw: str) -> str:
     raw = _SCRIPT_STYLE_RE.sub(" ", raw)
+    # Financial tables are re-rendered structure-aware (scale, periods, split
+    # negatives) before the flattening pass; layout tables fall through to the
+    # ordinary row-per-line treatment below.
+    raw = render_financial_tables(raw)
     raw = re.sub(r"<(br|/p|/div|/li|/h[1-6]|/tr)\s*/?>", "\n", raw, flags=re.IGNORECASE)
     raw = _TAG_RE.sub(" ", raw)
     return html.unescape(raw)

@@ -165,9 +165,13 @@ def parse_quantity(text: str) -> Quantity:
     """Parse a disclosure figure string into a normalized :class:`Quantity`.
 
     Handles currency with scale words (``$1.24 billion``, ``$1,241.3 million``,
-    ``$0.87``), percentages (``31%``), basis points (``50 bps``) and parenthesised
-    negatives (``(250.0)`` -> ``-250``). Raises :class:`QuantityParseError` on
-    anything it cannot confidently normalize — we never guess.
+    ``$0.87``), percentages (``31%``), basis points (``50 bps``) and negatives in
+    every disclosure convention: a leading minus (``-$1,409``, ``-12.4%``),
+    whole-string parentheses (``(250.0)`` -> ``-250``), and the statement-table
+    form with the dollar sign *outside* the parentheses (``$ (1,409 )``). A
+    dollar sign *inside* parentheses (``($1.2 billion)``) is a prose aside, not
+    a negative. Raises :class:`QuantityParseError` on anything it cannot
+    confidently normalize — we never guess.
     """
     if text is None:
         raise QuantityParseError("cannot parse None")
@@ -175,7 +179,16 @@ def parse_quantity(text: str) -> Quantity:
     if not s:
         raise QuantityParseError("cannot parse empty string")
 
-    negative_paren = s.startswith("(") and s.endswith(")")
+    leading_minus = s.startswith(("-", "−"))
+    if leading_minus:
+        s = s[1:].lstrip()
+
+    # "$ (1,409 )" -> "$1,409", negated: the table convention for a negative.
+    dollar_paren = re.match(r"^\$\s*\((.+?)\)\s*$", s)
+    if dollar_paren:
+        s = f"${dollar_paren.group(1).strip()}"
+
+    negative_paren = (s.startswith("(") and s.endswith(")")) or leading_minus or bool(dollar_paren)
 
     m = _RE_PERCENT.match(s)
     if m:

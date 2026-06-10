@@ -61,6 +61,6 @@ def test_unmapped_tags_are_skipped_not_guessed():
 
 def test_guidance_is_not_filed():
     facts, _ = XBRLConnector().fetch(load_fixture("meridian_q1_fy2026"), tenant_id="meridian")
-    guidance = next(f for f in facts if f.metric == "q2_revenue_guidance")
+    guidance = next(f for f in facts if f.metric == "revenue_guidance")
     assert guidance.source_type == SourceType.MANAGEMENT_INPUT
     assert guidance.is_filed is False
