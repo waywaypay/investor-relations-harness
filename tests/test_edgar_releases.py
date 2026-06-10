@@ -1,11 +1,14 @@
 """EDGAR press-release retrieval: 8-K Item 2.02 -> EX-99.1, deterministically.
 
 The contract under test is the fix for the semantic-search failure mode:
-enumeration must be *exact* (one earnings 8-K per reported quarter, newest
-first, paging into the archive index when the lookback outruns the recent
-window), the exhibit must be located from the filing index rather than
-guessed, the recovered text must actually contain the figures, and anything
-the index cannot satisfy must be reported as missing — never papered over.
+enumeration must be *exact* and counted in **distinct reported quarters**
+(newest first, paging into the archive index when the lookback outruns the
+recent window) — issuers furnish guidance updates, monthly metrics, and
+preliminary results under Item 2.02 too, and that noise must not crowd real
+quarters out of the lookback. The exhibit must be located from the filing
+index rather than guessed, the recovered text must actually contain the
+figures, and anything the index cannot satisfy must be reported as missing —
+never papered over.
 """
 
 from __future__ import annotations
@@ -216,6 +219,151 @@ def test_exhibit_listing_fallback_prefers_exhibit_numbered_names():
     }
     assert _exhibit_from_listing(listing) == "meta-ex991.htm"
     assert _exhibit_from_listing({"directory": {"item": [{"name": "form8k.htm"}]}}) is None
+
+
+def test_exhibit_listing_accepts_pdf_only_filings_but_prefers_html():
+    # Some filers attach the release as PDF only; the extraction edge has a
+    # best-effort PDF path, so the exhibit must be located, not reported missing.
+    pdf_only = {"directory": {"item": [{"name": "form8k.htm"}, {"name": "ex991.pdf"}]}}
+    assert _exhibit_from_listing(pdf_only) == "ex991.pdf"
+    both = {
+        "directory": {
+            "item": [{"name": "ex991.pdf"}, {"name": "ex991.htm"}, {"name": "form8k.htm"}]
+        }
+    }
+    assert _exhibit_from_listing(both) == "ex991.htm"
+
+
+# --- distinct-quarter enumeration: Item 2.02 noise must not crowd quarters ---
+#
+# The observed live failure: "fetch the past four quarters" returned four
+# *filings* spanning two quarters, because guidance updates / monthly metrics
+# are furnished under Item 2.02 alongside the earnings releases.
+
+ACME_CIK = 7777
+
+
+def _acme_urls(filings: list[tuple[str, str, str, str]]) -> dict[str, object]:
+    """Build a submissions index + per-filing exhibits for issuer ACME.
+
+    Each filing is (accession, filing_date, report_date, exhibit_html).
+    """
+    urls: dict[str, object] = {
+        TICKERS_URL: {"0": {"cik_str": ACME_CIK, "ticker": "ACME", "title": "Acme Corp"}},
+        SUBMISSIONS_URL.format(cik=ACME_CIK): {
+            "name": "Acme Corp",
+            "tickers": ["ACME"],
+            "filings": {
+                "recent": {
+                    "accessionNumber": [f[0] for f in filings],
+                    "filingDate": [f[1] for f in filings],
+                    "reportDate": [f[2] for f in filings],
+                    "items": ["2.02,9.01"] * len(filings),
+                    "form": ["8-K"] * len(filings),
+                },
+                "files": [],
+            },
+        },
+    }
+    for accession, _, _, exhibit_html in filings:
+        base = f"https://www.sec.gov/Archives/edgar/data/{ACME_CIK}/{accession.replace('-', '')}"
+        exhibit = f"{base}/ex991.htm"
+        urls[f"{base}/{accession}-index.htm"] = _index_html([(exhibit, "EX-99.1")])
+        urls[exhibit] = exhibit_html
+    return urls
+
+
+def _guidance_html(sentence: str) -> str:
+    """An Item 2.02 exhibit that is *not* a quarterly release: no stated quarter."""
+    return f"<html><body><p>NEWS RELEASE</p><p>{sentence}</p></body></html>"
+
+
+def test_guidance_updates_do_not_crowd_quarters_out_of_the_lookback():
+    # Two guidance 8-Ks (Item 2.02, no stated quarter) interleave with four
+    # real releases. Counting filings would return two distinct quarters;
+    # counting quarters must return all four.
+    filings = [
+        ("0000007777-26-000005", "2026-04-28", "2026-03-31",
+         _exhibit_html("First Quarter", 2026).replace("Meta", "Acme")),
+        ("0000007777-26-000004", "2026-03-05", "2026-03-05",
+         _guidance_html("Acme raises its full year outlook to $4.2 billion.")),
+        ("0000007777-26-000003", "2026-01-27", "2025-12-31",
+         _exhibit_html("Fourth Quarter and Full Year", 2025).replace("Meta", "Acme")),
+        ("0000007777-25-000099", "2025-11-10", "2025-11-10",
+         _guidance_html("Acme updates its outlook following the divestiture.")),
+        ("0000007777-25-000080", "2025-10-28", "2025-09-30",
+         _exhibit_html("Third Quarter", 2025).replace("Meta", "Acme")),
+        ("0000007777-25-000060", "2025-07-29", "2025-06-30",
+         _exhibit_html("Second Quarter", 2025).replace("Meta", "Acme")),
+    ]
+    connector, _ = _connector(_acme_urls(filings))
+    releases, report = connector.fetch_quarterly("ACME", quarters=4)
+
+    assert report.fetched == 4
+    assert report.missing == ()
+    assert [r.period for r in releases] == [
+        "FY2026-Q1", "FY2025-Q4", "FY2025-Q3", "FY2025-Q2"
+    ]
+    # The crowded-out filings are noted on the kept releases, not silently dropped.
+    q1 = next(r for r in releases if r.period == "FY2026-Q1")
+    assert any("0000007777-26-000004" in w for w in q1.warnings)
+    q4 = next(r for r in releases if r.period == "FY2025-Q4")
+    assert any("0000007777-25-000099" in w for w in q4.warnings)
+
+
+def test_monthly_metric_filings_are_evicted_by_the_real_quarterly_release():
+    # A lender's newest Item 2.02 is monthly credit data for the *in-progress*
+    # quarter. It may claim a slot at first, but the oldest requested quarter's
+    # stated release must reclaim it: the user asked for reported quarters.
+    monthly = _guidance_html(
+        "Acme reported net charge-offs of 4.5% and delinquencies of 3.1% "
+        "for the month ended May 31, 2026. Loan receivables were $42.0 billion."
+    )
+    filings = [
+        ("0000007777-26-000010", "2026-06-05", "2026-05-31", monthly),
+        ("0000007777-26-000005", "2026-04-28", "2026-03-31",
+         _exhibit_html("First Quarter", 2026).replace("Meta", "Acme")),
+        ("0000007777-26-000003", "2026-01-27", "2025-12-31",
+         _exhibit_html("Fourth Quarter and Full Year", 2025).replace("Meta", "Acme")),
+        ("0000007777-25-000080", "2025-10-28", "2025-09-30",
+         _exhibit_html("Third Quarter", 2025).replace("Meta", "Acme")),
+        ("0000007777-25-000060", "2025-07-29", "2025-06-30",
+         _exhibit_html("Second Quarter", 2025).replace("Meta", "Acme")),
+        ("0000007777-25-000040", "2025-04-29", "2025-03-31",
+         _exhibit_html("First Quarter", 2025).replace("Meta", "Acme")),
+    ]
+    connector, _ = _connector(_acme_urls(filings))
+    releases, report = connector.fetch_quarterly("ACME", quarters=4)
+
+    assert report.fetched == 4
+    assert [r.period for r in releases] == [
+        "FY2026-Q1", "FY2025-Q4", "FY2025-Q3", "FY2025-Q2"
+    ]
+    assert not any(r.accession == "0000007777-26-000010" for r in releases)
+    # FY2025-Q1 exists in the index but the four requested quarters were
+    # already covered — the walk stopped without including it.
+    assert not any(r.period == "FY2025-Q1" for r in releases)
+
+
+def test_preliminary_results_lose_to_the_figure_richer_final_release():
+    # Both filings *state* the same quarter; the release with more detectable
+    # figures (the final one, with its tables) wins the slot.
+    preliminary = (
+        "<html><body><p>Acme Reports Preliminary Fourth Quarter 2025 Results</p>"
+        "<p>Acme expects revenue of approximately $13.1 billion and diluted EPS "
+        "of approximately $2.05.</p></body></html>"
+    )
+    filings = [
+        ("0000007777-26-000003", "2026-01-28", "2025-12-31",
+         _exhibit_html("Fourth Quarter and Full Year", 2025).replace("Meta", "Acme")),
+        ("0000007777-26-000001", "2026-01-10", "2026-01-08", preliminary),
+    ]
+    connector, _ = _connector(_acme_urls(filings))
+    releases, report = connector.fetch_quarterly("ACME", quarters=1)
+
+    assert report.fetched == 1
+    assert releases[0].accession == "0000007777-26-000003"
+    assert any("0000007777-26-000001" in w for w in releases[0].warnings)
 
 
 def test_period_inference_prefers_stated_title_over_report_date():

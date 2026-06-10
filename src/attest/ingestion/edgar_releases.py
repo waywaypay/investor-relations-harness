@@ -8,7 +8,6 @@ a JavaScript shell whose crawl contains no figures at all. EDGAR is the
 authoritative enumeration instead: every US issuer files its earnings release
 as a Form 8-K announcing **Item 2.02** with the release attached verbatim as
 **Exhibit 99.1** — static HTML, no JavaScript, no bot wall, complete tables.
-One filing per quarter, by construction.
 
 This connector walks ``data.sec.gov``'s submissions index (paging into the
 older archive files when a lookback outruns the recent window), locates each
@@ -18,6 +17,20 @@ filing's EX-99.1 via the filing index, and recovers the prose with the same
 analyze pipeline or :class:`~attest.ingestion.guidance.GuidanceConnector` —
 this *is* the "SEC connector that already fetches the EX-99.1 text" the
 guidance adapter assumes.
+
+One filing per quarter is **not** true in the wild, and assuming it loses
+quarters: issuers furnish guidance updates and outlook suspensions under Item
+2.02, lenders furnish *monthly* credit metrics under it, and preliminary or
+re-furnished results double a quarter up. Counting filings would let that
+noise crowd the lookback window — ask for four quarters, get four filings
+spanning two. So the walk enumerates **distinct fiscal quarters**: filings
+that resolve to an already-covered quarter are compared and the best artifact
+kept (a release that states its quarter in its own words beats one whose
+period was inferred from the 8-K's period-of-report date; more detected
+figures breaks ties), and a quarter occupied only by a date-inferred filing is
+evicted when an older filing turns out to be a stated quarterly release the
+window should have covered. The walk stops once the requested quarters are
+covered and a new, older quarter appears that cannot improve them.
 
 Like every connector it never guesses and reports what it could not do: an
 earnings 8-K without a locatable exhibit, or a lookback the index cannot
@@ -34,7 +47,7 @@ import json
 import os
 import re
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from attest.extraction.text import extract_text
 from attest.ingestion.releases import EarningsRelease, ReleaseFetchReport, infer_period
@@ -95,14 +108,19 @@ def _exhibit_from_index_html(index_html: str) -> str | None:
 
 
 def _exhibit_from_listing(listing: dict) -> str | None:
-    """Filename-heuristic fallback over the filing directory's ``index.json``."""
+    """Filename-heuristic fallback over the filing directory's ``index.json``.
+
+    PDFs are eligible — some filers attach the release as PDF only, and the
+    extraction edge has a best-effort PDF path — but an HTML sibling wins.
+    """
     names = [
         item.get("name", "")
         for item in listing.get("directory", {}).get("item", [])
-        if item.get("name", "").lower().endswith((".htm", ".html"))
+        if item.get("name", "").lower().endswith((".htm", ".html", ".pdf"))
     ]
     matches = [name for name in names if _EXHIBIT_NAME_RE.search(name)]
-    matches.sort(key=lambda name: "99" not in name)  # exhibit-numbered names first
+    # Exhibit-numbered names first, then HTML over PDF.
+    matches.sort(key=lambda name: ("99" not in name, name.lower().endswith(".pdf")))
     return matches[0] if matches else None
 
 
@@ -120,25 +138,48 @@ class EdgarReleaseConnector:
     def fetch_quarterly(
         self, issuer: str, quarters: int = 4
     ) -> tuple[list[EarningsRelease], ReleaseFetchReport]:
-        """The last ``quarters`` earnings releases for ``issuer`` (ticker or CIK).
+        """The last ``quarters`` *distinct* reported quarters for ``issuer``.
 
-        Enumeration is exact — 8-Ks announcing Item 2.02, newest first — so the
-        result is one release per reported quarter, not whatever a ranking
-        function surfaced. Shortfalls are reported, never papered over.
+        Enumeration is exact — 8-Ks announcing Item 2.02, newest first — and
+        counted in **quarters covered, not filings seen**: a quarter that
+        carries several Item 2.02 filings (guidance updates, monthly metrics,
+        preliminary results) yields its single best release instead of
+        crowding older quarters out of the window. Shortfalls are reported,
+        never papered over.
         """
         cik = int(issuer) if issuer.isdigit() else self.resolve_cik(issuer)
         submissions = json.loads(self._fetch(SUBMISSIONS_URL.format(cik=cik)))
         entity = issuer.upper() if not issuer.isdigit() else self._entity_label(submissions)
 
-        releases: list[EarningsRelease] = []
+        # quarter key -> (best release so far, period stated in its own text?)
+        chosen: dict[str, tuple[EarningsRelease, bool]] = {}
         missing: list[str] = []
         for filing in self._earnings_filings(submissions):
-            if len(releases) >= quarters:
-                break
             release = self._fetch_release(cik, entity, filing, missing)
-            if release is not None:
-                releases.append(release)
+            if release is None:
+                continue
+            key, stated = _quarter_claim(release)
+            if key in chosen:
+                chosen[key] = _resolve_duplicate(chosen[key], (release, stated), key)
+                continue
+            if len(chosen) < quarters:
+                chosen[key] = (release, stated)
+                continue
+            # Window full and an older quarter surfaced. A stated quarterly
+            # release reclaims a slot held by date-inferred noise (a lender's
+            # monthly 8-K claiming the in-progress quarter); otherwise the
+            # requested quarters are covered and the walk is done.
+            evictable = next((k for k, (_, s) in chosen.items() if not s), None)
+            if not stated or evictable is None:
+                break
+            del chosen[evictable]
+            chosen[key] = (release, stated)
 
+        releases = sorted(
+            (release for release, _ in chosen.values()),
+            key=lambda r: (r.filing_date or "", r.accession or ""),
+            reverse=True,
+        )
         if len(releases) < quarters:
             missing.append(
                 f"index satisfied only {len(releases)} of {quarters} requested quarters"
@@ -159,7 +200,9 @@ class EdgarReleaseConnector:
     def _earnings_filings(self, submissions: dict) -> Iterator[_Filing]:
         """All earnings 8-Ks, newest first, paging into archive files on demand."""
         yield from self._earnings_in(submissions)
-        for archive in submissions.get("filings", {}).get("files", []):
+        archives = submissions.get("filings", {}).get("files", [])
+        # The archive list's order is not contractual; keep the walk newest-first.
+        for archive in sorted(archives, key=lambda a: a.get("filingTo", ""), reverse=True):
             older = json.loads(self._fetch(ARCHIVE_URL.format(name=archive["name"])))
             yield from self._earnings_in(older)
 
@@ -216,6 +259,47 @@ class EdgarReleaseConnector:
         if href is None:
             return None
         return _absolute(href, base)
+
+
+def _quarter_claim(release: EarningsRelease) -> tuple[str, bool]:
+    """Which fiscal quarter a release claims, and on what authority.
+
+    A quarter the release states in its own opening text is authoritative
+    (``True``); the 8-K period-of-report calendar fallback is provisional
+    (``False``) — it is how a guidance update or a monthly-metrics filing
+    masquerades as a quarter it does not actually report.
+    """
+    stated = infer_period(release.text[:400])
+    if stated is not None:
+        return stated, True
+    if release.period:
+        return release.period, False
+    return f"unstated:{release.accession}", False
+
+
+def _resolve_duplicate(
+    current: tuple[EarningsRelease, bool],
+    candidate: tuple[EarningsRelease, bool],
+    key: str,
+) -> tuple[EarningsRelease, bool]:
+    """Pick the better of two Item 2.02 filings claiming the same quarter.
+
+    A stated-quarter release beats a date-inferred one; more detected figures
+    breaks ties (the earnings release dwarfs the guidance update it shares a
+    quarter with); a dead tie keeps the newer filing. The runner-up is noted
+    on the kept release — visible, never silently dropped.
+    """
+    cur_release, cur_stated = current
+    new_release, new_stated = candidate
+    if (new_stated, new_release.figure_count) > (cur_stated, cur_release.figure_count):
+        winner, winner_stated, loser = new_release, new_stated, cur_release
+    else:
+        winner, winner_stated, loser = cur_release, cur_stated, new_release
+    note = (
+        f"{key} also claimed by {loser.accession} (filed {loser.filing_date}, "
+        f"{loser.figure_count} figures) — kept this release"
+    )
+    return replace(winner, warnings=(*winner.warnings, note)), winner_stated
 
 
 def _absolute(href: str, base: str) -> str:
