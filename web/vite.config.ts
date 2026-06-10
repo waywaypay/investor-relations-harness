@@ -8,14 +8,11 @@ import react from "@vitejs/plugin-react";
 // ATTEST_DEV_API. (A pure static build with no backend still works: those calls
 // reject and the store falls back to offline, honestly-untraced detection.)
 //
-// `base` is "/" for dev and the `attest serve` bundle (so build_spa.py's asset
-// inliner keeps matching "/assets/…"). GitHub Pages serves the app from a repo
-// subpath, so the Pages workflow sets PAGES_BASE="/investor-relations-harness/"
-// to make the hashed assets resolve there.
+// `base` stays at Vite's default "/" so build_spa.py's asset inliner keeps
+// matching "/assets/…" in the served bundle.
 const API_TARGET = process.env.ATTEST_DEV_API || "http://localhost:8000";
 
 export default defineConfig({
-  base: process.env.PAGES_BASE || "/",
   plugins: [react()],
   server: {
     host: true,
