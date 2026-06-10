@@ -18,7 +18,7 @@
     {"id": "ocf_rounded", "entity": "MRDN", "metric": "operating_cash_flow", "period": "FY2026-Q1", "text": "$338 million", "expected": "traced"},
     {"id": "buyback_exact", "entity": "MRDN", "metric": "share_repurchases", "period": "FY2026-Q1", "text": "$250 million", "expected": "traced"},
     {"id": "buyback_wrong", "entity": "MRDN", "metric": "share_repurchases", "period": "FY2026-Q1", "text": "$200 million", "expected": "conflict"},
-    {"id": "guidance_needs_review", "entity": "MRDN", "metric": "q2_revenue_guidance", "period": "FY2026-Q2", "text": "$1.31 to $1.34 billion", "expected": "needs_review"},
+    {"id": "guidance_needs_review", "entity": "MRDN", "metric": "revenue_guidance", "period": "FY2026-Q2", "text": "$1.31 to $1.34 billion", "expected": "needs_review"},
     {"id": "no_source_metric", "entity": "MRDN", "metric": "deferred_revenue", "period": "FY2026-Q1", "text": "$500 million", "expected": "untraced"},
     {"id": "wrong_period", "entity": "MRDN", "metric": "total_revenue", "period": "FY2025-Q4", "text": "$1.19 billion", "expected": "untraced"}
   ]

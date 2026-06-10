@@ -48,7 +48,7 @@ def build_documents() -> list[Document]:
             _claim("r5", "release", "cloud_growth_yoy", Q1, "31%", CLOUD),
             _claim("r6", "release", "operating_cash_flow", Q1, "$338 million"),
             _claim("r7", "release", "share_repurchases", Q1, "$250 million"),
-            _claim("r8", "release", "q2_revenue_guidance", Q2, "$1.31 to $1.34 billion"),
+            _claim("r8", "release", "revenue_guidance", Q2, "$1.31 to $1.34 billion"),
         ),
     )
 
@@ -72,7 +72,7 @@ def build_documents() -> list[Document]:
             _claim("s4", "script", "non_gaap_diluted_eps", Q1, "$1.12"),
             _claim("s5", "script", "operating_cash_flow", Q1, "$338 million"),
             _claim("s6", "script", "share_repurchases", Q1, "$250 million"),
-            _claim("s7", "script", "q2_revenue_guidance", Q2, "$1.31 to $1.34 billion"),
+            _claim("s7", "script", "revenue_guidance", Q2, "$1.31 to $1.34 billion"),
         ),
     )
 
@@ -91,7 +91,7 @@ def build_documents() -> list[Document]:
         claims=(
             _claim("q1", "qa", "cloud_revenue", Q1, "$612 million", CLOUD),
             _claim("q2", "qa", "cloud_growth_yoy", Q1, "31%", CLOUD),
-            _claim("q3", "qa", "q2_revenue_guidance", Q2, "$1.31 to $1.34 billion"),
+            _claim("q3", "qa", "revenue_guidance", Q2, "$1.31 to $1.34 billion"),
             _claim("q4", "qa", "total_revenue", Q1, "$1.24 billion"),
             _claim("q5", "qa", "gaap_diluted_eps", Q1, "$0.87"),
             _claim("q6", "qa", "non_gaap_diluted_eps", Q1, "$1.12"),

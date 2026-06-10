@@ -126,9 +126,10 @@ def test_extractor_maps_real_release_prose_to_canonical_metrics():
     cloud = by_text["$612 million"]
     assert cloud.metric == "cloud_revenue" and cloud.entity == "MRDN:Cloud"
     assert by_text["31%"].metric == "cloud_growth_yoy"
-    # The guidance range is one span, routed to the next period as guidance.
+    # The guidance range is one span, attributed by its clause ("expects total
+    # revenue ... for the second quarter") to revenue guidance for that quarter.
     guidance = by_text["$1.31 to $1.34 billion"]
-    assert guidance.metric == "q2_revenue_guidance" and guidance.period == "FY2026-Q2"
+    assert guidance.metric == "revenue_guidance" and guidance.period == "FY2026-Q2"
 
 
 def test_extractor_overdetects_but_never_asserts_unknowns():
