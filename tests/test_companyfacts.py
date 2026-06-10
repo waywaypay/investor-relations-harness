@@ -16,6 +16,7 @@ from attest.ingestion.edgar_companyfacts import (
     COMPANYFACTS_URL,
     CompanyFactsConnector,
     _period_key,
+    filing_index_url,
 )
 from attest.ingestion.sec import TICKERS_URL
 from attest.service import AttestService
@@ -140,6 +141,40 @@ def test_unmapped_concepts_are_skipped_and_reported():
 def test_lookback_prunes_ancient_periods():
     facts, _ = _connector().fetch_company("UNH", tenant_id="unh", quarters=12)
     assert not any(f.period == "FY2018-Q1" for f in facts)
+
+
+def test_facts_link_to_the_sec_filing_index_for_canonical_accessions():
+    payload = {
+        "cik": CIK,
+        "entityName": "UNITEDHEALTH GROUP INC",
+        "facts": {"us-gaap": {"Revenues": {"label": "Revenues", "units": {"USD": [
+            {"start": "2026-01-01", "end": "2026-03-31", "val": 109_605_000_000,
+             "accn": "0000731766-26-000123", "form": "10-Q", "filed": "2026-05-06",
+             "frame": "CY2026Q1"},
+        ]}}}},
+    }
+
+    def fetch(url: str) -> bytes:
+        if url == TICKERS_URL:
+            return json.dumps(TICKERS).encode()
+        return json.dumps(payload).encode()
+
+    facts, _ = CompanyFactsConnector(fetch=fetch).fetch_company("UNH", tenant_id="unh")
+    assert facts[0].source_url == (
+        "https://www.sec.gov/Archives/edgar/data/731766/000073176626000123/"
+        "0000731766-26-000123-index.htm"
+    )
+    # ...and the link survives into the verdict's provenance.
+    assert facts[0].provenance().url == facts[0].source_url
+
+
+def test_no_url_is_fabricated_for_a_malformed_accession():
+    # The stub payloads above use non-canonical accessions ("26-q1"): no URL.
+    facts, _ = _connector().fetch_company("UNH", tenant_id="unh")
+    assert all(f.source_url is None for f in facts)
+    assert filing_index_url(CIK, "0000731766-26-000123") is not None
+    assert filing_index_url(CIK, "26-q1") is None
+    assert filing_index_url(CIK, "") is None
 
 
 def test_period_key_handles_duration_shapes_without_frames():

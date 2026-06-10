@@ -29,7 +29,9 @@ attest serve         # API + upload UI at http://127.0.0.1:8000  (API docs at /d
 Open **http://127.0.0.1:8000** and you get an upload page: drop a real press
 release / earnings script / Q&A (`.txt`, `.md`, `.html`, `.docx`, `.pdf`, `.rtf`)
 or paste the text, click *Load Meridian demo filing* to seed filed sources, and
-hit *Analyze*. Every figure is highlighted in place by verdict, with the Reg G /
+hit *Analyze*. Every figure is highlighted in place by verdict — and when its
+source carries a resolvable filing URL (EDGAR-ingested facts do), the figure and
+its citation are hyperlinks straight to the filing — with the Reg G /
 safe-harbor / consistency findings underneath.
 
 ## What it does
@@ -75,7 +77,9 @@ src/attest/
     claims.py        the model-free edge: figure -> metric/period attribution
   verification/
     candidates.py    greedy figure detection (over-detect, never under-detect)
-    engine.py        detect -> normalize -> bind -> verdict, with audit logging
+    engine.py        detect -> normalize -> bind -> verdict, with audit logging;
+                     a derived metric with no stored fact (YoY growth, a ratio)
+                     recomputes from its filed operands instead of untraced
     rules/           deterministic checks, all model-free:
                        reg_g          counterpart, reconciliation source + arithmetic,
                                       equal-prominence ordering
@@ -190,12 +194,42 @@ curl -X POST .../tenants/unh/ingest/companyfacts \
   -H 'content-type: application/json' -d '{"issuer": "UNH", "quarters": 12}'
 ```
 
+Each ingested fact also carries a **resolvable sec.gov link** — the filing-index
+page for its accession — when the accession is canonically shaped (never a
+fabricated URL that 404s). The link flows through `Provenance.url` into every
+verdict, so the UI renders each cited figure as a hyperlink to the filing it
+traced to.
+
 One honest limitation: companyfacts carries **consolidated** values only —
 dimensioned (segment-axis) facts never appear in that API. Segment rows
 (UnitedHealthcare, Optum Rx, …) therefore attribute to their own metrics and
 come out **untraced** until segment facts arrive via the simplified-instance
 connector (or a future dimension-aware instance parser); they are never
 mis-bound to consolidated revenue.
+
+### Derived figures — recomputed, not just looked up
+
+Growth percents and ratios are the most quoted figures in a release, and none
+of them is ever a filed XBRL fact — only the *levels* are. A pure stored-value
+tie-out therefore leaves "revenues grew 9.8% year-over-year" untraced for any
+live-ingested issuer. The engine closes that gap deterministically: a claim
+whose metric is *derived* (`yoy_growth` / `qoq_growth` / `delta_bps` against a
+prior period, `ratio` / `ratio_pct` / `sum` within one) and has no stored fact
+recomputes from the filed operand facts and renders `traced` or `conflict`,
+with a synthetic `derived` provenance naming the identity it recomputed
+(`total_revenue FY2026-Q1 vs FY2025-Q1`). Operands must be filed sources; a
+missing or non-filed operand falls through to `untraced` — never a guess. The
+restatement story carries over for free: the operands come from the
+versioned store, so a restated prior-year base moves the recomputation.
+
+On the extraction side, a bare growth percent ("total revenue of $1.24
+billion, up 18% year over year") carries no label an alias can match. The
+extractor attributes it *structurally*: the nearest same-sentence figure whose
+metric declares a YoY-growth counterpart (`revenue_growth_yoy` over
+`total_revenue`) becomes its base, decline words normalize the sign
+("down 5%" → −5%), and every ambiguous case — sequential or constant-currency
+basis, forward-looking context, a second percent competing for the same base —
+is left honestly unidentified rather than risking a false link.
 
 ### Uploading real documents — and where the "edge" lives
 

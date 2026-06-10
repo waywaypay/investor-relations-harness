@@ -27,9 +27,9 @@ def test_health(client):
 
 def test_ingest_and_list_facts(client):
     report = _seed(client)
-    assert report["ingested"] == 15
+    assert report["ingested"] == 16
     facts = client.get("/tenants/meridian/facts").json()
-    assert len(facts) == 15
+    assert len(facts) == 16
 
 
 def test_ingest_guidance_endpoint_cites_the_source_line(client):
