@@ -19,6 +19,7 @@ from attest.api.schemas import (
     AnalyzeResponse,
     AuditVerifyResponse,
     ClosePackResponse,
+    CompanyFactsIngestRequest,
     GuidanceIngestRequest,
     IngestResponse,
     OverrideRequest,
@@ -74,6 +75,25 @@ def create_app(service: AttestService | None = None) -> FastAPI:
         if "facts" not in instance:
             raise HTTPException(status_code=422, detail="instance missing 'facts'")
         report = svc.ingest_xbrl(instance, tenant_id=tenant_id)
+        return IngestResponse(
+            source=report.source,
+            ingested=report.ingested,
+            skipped=report.skipped,
+            skipped_tags=list(report.skipped_tags),
+        )
+
+    @app.post("/tenants/{tenant_id}/ingest/companyfacts", response_model=IngestResponse)
+    def ingest_companyfacts(
+        tenant_id: str, req: CompanyFactsIngestRequest, svc: AttestService = Depends(get_service)
+    ) -> IngestResponse:
+        """Ingest an issuer's reported facts straight from EDGAR's companyfacts
+        API (ticker or CIK) — versioned, restatement-aware, no hand-built dict."""
+        try:
+            report = svc.ingest_companyfacts(
+                req.issuer, tenant_id, quarters=req.quarters, user_agent=req.user_agent
+            )
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
         return IngestResponse(
             source=report.source,
             ingested=report.ingested,

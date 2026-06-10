@@ -27,6 +27,17 @@ class GuidanceIngestRequest(BaseModel):
     label: str | None = Field(default=None, description="human-readable citation label")
 
 
+class CompanyFactsIngestRequest(BaseModel):
+    """Ingest an issuer's reported facts from EDGAR's companyfacts API."""
+
+    issuer: str = Field(description="ticker or CIK, e.g. 'UNH'")
+    quarters: int = Field(default=12, ge=1, description="lookback window, in quarters")
+    user_agent: str | None = Field(
+        default=None,
+        description="SEC fair-access User-Agent: 'name contact@email' (or ATTEST_SEC_USER_AGENT)",
+    )
+
+
 class VerifyResponse(BaseModel):
     document_id: str
     verdicts: list[FigureVerdict]

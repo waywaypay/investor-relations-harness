@@ -18,6 +18,10 @@ from attest.domain.money import DEFAULT_POLICY, RoundingPolicy
 from attest.extraction.claims import DEFAULT_ALIASES, AliasConfig, ClaimExtractor, infer_period
 from attest.factstore.repository import FactStore, InMemoryFactStore
 from attest.ingestion.base import IngestionReport
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:  # import cycle guard: the connector imports domain modules
+    from attest.ingestion.edgar_companyfacts import CompanyFactsConnector
 from attest.ingestion.edgar_xbrl import XBRLConnector
 from attest.ingestion.guidance import GuidanceConnector
 from attest.verification.engine import VerificationEngine, VerificationResult
@@ -50,6 +54,36 @@ class AttestService:
         self, instance: dict, tenant_id: str, actor: str = "system:ingestion"
     ) -> IngestionReport:
         facts, report = XBRLConnector(self.registry).fetch(instance, tenant_id)
+        self.store.add_many(facts)
+        self.audit_log.append(
+            actor=actor,
+            type=EventType.INGEST,
+            tenant_id=tenant_id,
+            payload=report.model_dump(),
+        )
+        return report
+
+    def ingest_companyfacts(
+        self,
+        issuer: str,
+        tenant_id: str,
+        *,
+        quarters: int = 12,
+        user_agent: str | None = None,
+        connector: CompanyFactsConnector | None = None,
+        actor: str = "system:ingestion",
+    ) -> IngestionReport:
+        """Ingest an issuer's reported facts straight from EDGAR's companyfacts API.
+
+        The real-world counterpart of :meth:`ingest_xbrl`: no hand-built instance
+        dict, just a ticker (or CIK). Registry-mapped concepts land as versioned,
+        restatement-aware facts; unmapped concepts are reported as skipped.
+        ``connector`` is injectable so tests run offline.
+        """
+        from attest.ingestion.edgar_companyfacts import CompanyFactsConnector
+
+        connector = connector or CompanyFactsConnector(self.registry, user_agent=user_agent)
+        facts, report = connector.fetch_company(issuer, tenant_id, quarters=quarters)
         self.store.add_many(facts)
         self.audit_log.append(
             actor=actor,
