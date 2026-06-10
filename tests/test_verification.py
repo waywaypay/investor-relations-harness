@@ -1,5 +1,7 @@
 import pytest
 
+from decimal import Decimal
+
 from attest.demo import build_documents, seeded_service
 from attest.domain.verdicts import FigureClaim, Verdict
 from attest.verification.candidates import detect_candidates
@@ -42,7 +44,7 @@ def test_corrected_value_traces(service):
 
 
 def test_guidance_needs_review_even_as_range(service):
-    v = _verify(service, "q2_revenue_guidance", "FY2026-Q2", "$1.31 to $1.34 billion")
+    v = _verify(service, "revenue_guidance", "FY2026-Q2", "$1.31 to $1.34 billion")
     assert v.verdict == Verdict.NEEDS_REVIEW
 
 
@@ -79,3 +81,22 @@ def test_close_pack_verdict_shape():
     assert release.publishable is False
     # figures agree across documents
     assert consistency == []
+
+
+def test_detector_sees_every_negative_convention():
+    text = "Net loss of -$1,409 million versus $ (1,409 ) as filed, margin -12.4%."
+    found = [c.text for c in detect_candidates(text)]
+    assert "-$1,409 million" in found
+    assert "$ (1,409 )" in found
+    assert "-12.4%" in found
+
+
+def test_detector_sees_bare_scaled_numbers_and_leaves_prose_asides_positive():
+    cands = {c.text: c for c in detect_candidates(
+        "Operating costs of 1,000 million; repurchases ($1.2 billion) continued. Up 10-12% range."
+    )}
+    assert cands["1,000 million"].quantity.value == Decimal(1_000_000_000)
+    # A dollar sign *inside* parens is a prose aside, not a negative...
+    assert cands["$1.2 billion"].quantity.value == Decimal(1_200_000_000)
+    # ...and a digit-adjacent hyphen ("10-12%") is a range separator, not a minus.
+    assert cands["12%"].quantity.value == Decimal(12)
