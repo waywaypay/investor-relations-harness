@@ -274,11 +274,20 @@ away, in the exhibit PDF or the EDGAR filing.
 
 EDGAR is the authoritative enumeration instead: every earnings release is
 filed as an **8-K announcing Item 2.02** with the release attached verbatim as
-**Exhibit 99.1** — static HTML, no JavaScript, no bot wall, complete tables,
-one filing per quarter by construction. `EdgarReleaseConnector` walks the
-`data.sec.gov` submissions index (paging into the archive files for longer
-lookbacks), locates each EX-99.1 from the filing index, and recovers the prose
-with the same extractor the upload path uses:
+**Exhibit 99.1** — static HTML, no JavaScript, no bot wall, complete tables.
+One filing per quarter is *not* guaranteed, though: issuers furnish guidance
+updates and outlook suspensions under Item 2.02, lenders furnish monthly
+credit metrics under it, and preliminary results double a quarter up — so
+counting filings silently loses quarters ("past four quarters" returning four
+filings that span two). `EdgarReleaseConnector` therefore counts **distinct
+reported quarters**: it walks the `data.sec.gov` submissions index newest
+first (paging into the archive files for longer lookbacks), and when several
+filings claim the same quarter it keeps the best artifact — a release that
+states its quarter in its own words beats one whose period was inferred from
+the 8-K's period-of-report date, more detected figures breaks ties, and the
+runner-up filing is noted on the kept release. Each EX-99.1 is located from
+the filing index and the prose recovered with the same extractor the upload
+path uses:
 
 ```bash
 attest releases META --quarters 4 --out ./releases \
@@ -295,12 +304,19 @@ feeds straight into `POST /analyze` or the guidance connector
 
 If you do want a search engine in the loop, `--source exa` (needs
 `EXA_API_KEY`) runs `ExaReleaseFetcher`, which constrains Exa to what it is
-good at and verifies everything: one **keyword** query per quarter built from
-the release-title convention, domains pinned to where full text actually
-lives (EDGAR, the q4cdn exhibit CDN, the wires — pointedly *not* the IR
-landing page), full-text contents with `livecrawl: preferred` (never
-highlights, which drop the tables), advisory titles rejected, and a candidate
-accepted only when its text demonstrably contains figures.
+good at and verifies everything: one **keyword** query per quarter pinned to
+that quarter's *reporting window* (`startPublishedDate`/`endPublishedDate` —
+results publish in the weeks after the quarter closes, and the window keeps a
+year-ago mirror from satisfying this year's slot), domains pinned to where
+full text actually lives (EDGAR, the q4cdn exhibit CDN, the wires — pointedly
+*not* the IR landing page), full-text contents with `livecrawl: preferred`
+(never highlights, which drop the tables), advisory titles rejected, and a
+candidate accepted only when its text demonstrably contains figures. Titles
+are *not* required to repeat the calendar quarter or year — issuers title
+releases in their own fiscal terms ("Apple reports second quarter results"
+is the calendar-Q1 release, with no year in the title) — and each release's
+period is taken from its own stated quarter, falling back to the calendar
+slot with an explicit warning.
 
 ## Scope of this v1
 
