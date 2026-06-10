@@ -134,14 +134,72 @@ def test_extractor_maps_real_release_prose_to_canonical_metrics():
 
 def test_extractor_overdetects_but_never_asserts_unknowns():
     svc = seeded_service()
+    text = RELEASE + " International markets contributed 40% of bookings."
+    claims = ClaimExtractor(svc.registry, svc.store).extract(
+        text, document_id="release", tenant_id="meridian", entity="MRDN", period="FY2026-Q1"
+    )
+    # A percent with no metric label and no change wording is still surfaced, but
+    # as a low-confidence 'unidentified' claim — the engine will route/leave it
+    # rather than assert it.
+    unknown = next(c for c in claims if c.displayed_text == "40%")
+    assert unknown.metric == "unidentified"
+    assert unknown.detect_confidence == Confidence.LOW
+
+
+def test_extractor_attributes_growth_percent_to_its_adjacent_base_figure():
+    svc = seeded_service()
     claims = ClaimExtractor(svc.registry, svc.store).extract(
         RELEASE, document_id="release", tenant_id="meridian", entity="MRDN", period="FY2026-Q1"
     )
-    # The unattributed 18% growth figure is still surfaced, but as a low-confidence
-    # 'unidentified' claim — the engine will route/leave it rather than assert it.
-    unknown = next(c for c in claims if c.displayed_text == "18%")
-    assert unknown.metric == "unidentified"
-    assert unknown.detect_confidence == Confidence.LOW
+    # "total revenue of $1.24 billion, up 18% year over year": no alias names the
+    # 18%, but its base is the adjacent revenue figure — the registry's
+    # revenue_growth_yoy over total_revenue — so the engine can recompute it.
+    growth = next(c for c in claims if c.displayed_text == "18%")
+    assert growth.metric == "revenue_growth_yoy"
+    assert growth.entity == "MRDN" and growth.period == "FY2026-Q1"
+    assert growth.detect_confidence == Confidence.HIGH
+
+
+def test_growth_attribution_normalizes_a_decline_to_a_signed_value():
+    svc = seeded_service()
+    text = "Total revenue of $1.0 billion, down 5% year over year."
+    claims = ClaimExtractor(svc.registry, svc.store).extract(
+        text, document_id="d", tenant_id="meridian", entity="MRDN", period="FY2026-Q1"
+    )
+    growth = next(c for c in claims if c.metric == "revenue_growth_yoy")
+    # The recompute compares signed values, so "down 5%" must read as -5%.
+    assert growth.displayed_text == "-5%"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # A sequential basis is a different formula than YoY — never bind it.
+        "Total revenue of $1.24 billion, up 4% sequentially.",
+        # Constant currency is a different basis than the filed levels.
+        "Total revenue of $1.24 billion, up 18% in constant currency.",
+        # Forward-looking context is a forecast, not this period's reported growth.
+        "Looking ahead, we expect total revenue of $1.31 billion, up 18% year over year.",
+    ],
+)
+def test_growth_attribution_guards_leave_other_bases_unidentified(text):
+    svc = seeded_service()
+    claims = ClaimExtractor(svc.registry, svc.store).extract(
+        text, document_id="d", tenant_id="meridian", entity="MRDN", period="FY2026-Q1"
+    )
+    percents = [c for c in claims if c.displayed_text.endswith("%")]
+    assert percents and all(c.metric == "unidentified" for c in percents)
+
+
+def test_growth_attribution_never_double_binds_one_base():
+    svc = seeded_service()
+    text = "Total revenue of $1.24 billion, up 18% year over year and up 22% over two years."
+    claims = ClaimExtractor(svc.registry, svc.store).extract(
+        text, document_id="d", tenant_id="meridian", entity="MRDN", period="FY2026-Q1"
+    )
+    by_text = {c.displayed_text: c for c in claims}
+    assert by_text["18%"].metric == "revenue_growth_yoy"  # nearest percent wins the base
+    assert by_text["22%"].metric == "unidentified"        # the base is already grown
 
 
 def test_every_claim_carries_a_span_for_highlighting():
@@ -242,7 +300,7 @@ def test_full_pipeline_reproduces_the_restatement_conflict():
         kind=DocumentKind.RELEASE, entity="MRDN", period="FY2026-Q1",
     )
     assert entity == "MRDN" and period == "FY2026-Q1"
-    assert result.counts["traced"] == 6
+    assert result.counts["traced"] == 7  # incl. the 18% recomputed from filed levels
     assert result.counts["conflict"] == 1  # the 31% cloud-growth restatement
     assert result.counts["needs_review"] == 1  # guidance
     assert not result.publishable

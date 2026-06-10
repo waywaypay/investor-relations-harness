@@ -24,6 +24,8 @@ class SourceType(str, Enum):
     INTERNAL_CLOSE = "internal_close"  # a cell in the company's pre-filing close package
     ANALYST_MODEL = "analyst_model"  # a parsed sell-side estimate
     MANAGEMENT_INPUT = "management_input"  # guidance / forward-looking — no filed source
+    DERIVED = "derived"  # recomputed from filed facts via a metric identity (YoY growth,
+    #                      a ratio like the medical care ratio) — traceable through its operands
 
     @property
     def is_filed(self) -> bool:
@@ -56,6 +58,9 @@ class Provenance(BaseModel):
     ref: str = Field(description="accession+tag, doc+cell, or 'none' for guidance")
     label: str = Field(default="", description="human-readable citation, e.g. '10-Q p.4'")
     excerpt: str = Field(default="", description="short source snippet for the UI")
+    url: str | None = Field(
+        default=None, description="resolvable link to the source filing, when one exists"
+    )
 
     @property
     def is_filed(self) -> bool:
@@ -89,6 +94,9 @@ class Fact(BaseModel):
     source_ref: str = Field(default="none")
     source_label: str = Field(default="")
     source_excerpt: str = Field(default="")
+    source_url: str | None = Field(
+        default=None, description="resolvable link to the source filing, when one exists"
+    )
 
     as_of: str = Field(description="ISO date the value was established/restated")
     confidence: Confidence = Confidence.HIGH
@@ -103,6 +111,7 @@ class Fact(BaseModel):
             ref=self.source_ref,
             label=self.source_label,
             excerpt=self.source_excerpt,
+            url=self.source_url,
         )
 
     @property

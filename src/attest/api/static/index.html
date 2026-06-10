@@ -70,6 +70,10 @@
   mark.v-needs_review { background: var(--review); }
   mark.v-conflict { background: var(--conflict); color: #fff; }
   mark.v-untraced { background: var(--untraced); }
+  a.figlink { text-decoration: none; }
+  a.figlink mark { cursor: pointer; box-shadow: 0 1px 0 #06101e; }
+  td a.srclink { color: var(--accent); text-decoration: none; }
+  td a.srclink:hover { text-decoration: underline; }
 
   table { width: 100%; border-collapse: collapse; margin-top: 8px; }
   th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); font-size: 13.5px; vertical-align: top; }
@@ -238,7 +242,10 @@ function highlight(text, claims, verdictByClaim) {
     const v = verdictByClaim[c.claim_id];
     const verdict = v ? v.verdict : 'untraced';
     const tip = v ? `${v.metric} — ${v.verdict.toUpperCase()}: ${v.reason}` : c.metric;
-    out += `<mark class="v-${verdict}" title="${esc(tip)}">${esc(text.slice(s, e))}</mark>`;
+    const mark = `<mark class="v-${verdict}" title="${esc(tip)}">${esc(text.slice(s, e))}</mark>`;
+    const url = v && v.provenance && v.provenance.url;
+    // A figure whose source has a resolvable filing links straight to it.
+    out += url ? `<a class="figlink" href="${esc(url)}" target="_blank" rel="noopener">${mark}</a>` : mark;
     cursor = e;
   }
   out += esc(text.slice(cursor));
@@ -273,7 +280,12 @@ function render(d) {
   else {
     h += `<table><thead><tr><th>Figure</th><th>Metric</th><th>Verdict</th><th>Source</th></tr></thead><tbody>`;
     for (const x of v) {
-      const src = x.source_value ? `${esc(x.source_value)}${x.as_of ? ' · '+esc(x.as_of) : ''}${x.provenance && x.provenance.label ? '<br><span class="reason">'+esc(x.provenance.label)+'</span>' : ''}` : '<span class="reason">—</span>';
+      const url = x.provenance && x.provenance.url;
+      const cite = x.provenance && x.provenance.label
+        ? (url ? `<br><a class="srclink" href="${esc(url)}" target="_blank" rel="noopener">${esc(x.provenance.label)} ↗</a>`
+               : `<br><span class="reason">${esc(x.provenance.label)}</span>`)
+        : (url ? `<br><a class="srclink" href="${esc(url)}" target="_blank" rel="noopener">filing ↗</a>` : '');
+      const src = x.source_value ? `${esc(x.source_value)}${x.as_of ? ' · '+esc(x.as_of) : ''}${cite}` : '<span class="reason">—</span>';
       h += `<tr>
         <td><b>${esc(x.displayed_text)}</b></td>
         <td>${esc(x.metric)}<br><span class="reason">${esc(x.entity)} · ${esc(x.period||'—')}</span></td>

@@ -14,13 +14,15 @@ audit trail is a faithful record of what the system asserted and when.
 
 from __future__ import annotations
 
+from decimal import ROUND_HALF_UP, Decimal
+
 from pydantic import BaseModel, ConfigDict
 
 from attest.audit.log import AuditLog
 from attest.audit.events import EventType
 from attest.domain.document import Document
-from attest.domain.facts import Confidence, Fact
-from attest.domain.metrics import MetricRegistry
+from attest.domain.facts import Confidence, Fact, SourceType
+from attest.domain.metrics import MetricRegistry, MetricSpec
 from attest.domain.money import (
     DEFAULT_POLICY,
     QuantityParseError,
@@ -35,6 +37,8 @@ from attest.domain.verdicts import (
 )
 from attest.factstore.repository import FactStore
 from attest.verification.rules import (
+    CURRENT_PERIOD_KINDS,
+    PRIOR_PERIOD_KINDS,
     check_cross_document_consistency,
     check_intra_document_consistency,
     check_derived_consistency,
@@ -44,7 +48,16 @@ from attest.verification.rules import (
     check_range_sanity,
     check_reg_g,
     check_unit_consistency,
+    recompute_current_period,
+    recompute_prior_period,
 )
+
+
+def _identity_of(spec: MetricSpec) -> str:
+    """A human-readable identity for a same-period derived metric ("a / b")."""
+    if spec.derived_kind in ("ratio", "ratio_pct"):
+        return f"{spec.derived_numerator} / {spec.derived_denominator}"
+    return " + ".join(spec.derived_components)
 
 
 class VerificationResult(BaseModel):
@@ -112,8 +125,16 @@ class VerificationEngine:
     def _bind(self, claim: FigureClaim, tenant_id: str) -> FigureVerdict:
         versions = self.store.versions(tenant_id, claim.entity, claim.metric, claim.period)
 
-        # No source at all: the figure is untraced, full stop.
+        # No stored fact of its own: a *derived* metric (YoY growth, a ratio like
+        # the medical care ratio) can still be verified by recomputing its identity
+        # from filed operands. This keeps the spine's invariant — only an
+        # exact-with-tolerance match against filed sources may say `traced` — while
+        # no longer leaving an exactly-correct growth percent untraced just because
+        # XBRL only carries the levels.
         if not versions:
+            derived = self._bind_derived(claim, tenant_id)
+            if derived is not None:
+                return derived
             return self._verdict(
                 claim,
                 Verdict.UNTRACED,
@@ -181,6 +202,99 @@ class VerificationEngine:
             reason=f"Differs from the filed source "
             f"({latest.quantity().display()} as of {latest.as_of}).",
             fact=latest,
+        )
+
+    def _bind_derived(self, claim: FigureClaim, tenant_id: str) -> FigureVerdict | None:
+        """Verify a derived metric by recomputing its identity from filed operands.
+
+        Same-period identities (a ratio, a sum) recompute from this period's filed
+        facts; prior-period kinds (YoY/QoQ growth, bps delta) recompute from this
+        period's and the comparison period's — so "revenue grew 9.8%" ties out (or
+        conflicts) against the filed levels for any live-ingested issuer, exactly
+        as the demo's cloud-growth story does over stored facts. Returns ``None``
+        when the metric isn't derived or its operands aren't all filed — the
+        caller falls through to untraced and never asserts a number it cannot
+        source.
+        """
+        spec = self.registry.get(claim.metric)
+        if spec is None:
+            return None
+        if spec.derived_kind in CURRENT_PERIOD_KINDS:
+            recomputed = recompute_current_period(
+                spec, self.store, tenant_id, claim.entity, claim.period, require_filed=True
+            )
+            if recomputed is None:
+                return None
+            expected, operands = recomputed
+            identity = _identity_of(spec)
+        elif spec.derived_kind in PRIOR_PERIOD_KINDS:
+            prior_recomputed = recompute_prior_period(
+                spec, self.store, tenant_id, claim.entity, claim.period, require_filed=True
+            )
+            if prior_recomputed is None:
+                return None
+            expected, operands, prior_period = prior_recomputed
+            identity = f"{spec.derived_base} {claim.period} vs {prior_period}"
+        else:
+            return None
+
+        # The verdict is decided on the exact recompute; the synthetic provenance
+        # fact carries a 4-decimal rendering so the UI cites "18.0055%", not a
+        # 25-digit Decimal expansion.
+        shown = expected.value.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP).normalize()
+
+        def synth(quantum: Decimal) -> Fact:
+            return Fact(
+                id=f"derived:{claim.entity}:{claim.metric}:{claim.period}",
+                tenant_id=tenant_id,
+                entity=claim.entity,
+                metric=claim.metric,
+                period=claim.period,
+                value=shown,
+                unit=expected.unit,
+                quantum=quantum,
+                source_type=SourceType.DERIVED,
+                source_ref=f"derived:{identity}",
+                source_label=f"Recomputed from filed sources ({identity})",
+                source_url=next((o.source_url for o in operands if o.source_url), None),
+                as_of=max(o.as_of for o in operands),
+                confidence=Confidence.HIGH,
+            )
+
+        try:
+            draft_qty = parse_quantity(claim.displayed_text)
+        except QuantityParseError:
+            return self._verdict(
+                claim,
+                Verdict.NEEDS_REVIEW,
+                reason=f"Could not normalize the figure as written "
+                f"('{claim.displayed_text}'); manual comparison required.",
+                fact=synth(Decimal(0)),
+            )
+        if claim.detect_confidence == Confidence.LOW:
+            return self._verdict(
+                claim,
+                Verdict.NEEDS_REVIEW,
+                reason="Low detection confidence — routed for human review.",
+                fact=synth(Decimal(0)),
+            )
+
+        # Compare at the figure-as-written's precision, like the filed-source path.
+        synthetic = synth(draft_qty.quantum)
+        if draft_qty.matches(expected, self.policy):
+            return self._verdict(
+                claim,
+                Verdict.TRACED,
+                reason=f"Recomputed from filed sources ({identity}) "
+                f"within the rounding policy.",
+                fact=synthetic,
+            )
+        return self._verdict(
+            claim,
+            Verdict.CONFLICT,
+            reason=f"Differs from the value recomputed from filed sources: "
+            f"{identity} = {synthetic.quantity().display()}.",
+            fact=synthetic,
         )
 
     def _verdict(

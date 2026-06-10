@@ -155,9 +155,23 @@ def test_most_figures_trace_instead_of_eight_in_two_hundred():
     _, result, _, _ = _analyzed()
     counts = result.counts
     total = sum(counts.values())
-    # Prose headlines, both statement-table columns, and both EPS columns trace.
-    assert counts["traced"] >= 14
-    assert counts["traced"] / total >= 0.5  # vs ~3% in the reported failure
+    # Prose headlines, both statement-table columns, both EPS columns, and the
+    # recomputed derived figures (YoY growth, both medical care ratios) trace.
+    assert counts["traced"] >= 17
+    assert counts["traced"] / total >= 0.6  # vs ~3% in the reported failure
+
+
+def test_derived_figures_trace_by_recomputation_from_filed_levels():
+    # No growth or ratio fact is ever filed in XBRL — only the levels are. The
+    # engine recomputes them, so the most quoted figures in the release link too.
+    _, result, _, _ = _analyzed()
+    by_text = {v.displayed_text: v for v in result.verdicts}
+    growth = by_text["9.8%"]
+    assert growth.metric == "revenue_growth_yoy"
+    assert growth.verdict == Verdict.TRACED
+    assert "recomputed" in growth.reason.lower()
+    assert by_text["84.8%"].verdict == Verdict.TRACED   # 66,144 / 78,000
+    assert by_text["85.1%"].verdict == Verdict.TRACED   # 60,676 / 71,300, FY2025-Q1
 
 
 def test_table_figures_trace_with_scale_and_column_period():

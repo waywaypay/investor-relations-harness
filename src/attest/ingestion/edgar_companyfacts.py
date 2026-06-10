@@ -44,12 +44,28 @@ from attest.ingestion.base import IngestionReport
 from attest.ingestion.sec import DEFAULT_USER_AGENT, Fetcher, UrlFetcher, resolve_cik
 
 COMPANYFACTS_URL = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik:010d}.json"
+FILING_INDEX_URL = "https://www.sec.gov/Archives/edgar/data/{cik}/{accession_nodash}/{accession}-index.htm"
 
 # companyfacts unit keys this connector understands; anything else is skipped.
 _KNOWN_UNITS = {"USD", "USD/shares", "USD/share", "shares", "pure"}
 
 _FRAME_RE = re.compile(r"^CY(\d{4})(?:Q([1-4]))?I?$")
 _DATE_RE = re.compile(r"^(\d{4})-(\d{2})-(\d{2})$")
+_ACCESSION_RE = re.compile(r"^\d{10}-\d{2}-\d{6}$")
+
+
+def filing_index_url(cik: int, accession: str) -> str | None:
+    """The sec.gov filing-index page for an accession, or ``None``.
+
+    Only a canonically shaped accession number resolves on EDGAR; anything else
+    (a missing or mangled ``accn``) gets no URL rather than a fabricated link
+    that 404s.
+    """
+    if not _ACCESSION_RE.match(accession or ""):
+        return None
+    return FILING_INDEX_URL.format(
+        cik=cik, accession_nodash=accession.replace("-", ""), accession=accession
+    )
 
 
 def _parse_date(text: str | None) -> date | None:
@@ -163,7 +179,7 @@ class CompanyFactsConnector:
                         {**entry, "_tag": tag, "_label": body.get("label") or spec.label}
                     )
 
-        facts = self._versioned_facts(groups, tenant_id, entity, quarters)
+        facts = self._versioned_facts(groups, tenant_id, entity, quarters, cik)
         report = IngestionReport(
             source=f"edgar_companyfacts:CIK{cik:010d}",
             tenant_id=tenant_id,
@@ -179,6 +195,7 @@ class CompanyFactsConnector:
         tenant_id: str,
         entity: str,
         quarters: int,
+        cik: int,
     ) -> list[Fact]:
         """Collapse occurrences into value *versions* per (metric, period).
 
@@ -219,6 +236,7 @@ class CompanyFactsConnector:
                         source_ref=f"{accession}#{entry['_tag']}",
                         source_label=entry.get("_label", ""),
                         source_excerpt="",
+                        source_url=filing_index_url(cik, accession),
                         as_of=entry.get("filed", "1970-01-01"),
                         confidence=Confidence.HIGH,
                     )

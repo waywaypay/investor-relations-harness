@@ -99,6 +99,7 @@ class XBRLConnector:
                 source_ref=raw.get("source_ref", f"{accession}#{tag}" if tag else "none"),
                 source_label=raw.get("label", ""),
                 source_excerpt=raw.get("excerpt", ""),
+                source_url=raw.get("source_url"),
                 as_of=raw.get("as_of", "1970-01-01"),
                 confidence=Confidence(raw.get("confidence", "high")),
             )

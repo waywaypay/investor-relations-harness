@@ -100,6 +100,13 @@ DEFAULT_REGISTRY = MetricRegistry(
             ),
         ),
         MetricSpec(
+            id="revenue_growth_yoy",
+            label="Total revenue growth, YoY",
+            unit=Unit.PERCENT,
+            derived_kind="yoy_growth",
+            derived_base="total_revenue",
+        ),
+        MetricSpec(
             id="cost_of_revenue",
             label="Cost of revenue",
             unit=Unit.CURRENCY,

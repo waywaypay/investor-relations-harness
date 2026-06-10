@@ -103,6 +103,18 @@
       "as_of": "2026-04-28"
     },
     {
+      "tag": "us-gaap:Revenues",
+      "period": "FY2025-Q1",
+      "value": "1051900000",
+      "unit": "USD",
+      "decimals": -5,
+      "source_type": "filing_line",
+      "source_ref": "0001047469-25-000900#exhibit-99.1",
+      "label": "Q1 FY2025 earnings release · total revenue",
+      "excerpt": "Total revenue was $1,051.9 million for the three months ended March 31, 2025.",
+      "as_of": "2025-04-28"
+    },
+    {
       "tag": "mrdn:CloudSegmentRevenue",
       "entity": "MRDN:Cloud",
       "period": "FY2025-Q1",

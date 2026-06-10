@@ -28,7 +28,7 @@ def client():
 def _seed_demo(client):
     r = client.post("/tenants/meridian/ingest/demo")
     assert r.status_code == 200
-    assert r.json()["ingested"] == 15
+    assert r.json()["ingested"] == 16
 
 
 def test_home_serves_upload_ui(client):
@@ -41,7 +41,7 @@ def test_home_serves_upload_ui(client):
 def test_ingest_demo_seeds_filed_sources(client):
     _seed_demo(client)
     facts = client.get("/tenants/meridian/facts").json()
-    assert len(facts) == 15
+    assert len(facts) == 16
 
 
 def test_analyze_pasted_text_ties_out_against_filed_sources(client):
@@ -53,7 +53,7 @@ def test_analyze_pasted_text_ties_out_against_filed_sources(client):
     )
     assert r.status_code == 200
     body = r.json()
-    assert body["counts"]["traced"] == 6
+    assert body["counts"]["traced"] == 7         # incl. 18% recomputed from filed levels
     assert body["counts"]["conflict"] == 1       # the 31% restatement
     assert body["counts"]["needs_review"] == 1   # guidance
     assert body["publishable"] is False
@@ -74,7 +74,7 @@ def test_analyze_file_upload(client):
     assert r.status_code == 200
     body = r.json()
     assert body["title"] == "release.txt"
-    assert body["counts"]["traced"] == 6
+    assert body["counts"]["traced"] == 7
     assert body["counts"]["conflict"] == 1
 
 
