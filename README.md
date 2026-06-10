@@ -60,11 +60,19 @@ the spine"*:
 src/attest/
   domain/          provenance-typed value objects
     money.py         Quantity + RoundingPolicy — the deterministic tie-out math
+                     (negatives in every disclosure convention: -$1,409, $ (1,409 ))
     facts.py         Fact (the spine record) + Provenance, SourceType
-    metrics.py       canonical metric registry (incl. Reg G relationships)
+    metrics.py       canonical metric registry (incl. Reg G relationships) — the
+                     issuer-neutral US-GAAP vocabulary with real us-gaap tag maps,
+                     plus worked issuer extensions (Meridian demo, UNH payer terms)
     verdicts.py      FigureClaim (edge proposes) / FigureVerdict (core disposes)
     document.py      the unit submitted for verification
   factstore/       the normalized, restatement-aware store of facts-with-provenance
+  extraction/
+    tables.py        structure-aware financial-table rendering (scale, column
+                     periods, split-cell negatives, section-chained row labels)
+    text.py          file containers -> prose (html/docx/pdf/rtf/txt)
+    claims.py        the model-free edge: figure -> metric/period attribution
   verification/
     candidates.py    greedy figure detection (over-detect, never under-detect)
     engine.py        detect -> normalize -> bind -> verdict, with audit logging
@@ -79,13 +87,14 @@ src/attest/
                        ranges         guidance low<=high and stated-midpoint consistency
                        forward_looking FLS detection -> safe-harbor requirement
   audit/           append-only, event-sourced, sha256 hash-chained log
-  ingestion/       connectors (EDGAR/XBRL adapter, 8-K EX-99.1 guidance adapter,
-                                EDGAR 8-K release fetcher, constrained Exa fetcher,
-                                sample filing + press-release fixtures)
+  ingestion/       connectors (EDGAR companyfacts ingester, simplified XBRL adapter,
+                                8-K EX-99.1 guidance adapter, EDGAR 8-K release
+                                fetcher, constrained Exa fetcher, shared SEC
+                                transport, sample filing + press-release fixtures)
   eval/            the golden-set harness + CI gate (figure FN rate must be 0)
   api/             stateless FastAPI surface over the service
   service.py       composition root shared by the API and CLI
-  cli.py           `attest demo` / `attest serve`
+  cli.py           `attest demo` / `attest serve` / `attest releases` / `attest facts`
 ```
 
 ### How the design-doc principles show up in code
@@ -109,7 +118,8 @@ src/attest/
 
 ```
 GET  /                                           the upload & verify web UI
-POST /tenants/{tenant}/ingest/xbrl              ingest an XBRL instance
+POST /tenants/{tenant}/ingest/companyfacts      ingest an issuer's facts from EDGAR (ticker/CIK)
+POST /tenants/{tenant}/ingest/xbrl              ingest a simplified XBRL instance
 POST /tenants/{tenant}/ingest/guidance          extract forward guidance from 8-K EX-99.1 prose
 POST /tenants/{tenant}/ingest/demo              seed the bundled Meridian filing
 GET  /tenants/{tenant}/facts                    list facts-with-provenance
@@ -129,6 +139,64 @@ GET  /audit/verify                              re-derive the hash chain
 propose figure claims, and runs the full engine — the same spine the demo close
 pack flows through, now driven by a real document.
 
+### Tables are the document — structure-aware extraction
+
+An EX-99.1 is mostly *tables* by figure count, and naive tag-stripping destroys
+exactly what a tie-out needs: the header's "(in millions, except per share
+data)" scale (so a correct `$ 109,605` reads six orders of magnitude off — a
+false **conflict** on a right number), the column periods (so the prior-year
+comparative binds to the current quarter — another false conflict), and the
+split-cell negatives EDGAR renders as `<td>$</td><td>(1,409</td><td>)</td>`
+(invisible to a prose-shaped detector — under-detection, the one unacceptable
+failure). `extraction/tables.py` re-renders each financial table as
+deterministic prose the rest of the pipeline already understands:
+
+```
+Revenues — Total revenues: $109,605 million (FY2026-Q1); $99,797 million (FY2025-Q1)
+Net earnings attributable to UnitedHealth Group: $6,291 million (FY2026-Q1); -$1,409 million (FY2025-Q1)
+Diluted earnings per share: $6.85 (FY2026-Q1); -$1.53 (FY2025-Q1)
+```
+
+— the scale is written per value (per-share rows exempt, by the header's own
+words), the column period is annotated next to each value and carried onto the
+claim, split parens become a leading minus, `$`-ness propagates down a column
+the way EDGAR actually prints it, and section headers ("Revenues:") chain into
+row labels so a segment line can never inherit the consolidated label above
+it. Layout tables fall through to the ordinary flattening; headers that cannot
+be read produce rows without period annotations — never a guess. The claim
+extractor reads the annotations back (`(FY2025-Q1)` binds that value to *its*
+period) and bounds attribution windows at the row's own line. Prose
+comparatives get the same treatment: "compared to 84.3% last year" shifts the
+figure to the prior-year period (growth phrasings — "up 31% from the
+prior-year period" — name a baseline, not the figure's period, and never
+shift).
+
+### Getting the facts — `attest facts` and the companyfacts ingester
+
+The other half of "8 of 242 traced" was the fact supply: a tie-out needs the
+filed values to bind against. `CompanyFactsConnector` fetches SEC's
+companyfacts API for a ticker/CIK and lands every registry-mapped concept as
+versioned facts — the same value re-reported in next year's comparative is
+deduped, but a *different* value for the same period is a restatement and
+becomes a new fact version (which is what the engine's superseded-value
+conflict verdict reads). Periods key by SEC's own calendar frames when
+present, else by each occurrence's start/end dates (`FY2026-Q1`, `FY2026-H1`,
+`FY2026-9M`, `FY2026`). Unmapped concepts are skipped and reported, never
+guessed.
+
+```bash
+attest facts UNH --quarters 12 --user-agent "Your Name you@example.com"
+curl -X POST .../tenants/unh/ingest/companyfacts \
+  -H 'content-type: application/json' -d '{"issuer": "UNH", "quarters": 12}'
+```
+
+One honest limitation: companyfacts carries **consolidated** values only —
+dimensioned (segment-axis) facts never appear in that API. Segment rows
+(UnitedHealthcare, Optum Rx, …) therefore attribute to their own metrics and
+come out **untraced** until segment facts arrive via the simplified-instance
+connector (or a future dimension-aware instance parser); they are never
+mis-bound to consolidated revenue.
+
 ### Uploading real documents — and where the "edge" lives
 
 `attest analyze` needs something the demo provides for free: the mapping from a
@@ -137,7 +205,12 @@ that this is the probabilistic edge's job and that **the model is the replaceabl
 component**. `src/attest/extraction/` is a deterministic, model-free reference
 implementation of that edge — greedy figure detection plus keyword/alias mapping,
 segment-entity resolution grounded in the tenant's own ingested facts, and light
-period inference. It deliberately *over*-detects and labels anything it cannot
+period inference. Guidance ranges attribute from their own clause — "full year
+2026 outlook of net earnings of $24.65 to $25.15 per share" is FY2026 **EPS**
+guidance, the adjacent "adjusted" range is FY2026 *adjusted*-EPS guidance, and
+"expects total revenue ... for the second quarter" is next-quarter revenue
+guidance — never a hardcoded metric. A "per share" tail pins a dollar figure to
+the EPS family ("net earnings of $6.85 per share" is EPS, not the $-aggregate). It deliberately *over*-detects and labels anything it cannot
 confidently attribute as low-confidence, so the deterministic core still disposes
 and a guessed binding is never asserted as `traced`. Swap in an LLM here and
 nothing downstream changes.
